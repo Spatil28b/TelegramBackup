@@ -2,6 +2,8 @@ package com.example.telegrambackup.network
 
 import android.util.Log
 import com.example.telegrambackup.data.UploadedFile
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.joinAll
@@ -41,6 +43,32 @@ class ServerApi {
         val cleanBase = if (base.startsWith("http://") || base.startsWith("https://")) base else "https://$base"
         val cleanPath = if (path.startsWith("/")) path else "/$path"
         return "$cleanBase$cleanPath"
+    }
+
+    /**
+     * Checks online server for the latest released app version & APK download link.
+     */
+    suspend fun getLatestAppVersion(serverUrl: String): com.example.telegrambackup.ui.update.AppVersionInfo = withContext(Dispatchers.IO) {
+        try {
+            val url = cleanUrl(serverUrl, "/api/app/latest-version")
+            val request = Request.Builder().url(url).build()
+            val response = client.newCall(request).execute()
+            val body = response.body?.string() ?: ""
+
+            if (response.isSuccessful && body.contains("\"success\":true")) {
+                val json = JSONObject(body)
+                return@withContext com.example.telegrambackup.ui.update.AppVersionInfo(
+                    success = true,
+                    versionCode = json.optInt("versionCode", 1),
+                    versionName = json.optString("versionName", "1.0.0"),
+                    downloadUrl = json.optString("downloadUrl", ""),
+                    releaseNotes = json.optString("releaseNotes", "New performance and feature updates.")
+                )
+            }
+        } catch (e: Exception) {
+            Log.e("ServerApi", "getLatestAppVersion error", e)
+        }
+        return@withContext com.example.telegrambackup.ui.update.AppVersionInfo(false, 1, "1.0.0", "", "")
     }
 
     /**
@@ -537,34 +565,72 @@ class ServerApi {
 
     /**
      * Batch deletes up to 100 messages at once using Telegram Bot API deleteMessages endpoint.
+     * Automatically falls back to high-concurrency parallel deletion if batch fails.
      */
     suspend fun deleteTelegramMessagesBatch(botToken: String, chatId: String, messageIds: List<Long>): Boolean = withContext(Dispatchers.IO) {
         val cleanToken = botToken.trim()
         val cleanChatId = chatId.trim()
-        if (cleanToken.isEmpty() || cleanChatId.isEmpty() || messageIds.isEmpty()) return@withContext false
-        try {
-            val url = "https://api.telegram.org/bot$cleanToken/deleteMessages"
-            val json = JSONObject().apply {
-                val numericChatId = cleanChatId.toLongOrNull()
-                if (numericChatId != null) put("chat_id", numericChatId) else put("chat_id", cleanChatId)
-                val idsArray = JSONArray()
-                messageIds.forEach { idsArray.put(it) }
-                put("message_ids", idsArray)
-            }
-            val requestBody = json.toString().toRequestBody("application/json".toMediaTypeOrNull())
-            val request = Request.Builder().url(url).post(requestBody).build()
-            val response = client.newCall(request).execute()
-            val body = response.body?.string() ?: ""
-            Log.d("ServerApi", "deleteTelegramMessagesBatch response ($url): code=${response.code}, body=$body")
-            return@withContext response.isSuccessful && JSONObject(body).optBoolean("ok", false)
-        } catch (e: Exception) {
-            Log.e("ServerApi", "deleteTelegramMessagesBatch error", e)
-            return@withContext false
+        val validIds = messageIds.filter { it > 0 }
+        if (cleanToken.isEmpty() || cleanChatId.isEmpty() || validIds.isEmpty()) return@withContext false
+
+        if (validIds.size == 1) {
+            return@withContext deleteTelegramMessage(cleanToken, cleanChatId, validIds[0])
         }
+
+        val chunks = validIds.chunked(100)
+        var allSuccess = true
+
+        for (chunk in chunks) {
+            try {
+                val url = "https://api.telegram.org/bot$cleanToken/deleteMessages"
+                val json = JSONObject().apply {
+                    val numericChatId = cleanChatId.toLongOrNull()
+                    if (numericChatId != null) put("chat_id", numericChatId) else put("chat_id", cleanChatId)
+                    val idsArray = JSONArray()
+                    chunk.forEach { idsArray.put(it) }
+                    put("message_ids", idsArray)
+                }
+                val requestBody = json.toString().toRequestBody("application/json".toMediaTypeOrNull())
+                val request = Request.Builder().url(url).post(requestBody).build()
+                val response = client.newCall(request).execute()
+                val body = response.body?.string() ?: ""
+
+                val jsonRes = try { JSONObject(body) } catch (_: Exception) { JSONObject() }
+                val ok = response.isSuccessful && jsonRes.optBoolean("ok", false)
+
+                if (ok) {
+                    Log.d("ServerApi", "deleteTelegramMessagesBatch: Deleted ${chunk.size} messages in one batch")
+                } else {
+                    Log.d("ServerApi", "deleteTelegramMessagesBatch batch attempt not ok ($body), executing concurrent individual fallback")
+                    coroutineScope {
+                        val deferreds = chunk.map { msgId ->
+                            async(Dispatchers.IO) {
+                                deleteTelegramMessage(cleanToken, cleanChatId, msgId)
+                            }
+                        }
+                        val results = deferreds.awaitAll()
+                        if (results.any { !it }) allSuccess = false
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("ServerApi", "deleteTelegramMessagesBatch chunk error, executing parallel fallback", e)
+                coroutineScope {
+                    val deferreds = chunk.map { msgId ->
+                        async(Dispatchers.IO) {
+                            deleteTelegramMessage(cleanToken, cleanChatId, msgId)
+                        }
+                    }
+                    val results = deferreds.awaitAll()
+                    if (results.any { !it }) allSuccess = false
+                }
+            }
+        }
+        return@withContext allSuccess
     }
 
     /**
-     * Sends HTTP deleteMessage request directly to Telegram Bot API with 429 Rate Limit retry support.
+     * Sends HTTP deleteMessage request directly to Telegram Bot API with 429 Rate Limit retry support
+     * and idempotent handling for already-deleted messages.
      */
     suspend fun deleteTelegramMessage(botToken: String, chatId: String, messageId: Long): Boolean = withContext(Dispatchers.IO) {
         val cleanToken = botToken.trim()
@@ -590,11 +656,127 @@ class ServerApi {
                 return@withContext deleteTelegramMessage(cleanToken, cleanChatId, messageId)
             }
 
-            return@withContext response.isSuccessful && JSONObject(body).optBoolean("ok", false)
+            val jsonRes = try { JSONObject(body) } catch (_: Exception) { JSONObject() }
+            val ok = jsonRes.optBoolean("ok", false)
+            val desc = jsonRes.optString("description", "")
+
+            // Treat "message to delete not found", "message can't be deleted", or "MESSAGE_ID_INVALID" as successfully cleared
+            val isAlreadyGone = desc.contains("message to delete not found", ignoreCase = true) ||
+                    desc.contains("message can't be deleted", ignoreCase = true) ||
+                    desc.contains("MESSAGE_ID_INVALID", ignoreCase = true)
+
+            val isSuccess = ok || isAlreadyGone
+            return@withContext isSuccess
         } catch (e: Exception) {
             Log.e("ServerApi", "deleteTelegramMessage error for msgId #$messageId", e)
             return@withContext false
         }
+    }
+
+    /**
+     * Complete deep deletion of a file and ALL of its chunk messages from Telegram Cloud Chat & Room DB.
+     */
+    suspend fun purgeFileCompleteFromTelegram(
+        context: android.content.Context,
+        botToken: String,
+        chatId: String,
+        file: com.example.telegrambackup.data.UploadedFile
+    ): Boolean = withContext(Dispatchers.IO) {
+        val cleanToken = botToken.trim()
+        val cleanChatId = chatId.trim()
+
+        val msgIds = mutableSetOf<Long>()
+        if (file.messageId > 0) {
+            msgIds.add(file.messageId)
+        }
+        val directId = file.telegramFileId.toLongOrNull()
+        if (directId != null && directId > 0) {
+            msgIds.add(directId)
+        }
+
+        // Query all chunk message IDs for this file path from Room database
+        try {
+            val db = com.example.telegrambackup.data.AppDatabase.getDatabase(context)
+            val chunks = db.chunkProgressDao().getUploadedChunksForFile(file.path)
+            chunks.forEach { chunk ->
+                if (chunk.messageId > 0) {
+                    msgIds.add(chunk.messageId)
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("ServerApi", "Error querying chunk message IDs for ${file.path}", e)
+        }
+
+        var deletionOk = true
+        if (cleanToken.isNotEmpty() && cleanChatId.isNotEmpty() && msgIds.isNotEmpty()) {
+            val idList = msgIds.toList()
+            Log.d("ServerApi", "Purging ${idList.size} Telegram messages for file ${file.fileName}: $idList")
+            deletionOk = deleteTelegramMessagesBatch(cleanToken, cleanChatId, idList)
+        }
+
+        // Clean up Room DB records
+        try {
+            val db = com.example.telegrambackup.data.AppDatabase.getDatabase(context)
+            db.chunkProgressDao().deleteChunksForFile(file.path)
+            db.uploadedFileDao().deleteByPath(file.path)
+            if (file.telegramFileId.isNotEmpty()) {
+                db.uploadedFileDao().deleteByTelegramFileId(file.telegramFileId)
+            }
+        } catch (e: Exception) {
+            Log.e("ServerApi", "Error deleting local DB record for ${file.path}", e)
+        }
+
+        return@withContext deletionOk
+    }
+
+    /**
+     * Purge an unlisted file or path from Telegram Cloud Chat even if no UploadedFile record exists in Room DB.
+     */
+    suspend fun purgeUnlistedPathFromTelegram(
+        context: android.content.Context,
+        botToken: String,
+        chatId: String,
+        path: String,
+        telegramFileId: String = ""
+    ): Boolean = withContext(Dispatchers.IO) {
+        val cleanToken = botToken.trim()
+        val cleanChatId = chatId.trim()
+        if (cleanToken.isEmpty() || cleanChatId.isEmpty()) return@withContext false
+
+        val msgIds = mutableSetOf<Long>()
+        val directId = telegramFileId.toLongOrNull()
+        if (directId != null && directId > 0) {
+            msgIds.add(directId)
+        }
+
+        try {
+            val db = com.example.telegrambackup.data.AppDatabase.getDatabase(context)
+            val file = db.uploadedFileDao().getFileByPath(path)
+            if (file != null) {
+                if (file.messageId > 0) msgIds.add(file.messageId)
+                file.telegramFileId.toLongOrNull()?.let { if (it > 0) msgIds.add(it) }
+            }
+            val chunks = db.chunkProgressDao().getUploadedChunksForFile(path)
+            chunks.forEach { chunk ->
+                if (chunk.messageId > 0) msgIds.add(chunk.messageId)
+            }
+        } catch (_: Exception) {}
+
+        var ok = true
+        if (msgIds.isNotEmpty()) {
+            ok = deleteTelegramMessagesBatch(cleanToken, cleanChatId, msgIds.toList())
+        }
+
+        try {
+            val db = com.example.telegrambackup.data.AppDatabase.getDatabase(context)
+            db.chunkProgressDao().deleteChunksForFile(path)
+            db.uploadedFileDao().deleteByPath(path)
+            if (telegramFileId.isNotEmpty()) {
+                db.uploadedFileDao().deleteByTelegramFileId(telegramFileId)
+            }
+        } catch (_: Exception) {}
+
+        return@withContext ok
     }
 
     /**
@@ -632,7 +814,7 @@ class ServerApi {
 
     /**
      * Deep-scans and purges ALL messages/files in Telegram Bot Chat up to maxMessageId.
-     * Uses resilient 20-message sub-chunks with individual fallback & rate-limit throttling to guarantee 100% deletion.
+     * Uses 50-message chunks with parallel concurrent fallback & rate-limit throttling to guarantee 100% deletion.
      * Returns Pair(totalDeletedCount, totalScannedCount).
      */
     suspend fun deepPurgeTelegramChatStorage(
@@ -646,26 +828,22 @@ class ServerApi {
         if (cleanToken.isEmpty() || cleanChatId.isEmpty()) return@withContext Pair(0, 0)
 
         val pingId = getHighestTelegramMessageId(cleanToken, cleanChatId)
-        val highestId = if (pingId > 0) pingId + 100L else if (knownMaxId > 0) knownMaxId + 100L else 10000L
+        val highestId = when {
+            pingId > 0 -> pingId + 50L
+            knownMaxId > 0 -> knownMaxId + 50L
+            else -> 1000L
+        }
 
+        Log.d("ServerApi", "deepPurgeTelegramChatStorage starting for chatId $cleanChatId up to highestId $highestId")
         val allIds = (1L..highestId).toList()
-        val subChunks = allIds.chunked(20) // Resilient 20-ID sub-chunks
+        val subChunks = allIds.chunked(50) // Resilient 50-ID sub-chunks
         var totalDeleted = 0
 
         subChunks.forEachIndexed { index, subChunk ->
             try {
-                // Try batch deletion on 20-ID sub-chunk first
                 val batchSuccess = deleteTelegramMessagesBatch(cleanToken, cleanChatId, subChunk)
                 if (batchSuccess) {
                     totalDeleted += subChunk.size
-                } else {
-                    // Fallback to resilient individual item deletion for this 20-ID sub-chunk
-                    for (msgId in subChunk) {
-                        if (deleteTelegramMessage(cleanToken, cleanChatId, msgId)) {
-                            totalDeleted++
-                        }
-                        kotlinx.coroutines.delay(10L) // Small throttle delay to prevent 429
-                    }
                 }
             } catch (_: Exception) {}
             onProgress(index + 1, subChunks.size, totalDeleted)

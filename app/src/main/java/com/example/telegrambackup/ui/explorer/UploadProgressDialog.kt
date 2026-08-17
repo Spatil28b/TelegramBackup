@@ -11,8 +11,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import com.example.telegrambackup.utils.DynamicProcessTracker
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -43,6 +46,24 @@ fun UploadProgressDialog(
 ) {
     val percentage = (currentProgress * 100).toInt()
 
+    if (com.example.telegrambackup.utils.DynamicProcessTracker.isMinimized) {
+        return
+    }
+
+    LaunchedEffect(currentProgress, currentFileName, uploadedCount, totalCount) {
+        if (!com.example.telegrambackup.utils.DynamicProcessTracker.isProcessActive) {
+            com.example.telegrambackup.utils.DynamicProcessTracker.startProcess(
+                title = "Uploading Files ($uploadedCount/$totalCount)",
+                subtitle = "Uploading $currentFileName...",
+                icon = Icons.Default.CloudUpload
+            )
+        }
+        com.example.telegrambackup.utils.DynamicProcessTracker.updateProgress(
+            progress = currentProgress,
+            subtitle = "Uploading $uploadedCount/$totalCount: $currentFileName"
+        )
+    }
+
     Dialog(onDismissRequest = onDismiss) {
         Surface(
             shape = RoundedCornerShape(24.dp),
@@ -61,6 +82,9 @@ fun UploadProgressDialog(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = { com.example.telegrambackup.utils.DynamicProcessTracker.minimize() }) {
+                            Icon(Icons.Default.Remove, contentDescription = "Minimize", tint = TelegramBlue)
+                        }
                         Box(
                             modifier = Modifier
                                 .size(40.dp)

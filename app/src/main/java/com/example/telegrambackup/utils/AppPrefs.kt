@@ -217,7 +217,7 @@ class AppPrefs(private val context: Context) {
         set(value) = prefs.edit().putString("backup_schedule_time", value).apply()
 
     var appVersionStr: String
-        get() = prefs.getString("app_version_str", "2.3.1") ?: "2.3.1"
+        get() = prefs.getString("app_version_str", "2.1.14") ?: "2.1.14"
         set(value) = prefs.edit().putString("app_version_str", value).apply()
 
     // Smart Backup Mode: 0 = Continuous, 1 = Custom Schedule, 2 = Night Express
@@ -239,4 +239,9 @@ class AppPrefs(private val context: Context) {
     var trashAutoCleanDays: Int
         get() = prefs.getInt("trash_auto_clean_days", 30)
         set(value) = prefs.edit().putInt("trash_auto_clean_days", value).apply()
+
+    // Dismissed update version (to prevent repeated popups in same version)
+    var dismissedUpdateVersion: String
+        get() = prefs.getString("dismissed_update_version", "") ?: ""
+        set(value) = prefs.edit().putString("dismissed_update_version", value).apply()
 }

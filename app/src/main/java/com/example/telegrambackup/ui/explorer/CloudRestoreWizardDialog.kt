@@ -23,6 +23,7 @@ import com.example.telegrambackup.network.HttpClientProvider
 import com.example.telegrambackup.theme.TelegramBlue
 import com.example.telegrambackup.theme.TelegramEmerald
 import com.example.telegrambackup.utils.AppPrefs
+import com.example.telegrambackup.utils.DynamicProcessTracker
 import com.example.telegrambackup.utils.FileEncryptor
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -51,18 +52,33 @@ fun CloudRestoreWizardDialog(
         File(Environment.getExternalStorageDirectory(), "Restored_Backups").apply { if (!exists()) mkdirs() }
     }
 
+    if (DynamicProcessTracker.isMinimized) {
+        return
+    }
+
     AlertDialog(
         onDismissRequest = { if (!isRestoring) onDismiss() },
         modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)),
         containerColor = Color(0xFF0F172A),
         title = {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.CloudDownload, contentDescription = null, tint = TelegramEmerald, modifier = Modifier.size(28.dp))
-                Spacer(modifier = Modifier.width(10.dp))
-                Text(
-                    "Cloud Restore Wizard",
-                    style = MaterialTheme.typography.titleMedium.copy(color = Color.White, fontWeight = FontWeight.Bold)
-                )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.CloudDownload, contentDescription = null, tint = TelegramEmerald, modifier = Modifier.size(28.dp))
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Text(
+                        "Cloud Restore Wizard",
+                        style = MaterialTheme.typography.titleMedium.copy(color = Color.White, fontWeight = FontWeight.Bold)
+                    )
+                }
+                if (isRestoring) {
+                    IconButton(onClick = { DynamicProcessTracker.minimize() }) {
+                        Icon(Icons.Default.Remove, contentDescription = "Minimize", tint = TelegramBlue)
+                    }
+                }
             }
         },
         text = {
@@ -122,16 +138,27 @@ fun CloudRestoreWizardDialog(
                     }
 
                     isRestoring = true
+                    com.example.telegrambackup.utils.DynamicProcessTracker.startProcess(
+                        title = "Restoring Files (${filesToRestore.size})",
+                        subtitle = "Starting Cloud Restore...",
+                        icon = androidx.compose.material.icons.Icons.Default.CloudDownload
+                    )
+
                     scope.launch(Dispatchers.IO) {
                         var restoredSuccess = 0
                         val client = HttpClientProvider.client
 
                         filesToRestore.forEachIndexed { idx, item ->
+                            val currentFrac = idx.toFloat() / filesToRestore.size.toFloat()
                             withContext(Dispatchers.Main) {
                                 currentFileIndex = idx
                                 currentFileName = item.fileName
-                                progressFraction = (idx.toFloat() / filesToRestore.size.toFloat())
-                                statusMessage = "Fetching Telegram file location..."
+                                progressFraction = currentFrac
+                                statusMessage = "Downloading ${item.fileName}..."
+                                com.example.telegrambackup.utils.DynamicProcessTracker.updateProgress(
+                                    progress = currentFrac,
+                                    subtitle = "Restoring ${idx + 1}/${filesToRestore.size}: ${item.fileName}"
+                                )
                             }
 
                             try {
@@ -173,6 +200,7 @@ fun CloudRestoreWizardDialog(
 
                         withContext(Dispatchers.Main) {
                             isRestoring = false
+                            com.example.telegrambackup.utils.DynamicProcessTracker.finishProcess()
                             Toast.makeText(context, "✅ Successfully restored $restoredSuccess of ${filesToRestore.size} files to ${restoreFolder.name}", Toast.LENGTH_LONG).show()
                             onDismiss()
                         }

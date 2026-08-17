@@ -84,34 +84,45 @@ object SettingsDbManager {
                     settingsMap["credentials_verified"]?.let { prefs.credentialsVerified = it.toBoolean() }
                 }
 
-                // Cloud Telegram Bot Credentials Sync
+                // Cloud Telegram Bot Credentials & User Settings Restoration
                 val authPrefs = context.getSharedPreferences("auth_prefs", Context.MODE_PRIVATE)
                 val userEmail = authPrefs.getString("user_email", "") ?: prefs.recoveryEmail
                 if (userEmail.isNotEmpty()) {
                     val serverApi = ServerApi()
-                    if (prefs.botToken.isNotEmpty()) {
-                        // Push local tokens to PostgreSQL server database
-                        try {
-                            serverApi.saveCredentials(prefs.serverUrl, userEmail, prefs.botToken, prefs.chatId)
-                        } catch (_: Exception) { }
-                    } else {
-                        // Pull missing tokens from PostgreSQL server database
-                        try {
-                            val creds = serverApi.getCredentials(prefs.serverUrl, userEmail)
-                            if (creds != null && creds.first.isNotEmpty()) {
-                                prefs.botToken = creds.first
-                                prefs.chatId = creds.second
-                                prefs.credentialsVerified = true
-                                dao.saveSettings(
-                                    listOf(
-                                        AppSettingEntity("bot_token", creds.first),
-                                        AppSettingEntity("chat_id", creds.second),
-                                        AppSettingEntity("credentials_verified", "true")
-                                    )
+                    // 1. Restore Bot Credentials from PostgreSQL DB if local is empty or outdated
+                    try {
+                        val creds = serverApi.getCredentials(prefs.serverUrl, userEmail)
+                        if (creds != null && creds.first.isNotEmpty()) {
+                            prefs.botToken = creds.first
+                            prefs.chatId = creds.second
+                            prefs.credentialsVerified = true
+                            dao.saveSettings(
+                                listOf(
+                                    AppSettingEntity("bot_token", creds.first),
+                                    AppSettingEntity("chat_id", creds.second),
+                                    AppSettingEntity("credentials_verified", "true")
                                 )
-                            }
-                        } catch (_: Exception) { }
-                    }
+                            )
+                        } else if (prefs.botToken.isNotEmpty()) {
+                            serverApi.saveCredentials(prefs.serverUrl, userEmail, prefs.botToken, prefs.chatId)
+                        }
+                    } catch (_: Exception) { }
+
+                    // 2. Restore All User Settings from PostgreSQL DB
+                    try {
+                        val serverSettingsStr = serverApi.getUserSettings(prefs.serverUrl, userEmail)
+                        if (!serverSettingsStr.isNullOrEmpty()) {
+                            val serverSettingsJson = org.json.JSONObject(serverSettingsStr)
+                            if (serverSettingsJson.has("display_name")) prefs.displayName = serverSettingsJson.optString("display_name")
+                            if (serverSettingsJson.has("bot_token")) prefs.botToken = serverSettingsJson.optString("bot_token")
+                            if (serverSettingsJson.has("chat_id")) prefs.chatId = serverSettingsJson.optString("chat_id")
+                            if (serverSettingsJson.has("encryption_key")) prefs.encryptionKey = serverSettingsJson.optString("encryption_key")
+                            if (serverSettingsJson.has("auto_backup_enabled")) prefs.autoBackupEnabled = serverSettingsJson.optBoolean("auto_backup_enabled", true)
+                            if (serverSettingsJson.has("smart_backup_mode")) prefs.smartBackupMode = serverSettingsJson.optInt("smart_backup_mode", 0)
+                            if (serverSettingsJson.has("wifi_only")) prefs.wifiOnly = serverSettingsJson.optBoolean("wifi_only", false)
+                            if (serverSettingsJson.has("app_theme")) prefs.appTheme = serverSettingsJson.optInt("app_theme", 0)
+                        }
+                    } catch (_: Exception) { }
                 }
 
                 // Automatically restore cloud file index into local Room DB
