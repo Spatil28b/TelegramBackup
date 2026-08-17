@@ -250,6 +250,17 @@ object DriveUploadManager {
                     firstChunkFileId = res.first
                     firstChunkMsgId = res.second
                 }
+                val chunkEntity = com.example.telegrambackup.data.ChunkProgressEntity(
+                    sourcePath = targetPath,
+                    chunkIndex = chunkIdx,
+                    totalChunks = totalChunks,
+                    telegramFileId = res.first,
+                    messageId = res.second,
+                    chunkSize = chunkFile.length(),
+                    status = "COMPLETED",
+                    uploadedAt = System.currentTimeMillis()
+                )
+                db.chunkProgressDao().insert(chunkEntity)
             } else {
                 Log.e(TAG, "Failed chunk $chunkIdx for Drive file $fileName")
                 if (isEncrypted && fileToUpload.exists()) fileToUpload.delete()
