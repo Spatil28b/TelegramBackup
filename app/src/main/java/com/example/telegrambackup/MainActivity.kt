@@ -426,6 +426,18 @@ fun MainApp(
                     )
 
                     NavigationDrawerItem(
+                        icon = { Icon(Icons.Default.CalendarMonth, contentDescription = null, tint = Color.White) },
+                        label = { Text("Monthly Backup", color = Color.White, fontWeight = FontWeight.Medium) },
+                        selected = selectedTab == MainTab.MONTHLY_ARCHIVE,
+                        onClick = {
+                            triggerHapticFeedback(context, haptic)
+                            selectedTab = MainTab.MONTHLY_ARCHIVE
+                            scope.launch { drawerState.close() }
+                        },
+                        colors = NavigationDrawerItemDefaults.colors(unselectedContainerColor = Color.Transparent, selectedContainerColor = Color.White.copy(alpha = 0.15f))
+                    )
+
+                    NavigationDrawerItem(
                         icon = { Icon(Icons.Default.Smartphone, contentDescription = null, tint = Color.White) },
                         label = { Text("Local Storage", color = Color.White, fontWeight = FontWeight.Medium) },
                         selected = selectedTab == MainTab.LOCAL,
@@ -615,14 +627,14 @@ fun MainApp(
                             Icon(Icons.Default.Add, contentDescription = "Quick Upload", modifier = Modifier.size(26.dp))
                         }
                         NavigationBarItem(
-                            selected = selectedTab == MainTab.FILES,
+                            selected = selectedTab == MainTab.MONTHLY_ARCHIVE,
                             onClick = {
                                 triggerHapticFeedback(context, haptic)
                                 targetCategoryTitle = null
-                                selectedTab = MainTab.FILES
+                                selectedTab = MainTab.MONTHLY_ARCHIVE
                             },
-                            icon = { Icon(Icons.Default.Folder, contentDescription = "Files") },
-                            label = { Text("Files") }
+                            icon = { Icon(Icons.Default.CalendarMonth, contentDescription = "Monthly") },
+                            label = { Text("Monthly") }
                         )
                         NavigationBarItem(
                             selected = selectedTab == MainTab.SETTINGS,

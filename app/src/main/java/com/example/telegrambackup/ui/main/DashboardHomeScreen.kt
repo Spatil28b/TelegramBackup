@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.dp
 import com.example.telegrambackup.data.AppDatabase
 import com.example.telegrambackup.data.UploadedFile
 import com.example.telegrambackup.theme.TelegramBlue
+import com.example.telegrambackup.theme.TelegramEmerald
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -127,55 +128,81 @@ fun DashboardHomeScreen(
             }
         }
         item {
-            Card(
-                shape = RoundedCornerShape(20.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+            Surface(
+                shape = RoundedCornerShape(22.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Column(modifier = Modifier.padding(20.dp)) {
+                Column(modifier = Modifier.padding(18.dp)) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(
-                            "Total Cloud Storage Filled",
-                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
-                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(10.dp)
+                                    .clip(CircleShape)
+                                    .background(TelegramEmerald)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                "Cloud Storage",
+                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                            )
+                        }
                         Surface(
                             shape = RoundedCornerShape(8.dp),
-                            color = TelegramBlue.copy(alpha = 0.15f)
+                            color = TelegramBlue.copy(alpha = 0.12f)
                         ) {
                             Text(
-                                "∞ Unlimited Cloud",
+                                "∞ Unlimited",
                                 style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, color = TelegramBlue),
                                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                             )
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(10.dp))
+                    Spacer(modifier = Modifier.height(12.dp))
 
                     Text(
                         text = com.example.telegrambackup.ui.explorer.formatFileSize(totalBytes),
-                        style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold, color = TelegramBlue)
+                        style = MaterialTheme.typography.headlineLarge.copy(fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.onSurface)
                     )
 
-                    Spacer(modifier = Modifier.height(8.dp))
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    // Multi-category segmented storage progress bar
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(8.dp)
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+                    ) {
+                        Box(modifier = Modifier.fillMaxHeight().weight(0.4f).background(Color(0xFF10B981)))
+                        Box(modifier = Modifier.fillMaxHeight().weight(0.25f).background(Color(0xFF8B5CF6)))
+                        Box(modifier = Modifier.fillMaxHeight().weight(0.15f).background(Color(0xFFF59E0B)))
+                        Box(modifier = Modifier.fillMaxHeight().weight(0.1f).background(Color(0xFF06B6D4)))
+                        Box(modifier = Modifier.fillMaxHeight().weight(0.1f).background(Color(0xFF3B82F6)))
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Text(
-                            "Synced Files: ${recentFiles.size} Items",
-                            style = MaterialTheme.typography.labelSmall,
+                            "${recentFiles.size} items protected",
+                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Medium),
                             color = MaterialTheme.colorScheme.outline
                         )
                         Text(
-                            "🔒 AES-256 Encrypted",
+                            "256-bit AES Encrypted",
                             style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Medium),
-                            color = MaterialTheme.colorScheme.outline
+                            color = TelegramEmerald
                         )
                     }
                 }
@@ -199,26 +226,26 @@ fun DashboardHomeScreen(
                         rowItems.forEach { item ->
                             Surface(
                                 shape = RoundedCornerShape(16.dp),
-                                color = MaterialTheme.colorScheme.surface,
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
                                 modifier = Modifier
                                     .weight(1f)
                                     .clickable { onQuickActionClick(item.categoryIndex) }
                             ) {
                                 Column(
-                                    modifier = Modifier.padding(12.dp),
+                                    modifier = Modifier.padding(14.dp),
                                     horizontalAlignment = Alignment.CenterHorizontally
                                 ) {
                                     Box(
                                         modifier = Modifier
-                                            .size(40.dp)
-                                            .clip(CircleShape)
+                                            .size(38.dp)
+                                            .clip(RoundedCornerShape(10.dp))
                                             .background(item.iconTint.copy(alpha = 0.12f)),
                                         contentAlignment = Alignment.Center
                                     ) {
                                         Icon(imageVector = item.icon, contentDescription = null, tint = item.iconTint, modifier = Modifier.size(20.dp))
                                     }
                                     Spacer(modifier = Modifier.height(8.dp))
-                                    Text(item.title, style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold), maxLines = 1)
+                                    Text(item.title, style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold), maxLines = 1)
                                 }
                             }
                         }
