@@ -393,7 +393,7 @@ fun MainApp(
                         }
                         Spacer(modifier = Modifier.width(14.dp))
                         Column {
-                            val drawerVersion = remember { try { context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "2.1.24" } catch (_: Exception) { "2.1.24" } }
+                            val drawerVersion = remember { try { context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "2.1.25" } catch (_: Exception) { "2.1.25" } }
                             Text("Cloud Sync Engine v$drawerVersion", style = MaterialTheme.typography.labelSmall.copy(color = TelegramBlue))
                         }
                     }
@@ -402,7 +402,7 @@ fun MainApp(
 
                     NavigationDrawerItem(
                         icon = { Icon(Icons.Default.Dashboard, contentDescription = null, tint = Color.White) },
-                        label = { Text("Dashboard", color = Color.White) },
+                        label = { Text("Dashboard", color = Color.White, fontWeight = FontWeight.Medium) },
                         selected = selectedTab == MainTab.HOME,
                         onClick = {
                             triggerHapticFeedback(context, haptic)
@@ -415,7 +415,7 @@ fun MainApp(
 
                     NavigationDrawerItem(
                         icon = { Icon(Icons.Default.CloudQueue, contentDescription = null, tint = Color.White) },
-                        label = { Text("Cloud Drive", color = Color.White) },
+                        label = { Text("Cloud Drive", color = Color.White, fontWeight = FontWeight.Medium) },
                         selected = selectedTab == MainTab.DRIVE,
                         onClick = {
                             triggerHapticFeedback(context, haptic)
@@ -427,7 +427,7 @@ fun MainApp(
 
                     NavigationDrawerItem(
                         icon = { Icon(Icons.Default.Smartphone, contentDescription = null, tint = Color.White) },
-                        label = { Text("Local Storage (Unbacked)", color = Color.White) },
+                        label = { Text("Local Storage", color = Color.White, fontWeight = FontWeight.Medium) },
                         selected = selectedTab == MainTab.LOCAL,
                         onClick = {
                             triggerHapticFeedback(context, haptic)
@@ -438,93 +438,8 @@ fun MainApp(
                     )
 
                     NavigationDrawerItem(
-                        icon = { Icon(Icons.Default.HourglassTop, contentDescription = null, tint = Color.White) },
-                        label = { Text("Upload Progress (Live)", color = Color.White) },
-                        selected = selectedTab == MainTab.PROGRESS,
-                        onClick = {
-                            triggerHapticFeedback(context, haptic)
-                            selectedTab = MainTab.PROGRESS
-                            scope.launch { drawerState.close() }
-                        },
-                        colors = NavigationDrawerItemDefaults.colors(unselectedContainerColor = Color.Transparent, selectedContainerColor = Color.White.copy(alpha = 0.15f))
-                    )
-
-                    NavigationDrawerItem(
-                        icon = { Icon(Icons.Default.Folder, contentDescription = null, tint = Color.White) },
-                        label = { Text("Files", color = Color.White) },
-                        selected = selectedTab == MainTab.FILES,
-                        onClick = {
-                            triggerHapticFeedback(context, haptic)
-                            targetCategoryTitle = null
-                            selectedTab = MainTab.FILES
-                            scope.launch { drawerState.close() }
-                        },
-                        colors = NavigationDrawerItemDefaults.colors(unselectedContainerColor = Color.Transparent, selectedContainerColor = Color.White.copy(alpha = 0.15f))
-                    )
-
-                    NavigationDrawerItem(
-                        icon = { Icon(Icons.Default.CalendarMonth, contentDescription = null, tint = Color.White) },
-                        label = { Text("Monthly Archive", color = Color.White) },
-                        selected = selectedTab == MainTab.MONTHLY_ARCHIVE,
-                        onClick = {
-                            triggerHapticFeedback(context, haptic)
-                            selectedTab = MainTab.MONTHLY_ARCHIVE
-                            scope.launch { drawerState.close() }
-                        },
-                        colors = NavigationDrawerItemDefaults.colors(unselectedContainerColor = Color.Transparent, selectedContainerColor = Color.White.copy(alpha = 0.15f))
-                    )
-
-                    NavigationDrawerItem(
-                        icon = { Icon(Icons.Default.MenuBook, contentDescription = null, tint = Color.White) },
-                        label = { Text("Complete Setup Guide", color = Color.White) },
-                        selected = selectedTab == MainTab.GUIDE,
-                        onClick = {
-                            triggerHapticFeedback(context, haptic)
-                            selectedTab = MainTab.GUIDE
-                            scope.launch { drawerState.close() }
-                        },
-                        colors = NavigationDrawerItemDefaults.colors(unselectedContainerColor = Color.Transparent, selectedContainerColor = Color.White.copy(alpha = 0.15f))
-                    )
-
-                    NavigationDrawerItem(
-                        icon = { Icon(Icons.Default.DeleteSweep, contentDescription = null, tint = Color.White) },
-                        label = { Text("Trash Bin", color = Color.White) },
-                        selected = selectedTab == MainTab.TRASH,
-                        onClick = {
-                            triggerHapticFeedback(context, haptic)
-                            selectedTab = MainTab.TRASH
-                            scope.launch { drawerState.close() }
-                        },
-                        colors = NavigationDrawerItemDefaults.colors(unselectedContainerColor = Color.Transparent, selectedContainerColor = Color.White.copy(alpha = 0.15f))
-                    )
-
-                    NavigationDrawerItem(
-                        icon = { Icon(Icons.Default.Block, contentDescription = null, tint = Color.White) },
-                        label = { Text("Backup Exceptions", color = Color.White) },
-                        selected = selectedTab == MainTab.EXCEPTIONS,
-                        onClick = {
-                            triggerHapticFeedback(context, haptic)
-                            selectedTab = MainTab.EXCEPTIONS
-                            scope.launch { drawerState.close() }
-                        },
-                        colors = NavigationDrawerItemDefaults.colors(unselectedContainerColor = Color.Transparent, selectedContainerColor = Color.White.copy(alpha = 0.15f))
-                    )
-
-                    NavigationDrawerItem(
-                        icon = { Icon(Icons.Default.Notifications, contentDescription = null, tint = Color.White) },
-                        label = { Text("Activity", color = Color.White) },
-                        selected = selectedTab == MainTab.ACTIVITY,
-                        onClick = {
-                            triggerHapticFeedback(context, haptic)
-                            selectedTab = MainTab.ACTIVITY
-                            scope.launch { drawerState.close() }
-                        },
-                        colors = NavigationDrawerItemDefaults.colors(unselectedContainerColor = Color.Transparent, selectedContainerColor = Color.White.copy(alpha = 0.15f))
-                    )
-
-                    NavigationDrawerItem(
                         icon = { Icon(Icons.Default.Settings, contentDescription = null, tint = Color.White) },
-                        label = { Text("Settings", color = Color.White) },
+                        label = { Text("Settings", color = Color.White, fontWeight = FontWeight.Medium) },
                         selected = selectedTab == MainTab.SETTINGS,
                         onClick = {
                             triggerHapticFeedback(context, haptic)
@@ -736,13 +651,11 @@ fun MainApp(
                                     5 -> "Music"
                                     else -> "Camera & Photos"
                                 }
-                                explorerInitialTab = 0
-                                selectedTab = MainTab.FILES
+                                selectedTab = MainTab.DRIVE
                             },
                             onViewAllClick = {
                                 targetCategoryTitle = null
-                                explorerInitialTab = 1
-                                selectedTab = MainTab.FILES
+                                selectedTab = MainTab.DRIVE
                             },
                             onFileClick = { file ->
                                 if (file.path.isNotEmpty()) {
