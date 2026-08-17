@@ -29,6 +29,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import com.example.telegrambackup.ui.common.OsFolderIcon
+import com.example.telegrambackup.ui.common.FolderType
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -537,10 +539,10 @@ fun BackupExplorerScreen(
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         Box(
-                                            modifier = Modifier.size(40.dp).clip(CircleShape).background(TelegramBlue.copy(alpha = 0.12f)),
+                                            modifier = Modifier.size(40.dp),
                                             contentAlignment = Alignment.Center
                                         ) {
-                                            Icon(Icons.Default.Folder, contentDescription = null, tint = TelegramBlue, modifier = Modifier.size(24.dp))
+                                            OsFolderIcon(size = 38.dp)
                                         }
 
                                         Spacer(modifier = Modifier.width(12.dp))

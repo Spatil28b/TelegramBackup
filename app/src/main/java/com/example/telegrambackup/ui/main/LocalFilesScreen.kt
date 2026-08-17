@@ -38,6 +38,8 @@ import com.example.telegrambackup.theme.TelegramBlue
 import com.example.telegrambackup.theme.TelegramEmerald
 import com.example.telegrambackup.utils.AppPrefs
 import com.example.telegrambackup.utils.FileViewerHelper
+import com.example.telegrambackup.ui.common.OsFolderIcon
+import com.example.telegrambackup.ui.common.FolderType
 import com.example.telegrambackup.worker.BackupWorker
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -582,7 +584,7 @@ private fun FolderWiseView(
                     Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                 }
             }
-            Icon(Icons.Default.Folder, contentDescription = null, tint = TelegramBlue)
+            OsFolderIcon(size = 28.dp)
             Spacer(modifier = Modifier.width(8.dp))
             Text(
                 text = activeDir.name.ifEmpty { "Internal Storage" },
@@ -610,7 +612,7 @@ private fun FolderWiseView(
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Folder, contentDescription = null, tint = Color(0xFFF59E0B))
+                            OsFolderIcon(size = 36.dp)
                             Spacer(modifier = Modifier.width(12.dp))
                             Column {
                                 Text(subDir.name, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)

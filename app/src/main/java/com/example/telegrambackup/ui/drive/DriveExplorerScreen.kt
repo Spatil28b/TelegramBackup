@@ -11,6 +11,8 @@ import com.example.telegrambackup.utils.SettingsDbManager
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import com.example.telegrambackup.ui.common.OsFolderIcon
+import com.example.telegrambackup.ui.common.FolderType
 import androidx.compose.animation.*
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -1084,7 +1086,7 @@ private fun GridDriveItemCard(
                 contentAlignment = Alignment.Center
             ) {
                 if (isDir) {
-                    Icon(Icons.Default.Folder, contentDescription = null, tint = TelegramBlue, modifier = Modifier.size(if (isBigGrid) 48.dp else 36.dp))
+                    OsFolderIcon(size = if (isBigGrid) 52.dp else 40.dp)
                 } else if (isImg && localFile.exists()) {
                     AsyncImage(
                         model = localFile,
@@ -1202,16 +1204,18 @@ private fun ListDriveItemCard(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
-                modifier = Modifier.size(42.dp).clip(CircleShape).background(if (isSelected) TelegramBlue else if (isDir) TelegramBlue.copy(alpha = 0.15f) else if (isNote) Color(0xFF8B5CF6).copy(alpha = 0.15f) else TelegramEmerald.copy(alpha = 0.15f)),
+                modifier = Modifier.size(42.dp).clip(CircleShape).background(if (isSelected) TelegramBlue else if (isDir) Color.Transparent else if (isNote) Color(0xFF8B5CF6).copy(alpha = 0.15f) else TelegramEmerald.copy(alpha = 0.15f)),
                 contentAlignment = Alignment.Center
             ) {
                 if (isSelected) {
                     Icon(Icons.Default.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(22.dp))
+                } else if (isDir) {
+                    OsFolderIcon(size = 38.dp)
                 } else {
                     Icon(
-                        imageVector = if (isDir) Icons.Default.Folder else if (isNote) Icons.Default.Description else Icons.AutoMirrored.Filled.InsertDriveFile,
+                        imageVector = if (isNote) Icons.Default.Description else Icons.AutoMirrored.Filled.InsertDriveFile,
                         contentDescription = null,
-                        tint = if (isDir) TelegramBlue else if (isNote) Color(0xFF8B5CF6) else TelegramEmerald,
+                        tint = if (isNote) Color(0xFF8B5CF6) else TelegramEmerald,
                         modifier = Modifier.size(24.dp)
                     )
                 }

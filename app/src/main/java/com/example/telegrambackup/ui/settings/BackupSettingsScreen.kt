@@ -11,6 +11,9 @@ import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.*
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -442,14 +445,32 @@ fun BackupSettingsScreen(
         ) {
             Spacer(modifier = Modifier.height(4.dp))
 
-            when (currentCategory) {
-                StreamlinedCategory.MAIN -> {
-                    // 🌟 Premium Hero Profile Card
-                    Surface(
-                        shape = RoundedCornerShape(24.dp),
-                        color = MaterialTheme.colorScheme.surface,
-                        tonalElevation = 2.dp,
-                        modifier = Modifier.fillMaxWidth().clickable {
+            AnimatedContent(
+                targetState = currentCategory,
+                transitionSpec = {
+                    if (targetState != StreamlinedCategory.MAIN) {
+                        (slideInHorizontally(animationSpec = tween(280)) { width -> width } + fadeIn(animationSpec = tween(280)))
+                            .togetherWith(slideOutHorizontally(animationSpec = tween(240)) { width -> -width / 3 } + fadeOut(animationSpec = tween(240)))
+                    } else {
+                        (slideInHorizontally(animationSpec = tween(280)) { width -> -width / 3 } + fadeIn(animationSpec = tween(280)))
+                            .togetherWith(slideOutHorizontally(animationSpec = tween(240)) { width -> width } + fadeOut(animationSpec = tween(240)))
+                    }
+                },
+                label = "CategoryTransition"
+            ) { targetCat ->
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    when (targetCat) {
+                        StreamlinedCategory.MAIN -> {
+                            // 🌟 Premium Hero Profile Card
+                            Surface(
+                                shape = RoundedCornerShape(24.dp),
+                                color = MaterialTheme.colorScheme.surface,
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
+                                tonalElevation = 2.dp,
+                                modifier = Modifier.fillMaxWidth().clickable {
                             triggerHapticFeedback(context, haptic)
                             currentCategory = StreamlinedCategory.PROFILE_ACCOUNT
                         }
@@ -708,7 +729,7 @@ fun BackupSettingsScreen(
 
                         Surface(shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surface, tonalElevation = 1.dp) {
                             Column {
-                                val currentVersion = remember { try { context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "2.1.22" } catch (_: Exception) { "2.1.22" } }
+                                val currentVersion = remember { try { context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "2.1.23" } catch (_: Exception) { "2.1.23" } }
                                 SettingCategoryRowWithBadge(
                                     icon = Icons.Default.SystemUpdate,
                                     title = "App Info & Update Center",
@@ -1562,7 +1583,7 @@ fun BackupSettingsScreen(
                     Text("App Version & Update Center", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold, color = TelegramBlue))
                     Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surface) {
                         Column {
-                            val currentVersion = remember { try { context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "2.1.21" } catch (_: Exception) { "2.1.21" } }
+                            val currentVersion = remember { try { context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "2.1.23" } catch (_: Exception) { "2.1.23" } }
                             SettingCategoryRow(Icons.Default.Info, "App Info & Check for Updates", "Installed Version v$currentVersion • Tap to check updates", TelegramBlue) {
                                 triggerHapticFeedback(context, haptic)
                                 showAppInfoModal = true
@@ -1584,57 +1605,59 @@ fun BackupSettingsScreen(
                     }
                 }
             }
-            Spacer(modifier = Modifier.height(24.dp))
-        }
-
-        if (showCustomMaxLimitDialog) {
-            AlertDialog(
-                onDismissRequest = { showCustomMaxLimitDialog = false },
-                icon = { Icon(Icons.Default.CloudUpload, contentDescription = null, tint = TelegramBlue) },
-                title = { Text("Set Custom Max File Size Limit") },
-                text = {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("Enter maximum file size limit in MB (e.g. 500 for 500MB, 5000 for 5GB, 0 for Unlimited):", style = MaterialTheme.typography.bodySmall)
-                        OutlinedTextField(
-                            value = customMaxLimitInput,
-                            onValueChange = { customMaxLimitInput = it.filter { char -> char.isDigit() || char == '.' } },
-                            label = { Text("Limit in MB (0 = Unlimited)") },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            AssistChip(onClick = { customMaxLimitInput = "0" }, label = { Text("Unlimited") })
-                            AssistChip(onClick = { customMaxLimitInput = "2000" }, label = { Text("2 GB") })
-                            AssistChip(onClick = { customMaxLimitInput = "5000" }, label = { Text("5 GB") })
-                            AssistChip(onClick = { customMaxLimitInput = "10000" }, label = { Text("10 GB") })
-                        }
-                    }
-                },
-                confirmButton = {
-                    Button(
-                        onClick = {
-                            val parsed = customMaxLimitInput.toDoubleOrNull() ?: 0.0
-                            maxFileSizeMBState = parsed
-                            prefs.maxFileSizeMB = parsed
-                            scope.launch {
-                                SettingsDbManager.saveCategorySettings(
-                                    context,
-                                    "Smart Backup Engine",
-                                    mapOf("max_file_size_mb" to parsed.toString())
-                                )
-                            }
-                            showCustomMaxLimitDialog = false
-                            Toast.makeText(context, "Saved Custom Max File Size Limit: ${if (parsed <= 0) "Unlimited" else "$parsed MB"}", Toast.LENGTH_SHORT).show()
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = TelegramBlue)
-                    ) { Text("Save Limit") }
-                },
-                dismissButton = {
-                    TextButton(onClick = { showCustomMaxLimitDialog = false }) { Text("Cancel") }
-                }
-            )
         }
     }
+    Spacer(modifier = Modifier.height(24.dp))
+}
+
+    if (showCustomMaxLimitDialog) {
+        AlertDialog(
+            onDismissRequest = { showCustomMaxLimitDialog = false },
+            icon = { Icon(Icons.Default.CloudUpload, contentDescription = null, tint = TelegramBlue) },
+            title = { Text("Set Custom Max File Size Limit") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Enter maximum file size limit in MB (e.g. 500 for 500MB, 5000 for 5GB, 0 for Unlimited):", style = MaterialTheme.typography.bodySmall)
+                    OutlinedTextField(
+                        value = customMaxLimitInput,
+                        onValueChange = { customMaxLimitInput = it.filter { char -> char.isDigit() || char == '.' } },
+                        label = { Text("Limit in MB (0 = Unlimited)") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        AssistChip(onClick = { customMaxLimitInput = "0" }, label = { Text("Unlimited") })
+                        AssistChip(onClick = { customMaxLimitInput = "2000" }, label = { Text("2 GB") })
+                        AssistChip(onClick = { customMaxLimitInput = "5000" }, label = { Text("5 GB") })
+                        AssistChip(onClick = { customMaxLimitInput = "10000" }, label = { Text("10 GB") })
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val parsed = customMaxLimitInput.toDoubleOrNull() ?: 0.0
+                        maxFileSizeMBState = parsed
+                        prefs.maxFileSizeMB = parsed
+                        scope.launch {
+                            SettingsDbManager.saveCategorySettings(
+                                context,
+                                "Smart Backup Engine",
+                                mapOf("max_file_size_mb" to parsed.toString())
+                            )
+                        }
+                        showCustomMaxLimitDialog = false
+                        Toast.makeText(context, "Saved Custom Max File Size Limit: ${if (parsed <= 0) "Unlimited" else "$parsed MB"}", Toast.LENGTH_SHORT).show()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = TelegramBlue)
+                ) { Text("Save Limit") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showCustomMaxLimitDialog = false }) { Text("Cancel") }
+            }
+        )
+    }
+}
 }
 
 @Composable
