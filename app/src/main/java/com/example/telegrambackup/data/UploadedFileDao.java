@@ -44,6 +44,9 @@ public interface UploadedFileDao {
     @Query("DELETE FROM uploaded_files WHERE isDeleted = 1 AND deletedAt > 0 AND deletedAt < :cutoffTimestamp")
     void deleteExpiredTrash(long cutoffTimestamp);
 
+    @Query("SELECT MAX(messageId) FROM uploaded_files")
+    Long getMaxMessageId();
+
     @Query("DELETE FROM uploaded_files")
     void deleteAll();
 }

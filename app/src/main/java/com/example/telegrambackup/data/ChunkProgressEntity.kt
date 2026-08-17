@@ -41,6 +41,9 @@ interface ChunkProgressDao {
     @Query("DELETE FROM chunk_upload_progress WHERE sourcePath = :sourcePath")
     fun deleteChunksForFile(sourcePath: String)
 
+    @Query("SELECT MAX(messageId) FROM chunk_upload_progress")
+    fun getMaxMessageId(): Long?
+
     @Query("DELETE FROM chunk_upload_progress")
     fun deleteAll()
 }
