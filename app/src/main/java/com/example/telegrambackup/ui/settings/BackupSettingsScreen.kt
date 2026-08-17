@@ -1218,9 +1218,11 @@ fun BackupSettingsScreen(
                                 } else {
                                     Toast.makeText(context, "🧹 Deep cleaning Telegram Chat Storage...", Toast.LENGTH_LONG).show()
                                     scope.launch(Dispatchers.IO) {
-                                        val total = ServerApi().deepPurgeTelegramChatStorage(token, chat)
+                                        val result = ServerApi().deepPurgeTelegramChatStorage(token, chat)
+                                        val deletedCount = result.first
+                                        val scannedCount = result.second
                                         withContext(Dispatchers.Main) {
-                                            Toast.makeText(context, "✅ Telegram Chat Storage deep cleaned ($total messages scanned)", Toast.LENGTH_LONG).show()
+                                            Toast.makeText(context, "✅ Telegram Deep Clean Complete! ($deletedCount items purged out of $scannedCount scanned)", Toast.LENGTH_LONG).show()
                                         }
                                     }
                                 }

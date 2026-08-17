@@ -416,17 +416,19 @@ fun ClearDataAccountDialog(
                                 }
 
                                 // Deep Clean scan of entire Telegram Bot chat range
+                                var deepDeletedCount = 0
                                 if (deepCleanTelegramChat && botToken.isNotEmpty() && chatId.isNotEmpty()) {
                                     withContext(Dispatchers.Main) { statusMessage = "Deep scanning & purging Telegram Chat storage..." }
-                                    ServerApi().deepPurgeTelegramChatStorage(
+                                    val res = ServerApi().deepPurgeTelegramChatStorage(
                                         botToken,
                                         chatId,
-                                        onProgress = { currentChunk, totalChunks ->
+                                        onProgress = { currentChunk, totalChunks, count ->
                                             scope.launch(Dispatchers.Main) {
-                                                statusMessage = "Deep purging Telegram Cloud... ($currentChunk / $totalChunks chunks)"
+                                                statusMessage = "Deep purging Telegram... ($count items purged, batch $currentChunk/$totalChunks)"
                                             }
                                         }
                                     )
+                                    deepDeletedCount = res.first
                                 }
 
                                 if (clearLocalDb) {
@@ -490,17 +492,19 @@ fun ClearDataAccountDialog(
                                 }
 
                                 // Deep Clean scan of entire Telegram Bot chat range
+                                var deepDeletedCount = 0
                                 if (deepCleanTelegramChat && botToken.isNotEmpty() && chatId.isNotEmpty()) {
                                     withContext(Dispatchers.Main) { statusMessage = "Deep scanning & purging Telegram Chat storage..." }
-                                    ServerApi().deepPurgeTelegramChatStorage(
+                                    val res = ServerApi().deepPurgeTelegramChatStorage(
                                         botToken,
                                         chatId,
-                                        onProgress = { currentChunk, totalChunks ->
+                                        onProgress = { currentChunk, totalChunks, count ->
                                             scope.launch(Dispatchers.Main) {
-                                                statusMessage = "Deep purging Telegram Cloud... ($currentChunk / $totalChunks chunks)"
+                                                statusMessage = "Deep purging Telegram... ($count items purged, batch $currentChunk/$totalChunks)"
                                             }
                                         }
                                     )
+                                    deepDeletedCount = res.first
                                 }
 
                                 // Wipe local Room DB & session
