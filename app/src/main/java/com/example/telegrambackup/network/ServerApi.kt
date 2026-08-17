@@ -1129,10 +1129,18 @@ class ServerApi {
      * Runs a deletion verification test before starting the scan.
      * Returns Pair(totalDeletedCount, totalScannedCount).
      */
+    /**
+     * Deep-scans and purges ALL messages/files in Telegram Bot Chat/Channel in sequential descending loop.
+     * Top-down scanning from highestId downwards. If 200 consecutive message IDs contain no files,
+     * the loop automatically terminates early since all older storage is empty.
+     * Uses INDIVIDUAL deleteMessage calls for honest, verified deletion counts.
+     * Returns Pair(totalDeletedCount, totalScannedCount).
+     */
     suspend fun deepPurgeTelegramChatStorage(
         botToken: String,
         chatId: String,
         knownMaxId: Long = 0L,
+        consecutiveMissLimit: Int = 200,
         onProgress: (Int, Int, Int) -> Unit = { _, _, _ -> }
     ): Pair<Int, Int> = withContext(Dispatchers.IO) {
         val cleanToken = botToken.trim()
@@ -1142,7 +1150,7 @@ class ServerApi {
         val chatInfo = getTelegramChatInfo(cleanToken, chatId)
         val targetChatId = if (chatInfo.canonicalId != null) chatInfo.canonicalId.toString() else chatId
 
-        // 2. VERIFY deletion actually works before scanning thousands of IDs
+        // 2. VERIFY deletion actually works before scanning
         Log.d("ServerApi", "deepPurge: Running deletion verification test for channel '${chatInfo.title}' (${targetChatId})...")
         val canDelete = verifyTelegramDeletionWorks(cleanToken, targetChatId)
         if (!canDelete) {
@@ -1153,51 +1161,89 @@ class ServerApi {
         // 3. Get highest message ID via ping
         val pingId = getHighestTelegramMessageId(cleanToken, targetChatId)
         val highestId = if (pingId > 0) {
-            pingId + 50L
+            pingId + 10L
         } else {
-            maxOf(knownMaxId + 100L, 50000L)
+            maxOf(knownMaxId + 50L, 5000L)
         }
 
-        Log.d("ServerApi", "deepPurge: Scanning chatId=$targetChatId ('${chatInfo.title}') IDs 1..$highestId (pingId=$pingId, knownMaxId=$knownMaxId)")
-        val allIds = (1L..highestId).toList()
-        // Use chunks of 20 for concurrency to avoid rate limits while staying fast
-        val subChunks = allIds.chunked(20)
-        var totalDeleted = 0
-        var permissionFailed = false
+        Log.d("ServerApi", "deepPurge: Starting sequential top-down scan from ID $highestId down to 1 (miss limit=$consecutiveMissLimit)")
 
-        subChunks.forEachIndexed { index, subChunk ->
-            if (permissionFailed) {
-                onProgress(subChunks.size, subChunks.size, totalDeleted)
-                return@forEachIndexed
-            }
+        var currentTopId = highestId
+        var totalDeleted = 0
+        var totalScanned = 0
+        var consecutiveMisses = 0
+        var permissionFailed = false
+        val chunkSize = 20
+
+        while (currentTopId > 0 && !permissionFailed) {
+            val chunkStart = maxOf(1L, currentTopId - chunkSize + 1)
+            val chunkIds = (currentTopId downTo chunkStart).toList()
+            if (chunkIds.isEmpty()) break
+
+            var chunkDeletedCount = 0
 
             try {
                 coroutineScope {
-                    val deferreds = subChunk.map { msgId ->
+                    val deferreds = chunkIds.map { msgId ->
                         async(Dispatchers.IO) {
-                            executeTelegramMessageDeletion(cleanToken, targetChatId, msgId)
+                            Pair(msgId, executeTelegramMessageDeletion(cleanToken, targetChatId, msgId))
                         }
                     }
                     val results = deferreds.awaitAll()
-                    val actuallyDeleted = results.count { it == TelegramDeletionStatus.DELETED }
-                    totalDeleted += actuallyDeleted
 
-                    if (results.any { it == TelegramDeletionStatus.PERMISSION_DENIED }) {
-                        permissionFailed = true
-                        Log.e("ServerApi", "deepPurge: PERMISSION DENIED encountered at chunk $index — stopping scan")
+                    for ((msgId, status) in results) {
+                        totalScanned++
+                        when (status) {
+                            TelegramDeletionStatus.DELETED -> {
+                                totalDeleted++
+                                chunkDeletedCount++
+                                consecutiveMisses = 0 // Reset miss counter when a real file is found & deleted
+                                Log.d("ServerApi", "deepPurge: ✅ Deleted unlisted message #$msgId (total deleted: $totalDeleted)")
+                            }
+                            TelegramDeletionStatus.ALREADY_DELETED -> {
+                                consecutiveMisses++
+                            }
+                            TelegramDeletionStatus.PERMISSION_DENIED -> {
+                                permissionFailed = true
+                                Log.e("ServerApi", "deepPurge: PERMISSION DENIED on message #$msgId — stopping scan")
+                                break
+                            }
+                            TelegramDeletionStatus.ERROR -> {
+                                consecutiveMisses++
+                            }
+                        }
                     }
                 }
-            } catch (_: Exception) {}
+            } catch (e: Exception) {
+                Log.e("ServerApi", "deepPurge chunk error at ID $currentTopId", e)
+            }
 
-            onProgress(index + 1, subChunks.size, totalDeleted)
+            val estimatedTotal = highestId.toInt()
+            onProgress(totalScanned, estimatedTotal, totalDeleted)
 
-            // Rate limit: small delay between chunks
-            if (index % 5 == 4) {
-                kotlinx.coroutines.delay(300L)
+            if (permissionFailed) {
+                return@withContext Pair(-1, totalScanned)
+            }
+
+            // Early exit condition: if next consecutiveMissLimit loop checks found no single file
+            if (totalDeleted > 0 && consecutiveMisses >= consecutiveMissLimit) {
+                Log.d("ServerApi", "deepPurge: Reached $consecutiveMisses consecutive empty slots after deleting $totalDeleted files. Channel is fully clear! Stopping loop.")
+                break
+            } else if (totalDeleted == 0 && consecutiveMisses >= (consecutiveMissLimit * 2)) {
+                // If channel is completely empty from top, stop after 400 empty checks
+                Log.d("ServerApi", "deepPurge: Scanned $consecutiveMisses empty IDs with 0 files found. Channel already clean. Stopping loop.")
+                break
+            }
+
+            currentTopId = chunkStart - 1
+
+            // Rate limit safety
+            if (totalScanned % 100 < chunkSize) {
+                kotlinx.coroutines.delay(200L)
             }
         }
 
-        Log.d("ServerApi", "deepPurge COMPLETE: $totalDeleted messages ACTUALLY deleted from Telegram out of ${allIds.size} scanned")
-        return@withContext Pair(totalDeleted, allIds.size)
+        Log.d("ServerApi", "deepPurge COMPLETE: $totalDeleted unlisted messages ACTUALLY deleted from Telegram out of $totalScanned scanned IDs")
+        return@withContext Pair(totalDeleted, totalScanned)
     }
 }
