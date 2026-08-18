@@ -127,6 +127,10 @@ fun DriveExplorerScreen(
     var showCreateFolderModal by remember { mutableStateOf(false) }
     var newFolderNameInput by remember { mutableStateOf("") }
 
+    var showCreateNoteModal by remember { mutableStateOf(false) }
+    var noteTitleInput by remember { mutableStateOf("") }
+    var noteContentInput by remember { mutableStateOf("") }
+
     var showRenameDialog by remember { mutableStateOf(false) }
     var renameInputName by remember { mutableStateOf("") }
 
@@ -178,7 +182,7 @@ fun DriveExplorerScreen(
         }
     }
 
-    BackHandler(enabled = showFabSpeedDial || activeDriveMediaIndex != -1 || itemOptionsFile != null || selectedDriveItems.isNotEmpty() || showCreateFolderModal || showRenameDialog || driveFolderPathHistory.size > 1) {
+    BackHandler(enabled = showFabSpeedDial || activeDriveMediaIndex != -1 || itemOptionsFile != null || selectedDriveItems.isNotEmpty() || showCreateFolderModal || showCreateNoteModal || showRenameDialog || driveFolderPathHistory.size > 1) {
         if (showFabSpeedDial) {
             showFabSpeedDial = false
         } else if (activeDriveMediaIndex != -1) {
@@ -189,6 +193,10 @@ fun DriveExplorerScreen(
         } else if (showCreateFolderModal) {
             showCreateFolderModal = false
             newFolderNameInput = ""
+        } else if (showCreateNoteModal) {
+            showCreateNoteModal = false
+            noteTitleInput = ""
+            noteContentInput = ""
         } else if (showRenameDialog) {
             showRenameDialog = false
             renameInputName = ""
@@ -196,7 +204,7 @@ fun DriveExplorerScreen(
             selectedDriveItems.clear()
             isDriveSelectionActive = false
         } else if (driveFolderPathHistory.size > 1) {
-            driveFolderPathHistory.removeAt(driveFolderPathHistory.size - 1)
+            driveFolderPathHistory.removeAt(driveFolderPathHistory.lastIndex)
             currentDriveDirectoryPath = driveFolderPathHistory.last()
         }
     }
@@ -281,6 +289,77 @@ fun DriveExplorerScreen(
 
     val activeDisplayFilesOnly = remember(activeDisplayDriveItems) {
         activeDisplayDriveItems.filter { it.telegramFileId != "DIR_MARKER" }
+    }
+
+    // CREATE NEW PERSONAL NOTE DIALOG
+    if (showCreateNoteModal) {
+        AlertDialog(
+            onDismissRequest = { showCreateNoteModal = false; noteTitleInput = ""; noteContentInput = "" },
+            title = { Text("📝 Create Personal Note", fontWeight = FontWeight.Bold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = noteTitleInput,
+                        onValueChange = { noteTitleInput = it },
+                        label = { Text("Note Title (e.g. Passwords.txt)") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = noteContentInput,
+                        onValueChange = { noteContentInput = it },
+                        label = { Text("Note Content") },
+                        minLines = 4,
+                        maxLines = 8,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val rawTitle = noteTitleInput.trim()
+                        if (rawTitle.isNotEmpty()) {
+                            val fileName = if (rawTitle.contains(".")) rawTitle else "$rawTitle.txt"
+                            val noteDir = java.io.File(context.cacheDir, "drive_notes")
+                            if (!noteDir.exists()) noteDir.mkdirs()
+
+                            val noteFile = java.io.File(noteDir, fileName)
+                            try {
+                                java.io.FileOutputStream(noteFile).use { fos ->
+                                    fos.write(noteContentInput.toByteArray())
+                                }
+                            } catch (_: Exception) {}
+
+                            val targetPath = "$currentDriveDirectoryPath/$fileName"
+                            val noteEntity = UploadedFile(
+                                targetPath,
+                                fileName,
+                                "NOTE_MARKER_${System.currentTimeMillis()}",
+                                System.currentTimeMillis(),
+                                noteFile.length(),
+                                0L
+                            ).apply {
+                                isDriveUpload = true
+                            }
+
+                            scope.launch(Dispatchers.IO) {
+                                AppDatabase.getDatabase(context).uploadedFileDao().insert(noteEntity)
+                                withContext(Dispatchers.Main) {
+                                    Toast.makeText(context, "Saved Note '$fileName' to Cloud Drive!", Toast.LENGTH_SHORT).show()
+                                    showCreateNoteModal = false
+                                    noteTitleInput = ""
+                                    noteContentInput = ""
+                                    loadDriveFiles()
+                                }
+                            }
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = TelegramBlue)
+                ) { Text("Save Note") }
+            },
+            dismissButton = { TextButton(onClick = { showCreateNoteModal = false; noteTitleInput = ""; noteContentInput = "" }) { Text("Cancel") } }
+        )
     }
 
     // CREATE NEW FOLDER DIALOG
@@ -917,6 +996,17 @@ fun DriveExplorerScreen(
                             onClick = {
                                 showFabSpeedDial = false
                                 uploadFolderTreeLauncher.launch(null)
+                            },
+                            containerColor = MaterialTheme.colorScheme.surface,
+                            contentColor = TelegramBlue
+                        )
+
+                        ExtendedFloatingActionButton(
+                            text = { Text("Create Note", fontWeight = FontWeight.Bold) },
+                            icon = { Icon(Icons.AutoMirrored.Filled.NoteAdd, contentDescription = null) },
+                            onClick = {
+                                showFabSpeedDial = false
+                                showCreateNoteModal = true
                             },
                             containerColor = MaterialTheme.colorScheme.surface,
                             contentColor = TelegramBlue
