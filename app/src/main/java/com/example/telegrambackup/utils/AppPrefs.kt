@@ -217,7 +217,7 @@ class AppPrefs(private val context: Context) {
         set(value) = prefs.edit().putString("backup_schedule_time", value).apply()
 
     var appVersionStr: String
-        get() = prefs.getString("app_version_str", "2.1.32") ?: "2.1.32"
+        get() = prefs.getString("app_version_str", "2.1.33") ?: "2.1.33"
         set(value) = prefs.edit().putString("app_version_str", value).apply()
 
     // Smart Backup Mode: 0 = Continuous, 1 = Custom Schedule, 2 = Night Express
@@ -244,4 +244,20 @@ class AppPrefs(private val context: Context) {
     var dismissedUpdateVersion: String
         get() = prefs.getString("dismissed_update_version", "") ?: ""
         set(value) = prefs.edit().putString("dismissed_update_version", value).apply()
+
+    var uploadSpeedLimit: String
+        get() = prefs.getString("upload_speed_limit", "Unlimited") ?: "Unlimited"
+        set(value) = prefs.edit().putString("upload_speed_limit", value).apply()
+
+    var uploadThreads: Int
+        get() = prefs.getInt("upload_threads", 4)
+        set(value) = prefs.edit().putInt("upload_threads", value).apply()
+
+    var autoBackup: Boolean
+        get() = autoBackupEnabled
+        set(value) { autoBackupEnabled = value }
+
+    var biometricLock: Boolean
+        get() = isBiometricEnabled
+        set(value) { isBiometricEnabled = value }
 }

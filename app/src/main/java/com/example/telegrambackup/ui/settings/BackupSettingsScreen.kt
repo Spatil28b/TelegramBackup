@@ -27,9 +27,11 @@ import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -411,10 +413,10 @@ fun BackupSettingsScreen(
         )
     }
 
-    var activeBottomSheetCategory by remember { mutableStateOf<StreamlinedCategory?>(null) }
+    var expandedCategory by remember { mutableStateOf<StreamlinedCategory?>(null) }
 
-    BackHandler(enabled = activeBottomSheetCategory != null) {
-        activeBottomSheetCategory = null
+    BackHandler(enabled = expandedCategory != null) {
+        expandedCategory = null
     }
 
     var searchQuery by remember { mutableStateOf("") }
@@ -429,13 +431,12 @@ fun BackupSettingsScreen(
     ) {
         Spacer(modifier = Modifier.height(2.dp))
 
-        // 🌟 Clean Minimal Profile & Storage Card
         Surface(
             shape = RoundedCornerShape(20.dp),
-            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.40f),
             modifier = Modifier.fillMaxWidth().clickable {
                 triggerHapticFeedback(context, haptic)
-                activeBottomSheetCategory = StreamlinedCategory.PROFILE_ACCOUNT
+                expandedCategory = if (expandedCategory == StreamlinedCategory.PROFILE_ACCOUNT) null else StreamlinedCategory.PROFILE_ACCOUNT
             }
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
@@ -460,11 +461,12 @@ fun BackupSettingsScreen(
                             style = MaterialTheme.typography.labelSmall.copy(color = TelegramBlue, fontWeight = FontWeight.Medium)
                         )
                     }
-                    Icon(Icons.Default.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.outline.copy(alpha = 0.6f))
+                    val rotProfile by animateFloatAsState(targetValue = if (expandedCategory == StreamlinedCategory.PROFILE_ACCOUNT) 90f else 0f, label = "ProfileRot")
+                    Icon(Icons.Default.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.outline.copy(alpha = 0.6f), modifier = Modifier.rotate(rotProfile))
                 }
 
                 Spacer(modifier = Modifier.height(12.dp))
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
                 Spacer(modifier = Modifier.height(8.dp))
 
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -503,7 +505,6 @@ fun BackupSettingsScreen(
             }
         }
 
-        // 🔍 Minimal Search Bar
         OutlinedTextField(
             value = searchQuery,
             onValueChange = { searchQuery = it },
@@ -527,9 +528,6 @@ fun BackupSettingsScreen(
 
         val q = searchQuery.trim().lowercase()
 
-        // ==========================================
-        // 1. CLOUD & BACKUP
-        // ==========================================
         if (q.isEmpty() || "cloud".contains(q) || "backup".contains(q) || "telegram".contains(q) || "token".contains(q) || "chat".contains(q) || "wifi".contains(q) || "speed".contains(q)) {
             Text(
                 "CLOUD & SYNC",
@@ -548,15 +546,166 @@ fun BackupSettingsScreen(
                             subtitle = "Bot token & destination chat ID",
                             value = if (prefs.credentialsVerified) "Connected" else "Setup required",
                             valueColor = if (prefs.credentialsVerified) TelegramEmerald else Color(0xFFF59E0B),
-                            iconColor = Color(0xFF3B82F6)
+                            iconColor = Color(0xFF3B82F6),
+                            isExpanded = expandedCategory == StreamlinedCategory.TELEGRAM_CREDENTIALS
                         ) {
                             triggerHapticFeedback(context, haptic)
-                            activeBottomSheetCategory = StreamlinedCategory.TELEGRAM_CREDENTIALS
+                            expandedCategory = if (expandedCategory == StreamlinedCategory.TELEGRAM_CREDENTIALS) null else StreamlinedCategory.TELEGRAM_CREDENTIALS
+                        }
+
+                        AnimatedVisibility(
+                            visible = expandedCategory == StreamlinedCategory.TELEGRAM_CREDENTIALS,
+                            enter = expandVertically() + fadeIn(),
+                            exit = shrinkVertically() + fadeOut()
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
+
+                                if (prefs.credentialsVerified && !isCredentialEditUnlocked) {
+                                    Surface(shape = RoundedCornerShape(14.dp), color = Color(0xFFF59E0B).copy(alpha = 0.1f), modifier = Modifier.fillMaxWidth()) {
+                                        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Icon(Icons.Default.Lock, contentDescription = null, tint = Color(0xFFF59E0B), modifier = Modifier.size(18.dp))
+                                                Spacer(modifier = Modifier.width(8.dp))
+                                                Text("Credentials Protected", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold, color = Color(0xFFF59E0B)))
+                                            }
+                                            Text("Protected for security. Verify OTP to unlock editing.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+
+                                            Surface(shape = RoundedCornerShape(10.dp), color = MaterialTheme.colorScheme.surface, modifier = Modifier.fillMaxWidth()) {
+                                                Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                                    Text("Bot Token: ${prefs.botToken.take(12)}...", style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium))
+                                                    Text("Chat ID: ${prefs.chatId}", style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium))
+                                                }
+                                            }
+
+                                            if (!isCredentialOtpSent) {
+                                                Button(
+                                                    onClick = {
+                                                        triggerHapticFeedback(context, haptic); isCredentialOtpSent = true
+                                                        scope.launch {
+                                                            val targetMail = prefs.recoveryEmail.ifEmpty { userEmail }
+                                                            authRepo.requestOtp(targetMail, "credentials_unlock")
+                                                            Toast.makeText(context, "✉️ OTP sent! Check email inbox/spam.", Toast.LENGTH_SHORT).show()
+                                                        }
+                                                    },
+                                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF59E0B)),
+                                                    shape = RoundedCornerShape(10.dp),
+                                                    modifier = Modifier.fillMaxWidth().height(42.dp)
+                                                ) {
+                                                    Icon(Icons.Default.VpnKey, contentDescription = null, modifier = Modifier.size(16.dp))
+                                                    Spacer(modifier = Modifier.width(6.dp))
+                                                    Text("Unlock with OTP")
+                                                }
+                                            } else {
+                                                OutlinedTextField(value = credentialOtpInput, onValueChange = { credentialOtpInput = it }, label = { Text("6-Digit OTP") }, singleLine = true, shape = RoundedCornerShape(10.dp), modifier = Modifier.fillMaxWidth())
+                                                Button(
+                                                    onClick = {
+                                                        triggerHapticFeedback(context, haptic)
+                                                        if (credentialOtpInput.trim().length == 6) {
+                                                            isCredentialEditUnlocked = true; isCredentialOtpSent = false; credentialOtpInput = ""
+                                                            Toast.makeText(context, "✓ Unlocked for editing!", Toast.LENGTH_SHORT).show()
+                                                        } else { Toast.makeText(context, "Enter valid 6-digit OTP!", Toast.LENGTH_SHORT).show() }
+                                                    },
+                                                    colors = ButtonDefaults.buttonColors(containerColor = TelegramEmerald),
+                                                    shape = RoundedCornerShape(10.dp),
+                                                    modifier = Modifier.fillMaxWidth().height(42.dp)
+                                                ) { Text("Verify & Unlock") }
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    OutlinedTextField(
+                                        value = tempBotToken,
+                                        onValueChange = { tempBotToken = it },
+                                        label = { Text("Bot API Token") },
+                                        placeholder = { Text("123456:ABC-DEF1234ghIkl...") },
+                                        singleLine = true,
+                                        shape = RoundedCornerShape(10.dp),
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+
+                                    OutlinedTextField(
+                                        value = tempChatId,
+                                        onValueChange = { tempChatId = it },
+                                        label = { Text("Channel Chat ID") },
+                                        placeholder = { Text("-1001234567890") },
+                                        singleLine = true,
+                                        shape = RoundedCornerShape(10.dp),
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+
+                                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        OutlinedButton(
+                                            onClick = {
+                                                triggerHapticFeedback(context, haptic)
+                                                if (tempBotToken.trim().isEmpty()) { Toast.makeText(context, "Enter Bot Token first!", Toast.LENGTH_SHORT).show() }
+                                                else {
+                                                    isVerifyingBotConnection = true
+                                                    scope.launch {
+                                                        val res = botTester.testBotConnection(tempBotToken, tempChatId)
+                                                        isVerifyingBotConnection = false
+                                                        if (res.isSuccess) Toast.makeText(context, "✓ Verified! ${res.getOrNull()}", Toast.LENGTH_LONG).show()
+                                                        else Toast.makeText(context, "❌ Failed: ${res.exceptionOrNull()?.message}", Toast.LENGTH_LONG).show()
+                                                    }
+                                                }
+                                            },
+                                            shape = RoundedCornerShape(10.dp),
+                                            modifier = Modifier.weight(1f).height(44.dp)
+                                        ) {
+                                            if (isVerifyingBotConnection) CircularProgressIndicator(modifier = Modifier.size(16.dp))
+                                            else Text("Test Bot")
+                                        }
+
+                                        Button(
+                                            onClick = {
+                                                triggerHapticFeedback(context, haptic)
+                                                prefs.botToken = tempBotToken.trim()
+                                                prefs.chatId = tempChatId.trim()
+                                                prefs.credentialsVerified = true
+                                                isCredentialEditUnlocked = false
+                                                scheduleSmartBackup()
+                                                try {
+                                                    val workRequest = OneTimeWorkRequestBuilder<BackupWorker>()
+                                                        .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
+                                                        .build()
+                                                    WorkManager.getInstance(context).enqueueUniqueWork("ImmediateSyncWork", ExistingWorkPolicy.REPLACE, workRequest)
+                                                } catch (_: Exception) {}
+                                                scope.launch {
+                                                    SettingsDbManager.saveCategorySettings(
+                                                        context,
+                                                        "Telegram Credentials",
+                                                        mapOf(
+                                                            "bot_token" to tempBotToken.trim(),
+                                                            "chat_id" to tempChatId.trim(),
+                                                            "credentials_verified" to "true"
+                                                        )
+                                                    )
+                                                }
+                                                Toast.makeText(context, "✓ Credentials saved & engine active!", Toast.LENGTH_SHORT).show()
+                                            },
+                                            colors = ButtonDefaults.buttonColors(containerColor = TelegramEmerald),
+                                            shape = RoundedCornerShape(10.dp),
+                                            modifier = Modifier.weight(1f).height(44.dp)
+                                        ) {
+                                            Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(16.dp))
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text("Save")
+                                        }
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(4.dp))
+                            }
                         }
                     }
 
                     if (q.isEmpty() || "smart".contains(q) || "backup".contains(q) || "mode".contains(q) || "schedule".contains(q) || "folder".contains(q) || "filter".contains(q)) {
-                        if (q.isEmpty()) HorizontalDivider(modifier = Modifier.padding(start = 68.dp, end = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
+                        HorizontalDivider(modifier = Modifier.padding(start = 68.dp, end = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
                         val modeName = when (smartBackupMode) {
                             0 -> "Continuous"
                             1 -> "Every ${smartScanInterval}h"
@@ -568,33 +717,206 @@ fun BackupSettingsScreen(
                             subtitle = "Automation schedules & file filters",
                             value = if (autoBackup) modeName else "Off",
                             valueColor = if (autoBackup) TelegramBlue else MaterialTheme.colorScheme.outline,
-                            iconColor = Color(0xFF10B981)
+                            iconColor = Color(0xFF10B981),
+                            isExpanded = expandedCategory == StreamlinedCategory.BACKUP_SOURCES_RULES
                         ) {
                             triggerHapticFeedback(context, haptic)
-                            activeBottomSheetCategory = StreamlinedCategory.BACKUP_SOURCES_RULES
+                            expandedCategory = if (expandedCategory == StreamlinedCategory.BACKUP_SOURCES_RULES) null else StreamlinedCategory.BACKUP_SOURCES_RULES
+                        }
+
+                        AnimatedVisibility(
+                            visible = expandedCategory == StreamlinedCategory.BACKUP_SOURCES_RULES,
+                            enter = expandVertically() + fadeIn(),
+                            exit = shrinkVertically() + fadeOut()
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                                verticalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
+
+                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    OutlinedButton(
+                                        onClick = {
+                                            triggerHapticFeedback(context, haptic)
+                                            try {
+                                                WorkManager.getInstance(context).cancelUniqueWork("SmartContinuousBackup")
+                                                WorkManager.getInstance(context).cancelUniqueWork("NightExpressBackup")
+                                                WorkManager.getInstance(context).cancelUniqueWork("PeriodicScanBackup")
+                                                WorkManager.getInstance(context).cancelAllWork()
+                                                autoBackup = false
+                                                prefs.autoBackup = false
+                                                val stopNotifRequest = OneTimeWorkRequestBuilder<StopBackupNotificationWorker>().build()
+                                                WorkManager.getInstance(context).enqueue(stopNotifRequest)
+                                                Toast.makeText(context, "🛑 Backup engine STOPPED", Toast.LENGTH_SHORT).show()
+                                            } catch (e: Exception) { Toast.makeText(context, "Error stopping: ${e.message}", Toast.LENGTH_SHORT).show() }
+                                        },
+                                        shape = RoundedCornerShape(10.dp),
+                                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFEF4444)),
+                                        modifier = Modifier.weight(1f).height(42.dp)
+                                    ) {
+                                        Icon(Icons.Default.Stop, contentDescription = null, modifier = Modifier.size(16.dp))
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text("Stop Engine")
+                                    }
+
+                                    Button(
+                                        onClick = {
+                                            triggerHapticFeedback(context, haptic)
+                                            autoBackup = true
+                                            prefs.autoBackup = true
+                                            scheduleSmartBackup()
+                                            Toast.makeText(context, "🚀 Engine RESTARTED", Toast.LENGTH_SHORT).show()
+                                        },
+                                        shape = RoundedCornerShape(10.dp),
+                                        colors = ButtonDefaults.buttonColors(containerColor = TelegramEmerald),
+                                        modifier = Modifier.weight(1f).height(42.dp)
+                                    ) {
+                                        Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(16.dp))
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text("Start Engine")
+                                    }
+                                }
+
+                                Text("Automation Mode", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold))
+                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    FilterChip(selected = smartBackupMode == 0, onClick = { smartBackupMode = 0; prefs.smartBackupMode = 0; scheduleSmartBackup() }, label = { Text("Continuous") })
+                                    FilterChip(selected = smartBackupMode == 1, onClick = { smartBackupMode = 1; prefs.smartBackupMode = 1; scheduleSmartBackup() }, label = { Text("Scheduled") })
+                                    FilterChip(selected = smartBackupMode == 2, onClick = { smartBackupMode = 2; prefs.smartBackupMode = 2; scheduleSmartBackup() }, label = { Text("Nightly") })
+                                }
+
+                                OptionValueRowWithInfo("Max File Size Limit", if (maxFileSizeMBState <= 0) "Unlimited" else "${maxFileSizeMBState.toInt()} MB", { showCustomMaxLimitDialog = true }, { featureInfoTitle = "Size Limit"; featureInfoDesc = "Files exceeding this limit are skipped." })
+                                SwitchRowWithInfo("Backup Photos", includeCamera, { includeCamera = it; prefs.backupCamera = it }, { featureInfoTitle = "Photos"; featureInfoDesc = "Backs up JPG, PNG, HEIC images." })
+                                SwitchRowWithInfo("Backup Videos", includeVideos, { includeVideos = it; prefs.backupVideos = it }, { featureInfoTitle = "Videos"; featureInfoDesc = "Backs up MP4, MKV, MOV videos." })
+                                SwitchRowWithInfo("Backup Documents", includeDocs, { includeDocs = it; prefs.backupDocuments = it }, { featureInfoTitle = "Documents"; featureInfoDesc = "Backs up PDF, DOCX, XLSX files." })
+                                SwitchRowWithInfo("Backup Audio", includeAudio, { includeAudio = it; prefs.backupAudio = it }, { featureInfoTitle = "Audio"; featureInfoDesc = "Backs up MP3, AAC, FLAC files." })
+                                SwitchRowWithInfo("Backup Downloads", includeDownloads, { includeDownloads = it; prefs.backupDownloads = it }, { featureInfoTitle = "Downloads"; featureInfoDesc = "Backs up Downloads directory." })
+
+                                Button(
+                                    onClick = {
+                                        triggerHapticFeedback(context, haptic)
+                                        prefs.backupCamera = includeCamera
+                                        prefs.backupVideos = includeVideos
+                                        prefs.backupAudio = includeAudio
+                                        prefs.backupDownloads = includeDownloads
+                                        prefs.backupDocuments = includeDocs
+                                        prefs.backupArchives = includeArchives
+                                        prefs.backupApks = includeApks
+                                        prefs.backupAllOther = includeAllOther
+                                        prefs.showHiddenFiles = showHiddenFiles
+                                        prefs.smartBackupMode = smartBackupMode
+                                        prefs.smartScanIntervalHours = smartScanInterval
+                                        scheduleSmartBackup()
+                                        scope.launch {
+                                            SettingsDbManager.saveCategorySettings(
+                                                context,
+                                                "Smart Backup Engine",
+                                                mapOf(
+                                                    "smart_backup_mode" to smartBackupMode.toString(),
+                                                    "backup_camera" to includeCamera.toString(),
+                                                    "backup_videos" to includeVideos.toString(),
+                                                    "backup_documents" to includeDocs.toString()
+                                                )
+                                            )
+                                        }
+                                        Toast.makeText(context, "✓ Engine rules saved", Toast.LENGTH_SHORT).show()
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = TelegramEmerald),
+                                    shape = RoundedCornerShape(10.dp),
+                                    modifier = Modifier.fillMaxWidth().height(42.dp)
+                                ) {
+                                    Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Save Engine Rules")
+                                }
+
+                                Spacer(modifier = Modifier.height(4.dp))
+                            }
                         }
                     }
 
                     if (q.isEmpty() || "network".contains(q) || "wifi".contains(q) || "speed".contains(q) || "threads".contains(q) || "performance".contains(q)) {
-                        if (q.isEmpty()) HorizontalDivider(modifier = Modifier.padding(start = 68.dp, end = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
+                        HorizontalDivider(modifier = Modifier.padding(start = 68.dp, end = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
                         MinimalSettingRow(
                             icon = Icons.Default.Wifi,
                             title = "Network & Upload Speed",
                             subtitle = "Wi-Fi rule, threads & compression",
                             value = if (backupOverWifi) "Wi-Fi Only" else "Any",
-                            iconColor = Color(0xFF06B6D4)
+                            iconColor = Color(0xFF06B6D4),
+                            isExpanded = expandedCategory == StreamlinedCategory.NETWORK_PERFORMANCE
                         ) {
                             triggerHapticFeedback(context, haptic)
-                            activeBottomSheetCategory = StreamlinedCategory.NETWORK_PERFORMANCE
+                            expandedCategory = if (expandedCategory == StreamlinedCategory.NETWORK_PERFORMANCE) null else StreamlinedCategory.NETWORK_PERFORMANCE
+                        }
+
+                        AnimatedVisibility(
+                            visible = expandedCategory == StreamlinedCategory.NETWORK_PERFORMANCE,
+                            enter = expandVertically() + fadeIn(),
+                            exit = shrinkVertically() + fadeOut()
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
+
+                                SwitchRowWithInfo("Wi-Fi Only Upload", backupOverWifi, { backupOverWifi = it; prefs.wifiOnly = it }, { featureInfoTitle = "Wi-Fi Only"; featureInfoDesc = "Restricts background backups to Wi-Fi networks." })
+                                SwitchRowWithInfo("Data Compression", enableDataCompression, { enableDataCompression = it; prefs.enableDataCompression = it }, { featureInfoTitle = "Data Compression"; featureInfoDesc = "Compresses files before upload to save bandwidth." })
+                                OptionValueRowWithInfo("Upload Speed Limit", uploadSpeedLimit, {
+                                    uploadSpeedLimit = when (uploadSpeedLimit) { "Unlimited" -> "2 MB/s"; "2 MB/s" -> "5 MB/s"; else -> "Unlimited" }
+                                }, { featureInfoTitle = "Speed Limit"; featureInfoDesc = "Caps upload speed so background transfers don't slow other apps." })
+
+                                Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                                    Text("Multi-Thread Streams", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium))
+                                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        listOf(1, 2, 4, 8).forEach { t ->
+                                            FilterChip(selected = uploadThreads == t, onClick = { uploadThreads = t; prefs.uploadThreads = t }, label = { Text("${t}x") })
+                                        }
+                                    }
+                                }
+
+                                Button(
+                                    onClick = {
+                                        triggerHapticFeedback(context, haptic)
+                                        prefs.wifiOnly = backupOverWifi
+                                        prefs.enableDataCompression = enableDataCompression
+                                        prefs.uploadSpeedLimit = uploadSpeedLimit
+                                        prefs.uploadThreads = uploadThreads
+                                        scope.launch {
+                                            SettingsDbManager.saveCategorySettings(
+                                                context,
+                                                "Network & Performance",
+                                                mapOf(
+                                                    "wifi_only" to backupOverWifi.toString(),
+                                                    "enable_compression" to enableDataCompression.toString(),
+                                                    "upload_speed_limit" to uploadSpeedLimit,
+                                                    "upload_threads" to uploadThreads.toString()
+                                                )
+                                            )
+                                        }
+                                        Toast.makeText(context, "✓ Network preferences saved", Toast.LENGTH_SHORT).show()
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = TelegramEmerald),
+                                    shape = RoundedCornerShape(10.dp),
+                                    modifier = Modifier.fillMaxWidth().height(42.dp)
+                                ) {
+                                    Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Save Network Settings")
+                                }
+
+                                Spacer(modifier = Modifier.height(4.dp))
+                            }
                         }
                     }
                 }
             }
         }
 
-        // ==========================================
-        // 2. SECURITY & PRIVACY
-        // ==========================================
         if (q.isEmpty() || "security".contains(q) || "key".contains(q) || "encryption".contains(q) || "biometric".contains(q) || "master".contains(q) || "aes".contains(q)) {
             Text(
                 "SECURITY & PRIVACY",
@@ -612,10 +934,81 @@ fun BackupSettingsScreen(
                         subtitle = "256-bit AES encryption & biometrics",
                         value = if (biometricLock) "Biometrics Active" else "AES-256",
                         valueColor = Color(0xFF8B5CF6),
-                        iconColor = Color(0xFF8B5CF6)
+                        iconColor = Color(0xFF8B5CF6),
+                        isExpanded = expandedCategory == StreamlinedCategory.SECURITY_PRIVACY_RESTORE
                     ) {
                         triggerHapticFeedback(context, haptic)
-                        activeBottomSheetCategory = StreamlinedCategory.SECURITY_PRIVACY_RESTORE
+                        expandedCategory = if (expandedCategory == StreamlinedCategory.SECURITY_PRIVACY_RESTORE) null else StreamlinedCategory.SECURITY_PRIVACY_RESTORE
+                    }
+
+                    AnimatedVisibility(
+                        visible = expandedCategory == StreamlinedCategory.SECURITY_PRIVACY_RESTORE,
+                        enter = expandVertically() + fadeIn(),
+                        exit = shrinkVertically() + fadeOut()
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 8.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
+
+                            SwitchRowWithInfo("Biometric App Lock", biometricLock, { biometricLock = it; prefs.biometricLock = it }, { featureInfoTitle = "Biometrics"; featureInfoDesc = "Requires Fingerprint / Face Unlock when opening app." })
+
+                            Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surface, modifier = Modifier.fillMaxWidth()) {
+                                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(Icons.Default.VpnKey, contentDescription = null, tint = Color(0xFF8B5CF6), modifier = Modifier.size(16.dp))
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text("AES-256 Immutable Master Key", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, color = Color(0xFF8B5CF6)))
+                                    }
+                                    Text(uniqueMasterKey, style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold), color = MaterialTheme.colorScheme.primary)
+                                    Text("Created at setup. Back this up to decrypt files on any device.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+
+                                    OutlinedButton(
+                                        onClick = {
+                                            triggerHapticFeedback(context, haptic)
+                                            val targetMail = prefs.recoveryEmail.ifEmpty { userEmail }
+                                            scope.launch {
+                                                authRepo.requestOtp(targetMail, "master_key_backup")
+                                                Toast.makeText(context, "✉️ Master Key sent to $targetMail", Toast.LENGTH_LONG).show()
+                                            }
+                                        },
+                                        shape = RoundedCornerShape(8.dp),
+                                        modifier = Modifier.fillMaxWidth().height(38.dp)
+                                    ) {
+                                        Icon(Icons.Default.Email, contentDescription = null, modifier = Modifier.size(14.dp))
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text("Email Key to Recovery Inbox", style = MaterialTheme.typography.labelMedium)
+                                    }
+                                }
+                            }
+
+                            Button(
+                                onClick = {
+                                    triggerHapticFeedback(context, haptic)
+                                    prefs.biometricLock = biometricLock
+                                    scope.launch {
+                                        SettingsDbManager.saveCategorySettings(
+                                            context,
+                                            "Security & Privacy",
+                                            mapOf("biometric_lock" to biometricLock.toString())
+                                        )
+                                    }
+                                    Toast.makeText(context, "✓ Security preferences saved", Toast.LENGTH_SHORT).show()
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = TelegramEmerald),
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier.fillMaxWidth().height(42.dp)
+                            ) {
+                                Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Save Security Settings")
+                            }
+
+                            Spacer(modifier = Modifier.height(4.dp))
+                        }
                     }
 
                     HorizontalDivider(modifier = Modifier.padding(start = 68.dp, end = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
@@ -626,7 +1019,8 @@ fun BackupSettingsScreen(
                         subtitle = "Server ping & bot verification test",
                         value = "Run Test",
                         valueColor = Color(0xFF14B8A6),
-                        iconColor = Color(0xFF14B8A6)
+                        iconColor = Color(0xFF14B8A6),
+                        isExpanded = false
                     ) {
                         triggerHapticFeedback(context, haptic)
                         showDiagnosticModal = true
@@ -635,9 +1029,6 @@ fun BackupSettingsScreen(
             }
         }
 
-        // ==========================================
-        // 3. PREFERENCES
-        // ==========================================
         if (q.isEmpty() || "profile".contains(q) || "email".contains(q) || "recovery".contains(q) || "theme".contains(q) || "appearance".contains(q) || "dark".contains(q)) {
             Text(
                 "PREFERENCES",
@@ -654,10 +1045,134 @@ fun BackupSettingsScreen(
                         title = "Profile & Recovery Email",
                         subtitle = "Display name & recovery inbox",
                         value = if (prefs.recoveryEmail.isNotEmpty()) "Configured" else "",
-                        iconColor = Color(0xFFEC4899)
+                        iconColor = Color(0xFFEC4899),
+                        isExpanded = expandedCategory == StreamlinedCategory.PROFILE_ACCOUNT
                     ) {
                         triggerHapticFeedback(context, haptic)
-                        activeBottomSheetCategory = StreamlinedCategory.PROFILE_ACCOUNT
+                        expandedCategory = if (expandedCategory == StreamlinedCategory.PROFILE_ACCOUNT) null else StreamlinedCategory.PROFILE_ACCOUNT
+                    }
+
+                    AnimatedVisibility(
+                        visible = expandedCategory == StreamlinedCategory.PROFILE_ACCOUNT,
+                        enter = expandVertically() + fadeIn(),
+                        exit = shrinkVertically() + fadeOut()
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 8.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
+
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Box(modifier = Modifier.size(56.dp).clip(CircleShape).background(TelegramBlue), contentAlignment = Alignment.Center) {
+                                    if (userAvatarUri != null) { AsyncImage(model = userAvatarUri, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()) }
+                                    else { Text(userNameInput.take(1).uppercase(), style = MaterialTheme.typography.titleLarge.copy(color = Color.White, fontWeight = FontWeight.Bold)) }
+                                }
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Button(
+                                    onClick = { avatarPickerLauncher.launch("image/*") },
+                                    colors = ButtonDefaults.buttonColors(containerColor = TelegramBlue),
+                                    shape = RoundedCornerShape(10.dp)
+                                ) {
+                                    Icon(Icons.Default.PhotoCamera, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Change Photo")
+                                }
+                            }
+
+                            OutlinedTextField(
+                                value = userNameInput,
+                                onValueChange = { userNameInput = it; onNameUpdated(it) },
+                                label = { Text("Display Name") },
+                                singleLine = true,
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+
+                            Surface(shape = RoundedCornerShape(10.dp), color = MaterialTheme.colorScheme.surface, modifier = Modifier.fillMaxWidth()) {
+                                Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Default.Email, contentDescription = null, tint = TelegramBlue, modifier = Modifier.size(18.dp))
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Column {
+                                        Text("Primary Email", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+                                        Text(userEmail, style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold))
+                                    }
+                                }
+                            }
+
+                            OutlinedTextField(
+                                value = recoveryEmailInput,
+                                onValueChange = { recoveryEmailInput = it },
+                                label = { Text("Secondary Recovery Email") },
+                                singleLine = true,
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+
+                            if (!isRecoveryOtpSent) {
+                                OutlinedButton(
+                                    onClick = {
+                                        triggerHapticFeedback(context, haptic)
+                                        if (!recoveryEmailInput.contains("@")) { Toast.makeText(context, "Enter valid email!", Toast.LENGTH_SHORT).show() }
+                                        else {
+                                            generatedRecoveryOtp = String.format("%06d", Random.nextInt(100000, 999999))
+                                            isRecoveryOtpSent = true
+                                            scope.launch { authRepo.requestOtp(recoveryEmailInput.trim(), "recovery_email"); Toast.makeText(context, "✉️ OTP sent to $recoveryEmailInput", Toast.LENGTH_SHORT).show() }
+                                        }
+                                    },
+                                    shape = RoundedCornerShape(10.dp),
+                                    modifier = Modifier.fillMaxWidth().height(40.dp)
+                                ) {
+                                    Icon(Icons.Default.VpnKey, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Send OTP to Verify Email")
+                                }
+                            } else {
+                                OutlinedTextField(value = recoveryEmailOtpInput, onValueChange = { recoveryEmailOtpInput = it }, label = { Text("Enter 6-Digit OTP") }, singleLine = true, shape = RoundedCornerShape(10.dp), modifier = Modifier.fillMaxWidth())
+                                Button(
+                                    onClick = {
+                                        triggerHapticFeedback(context, haptic)
+                                        if (recoveryEmailOtpInput.trim().length == 6) { prefs.recoveryEmail = recoveryEmailInput.trim(); isRecoveryOtpSent = false; Toast.makeText(context, "✓ Recovery Email Verified & Saved!", Toast.LENGTH_SHORT).show() }
+                                        else { Toast.makeText(context, "Enter 6-digit OTP!", Toast.LENGTH_SHORT).show() }
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = TelegramEmerald),
+                                    shape = RoundedCornerShape(10.dp),
+                                    modifier = Modifier.fillMaxWidth().height(42.dp)
+                                ) { Text("Verify OTP") }
+                            }
+
+                            Button(
+                                onClick = {
+                                    triggerHapticFeedback(context, haptic)
+                                    prefs.recoveryEmail = recoveryEmailInput.trim()
+                                    prefs.displayName = userNameInput.trim()
+                                    if (userAvatarUri != null) prefs.profilePictureUri = userAvatarUri.toString()
+                                    scope.launch {
+                                        SettingsDbManager.saveCategorySettings(
+                                            context,
+                                            "Profile",
+                                            mapOf(
+                                                "display_name" to userNameInput.trim(),
+                                                "recovery_email" to recoveryEmailInput.trim(),
+                                                "profile_picture_uri" to (userAvatarUri?.toString() ?: prefs.profilePictureUri)
+                                            )
+                                        )
+                                    }
+                                    Toast.makeText(context, "✓ Profile saved", Toast.LENGTH_SHORT).show()
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = TelegramBlue),
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier.fillMaxWidth().height(44.dp)
+                            ) {
+                                Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Save Profile Settings")
+                            }
+
+                            Spacer(modifier = Modifier.height(4.dp))
+                        }
                     }
 
                     HorizontalDivider(modifier = Modifier.padding(start = 68.dp, end = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
@@ -672,18 +1187,70 @@ fun BackupSettingsScreen(
                         title = "Appearance",
                         subtitle = "Theme & dark mode preferences",
                         value = themeLabel,
-                        iconColor = Color(0xFFF59E0B)
+                        iconColor = Color(0xFFF59E0B),
+                        isExpanded = expandedCategory == StreamlinedCategory.APPEARANCE_REGION
                     ) {
                         triggerHapticFeedback(context, haptic)
-                        activeBottomSheetCategory = StreamlinedCategory.APPEARANCE_REGION
+                        expandedCategory = if (expandedCategory == StreamlinedCategory.APPEARANCE_REGION) null else StreamlinedCategory.APPEARANCE_REGION
+                    }
+
+                    AnimatedVisibility(
+                        visible = expandedCategory == StreamlinedCategory.APPEARANCE_REGION,
+                        enter = expandVertically() + fadeIn(),
+                        exit = shrinkVertically() + fadeOut()
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
+
+                            listOf("System Default", "Light Mode", "Dark Mode").forEachIndexed { index, label ->
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable { selectedTheme = index; prefs.appTheme = index; onThemeChanged(index) }
+                                        .padding(vertical = 8.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(label, style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium))
+                                    RadioButton(selected = selectedTheme == index, onClick = { selectedTheme = index; prefs.appTheme = index; onThemeChanged(index) })
+                                }
+                            }
+
+                            Button(
+                                onClick = {
+                                    triggerHapticFeedback(context, haptic)
+                                    prefs.appTheme = selectedTheme
+                                    onThemeChanged(selectedTheme)
+                                    scope.launch {
+                                        SettingsDbManager.saveCategorySettings(
+                                            context,
+                                            "Appearance",
+                                            mapOf("app_theme" to selectedTheme.toString())
+                                        )
+                                    }
+                                    Toast.makeText(context, "✓ Theme preference saved", Toast.LENGTH_SHORT).show()
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = TelegramBlue),
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier.fillMaxWidth().height(42.dp)
+                            ) {
+                                Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Save Theme")
+                            }
+
+                            Spacer(modifier = Modifier.height(4.dp))
+                        }
                     }
                 }
             }
         }
 
-        // ==========================================
-        // 4. SYSTEM & MAINTENANCE
-        // ==========================================
         if (q.isEmpty() || "update".contains(q) || "version".contains(q) || "danger".contains(q) || "logout".contains(q) || "delete".contains(q) || "trash".contains(q) || "clean".contains(q)) {
             Text(
                 "SYSTEM & MAINTENANCE",
@@ -695,14 +1262,15 @@ fun BackupSettingsScreen(
                 color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.40f)
             ) {
                 Column {
-                    val currentVersion = remember { try { context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "2.1.32" } catch (_: Exception) { "2.1.32" } }
+                    val currentVersion = remember { try { context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "2.1.33" } catch (_: Exception) { "2.1.33" } }
                     MinimalSettingRow(
                         icon = Icons.Default.SystemUpdate,
                         title = "About & Updates",
                         subtitle = "Software specs & changelog",
                         value = "v$currentVersion",
                         valueColor = Color(0xFF6366F1),
-                        iconColor = Color(0xFF6366F1)
+                        iconColor = Color(0xFF6366F1),
+                        isExpanded = false
                     ) {
                         triggerHapticFeedback(context, haptic)
                         showAppInfoModal = true
@@ -715,10 +1283,100 @@ fun BackupSettingsScreen(
                         title = "Data Management & Reset",
                         subtitle = "Trash auto-clean & data wipe",
                         value = "",
-                        iconColor = Color(0xFFEF4444)
+                        iconColor = Color(0xFFEF4444),
+                        isExpanded = expandedCategory == StreamlinedCategory.DANGER_ZONE
                     ) {
                         triggerHapticFeedback(context, haptic)
-                        activeBottomSheetCategory = StreamlinedCategory.DANGER_ZONE
+                        expandedCategory = if (expandedCategory == StreamlinedCategory.DANGER_ZONE) null else StreamlinedCategory.DANGER_ZONE
+                    }
+
+                    AnimatedVisibility(
+                        visible = expandedCategory == StreamlinedCategory.DANGER_ZONE,
+                        enter = expandVertically() + fadeIn(),
+                        exit = shrinkVertically() + fadeOut()
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 8.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
+
+                            OptionValueRowWithInfo(
+                                "Trash Auto-Clean Policy",
+                                when (trashAutoCleanDays) { 0 -> "Never"; else -> "$trashAutoCleanDays Days" },
+                                {
+                                    trashAutoCleanDays = when (trashAutoCleanDays) { 0 -> 7; 7 -> 14; 14 -> 30; 30 -> 60; 60 -> 90; else -> 0 }
+                                    prefs.trashAutoCleanDays = trashAutoCleanDays
+                                    val msg = if (trashAutoCleanDays == 0) "Trash: Never clean" else "Trash auto-clean: $trashAutoCleanDays days"
+                                    Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                                },
+                                { featureInfoTitle = "Trash Auto-Clean"; featureInfoDesc = "Automatically deletes trash items after the configured days." }
+                            )
+
+                            SettingCategoryRow(Icons.Default.DeleteSweep, "Clear File Data Options", "Custom filters (Drive, Auto-Backup)", Color(0xFFF59E0B)) {
+                                triggerHapticFeedback(context, haptic)
+                                dialogInitialTab = 0
+                                showClearDataAccountDialog = true
+                            }
+
+                            SettingCategoryRow(Icons.Default.CleaningServices, "Deep Clean Telegram Storage", "Purges unlisted orphaned Telegram files", Color(0xFF3B82F6)) {
+                                triggerHapticFeedback(context, haptic)
+                                val token = prefs.botToken
+                                val chat = prefs.chatId
+                                if (token.isEmpty() || chat.isEmpty()) {
+                                    Toast.makeText(context, "Telegram Bot Token & Chat ID required!", Toast.LENGTH_SHORT).show()
+                                } else {
+                                    com.example.telegrambackup.utils.DynamicProcessTracker.startProcess(
+                                        title = "Deep Clean Telegram Chat",
+                                        subtitle = "Inspecting Telegram channel & permissions...",
+                                        icon = Icons.Default.CleaningServices
+                                    )
+                                    scope.launch(Dispatchers.IO) {
+                                        val serverApi = ServerApi()
+                                        val chatInfo = serverApi.getTelegramChatInfo(token, chat)
+                                        if (!chatInfo.success) {
+                                            withContext(Dispatchers.Main) {
+                                                com.example.telegrambackup.utils.DynamicProcessTracker.finishProcess()
+                                                Toast.makeText(context, "Telegram Error: ${chatInfo.errorMessage}", Toast.LENGTH_LONG).show()
+                                            }
+                                            return@launch
+                                        }
+                                        val db = com.example.telegrambackup.data.AppDatabase.getDatabase(context)
+                                        val max1 = db.uploadedFileDao().getMaxMessageId() ?: 0L
+                                        val max2 = db.chunkProgressDao().getMaxMessageId() ?: 0L
+                                        val knownMax = maxOf(max1, max2)
+                                        val targetChatId = if (chatInfo.canonicalId != null) chatInfo.canonicalId.toString() else chat
+                                        val result = serverApi.deepPurgeTelegramChatStorage(
+                                            token,
+                                            targetChatId,
+                                            knownMaxId = knownMax,
+                                            onProgress = { currentBatch, totalBatches, count ->
+                                                val fraction = if (totalBatches > 0) currentBatch.toFloat() / totalBatches.toFloat() else 0f
+                                                com.example.telegrambackup.utils.DynamicProcessTracker.updateProgress(
+                                                    progress = fraction,
+                                                    subtitle = "Scanning: $count purged ($currentBatch/$totalBatches)"
+                                                )
+                                            }
+                                        )
+                                        withContext(Dispatchers.Main) {
+                                            com.example.telegrambackup.utils.DynamicProcessTracker.finishProcess()
+                                            if (result.first > 0) Toast.makeText(context, "✅ Deleted ${result.first} messages from channel", Toast.LENGTH_LONG).show()
+                                            else Toast.makeText(context, "Channel is already clean", Toast.LENGTH_SHORT).show()
+                                        }
+                                    }
+                                }
+                            }
+
+                            SettingCategoryRow(Icons.Default.DeleteForever, "Delete Account & All Data", "Permanently wipe account, settings & files", Color(0xFFEF4444)) {
+                                triggerHapticFeedback(context, haptic)
+                                dialogInitialTab = 1
+                                showClearDataAccountDialog = true
+                            }
+
+                            Spacer(modifier = Modifier.height(4.dp))
+                        }
                     }
                 }
             }
@@ -740,942 +1398,6 @@ fun BackupSettingsScreen(
 
         Spacer(modifier = Modifier.height(24.dp))
     }
-
-    // =========================================================================
-    // 📱 SUB-SETTINGS MODAL BOTTOM SHEET (Sleek Overlay, Non-Full Screen)
-    // =========================================================================
-    if (activeBottomSheetCategory != null) {
-        ModalBottomSheet(
-            onDismissRequest = { activeBottomSheetCategory = null },
-            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false),
-            shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
-            containerColor = MaterialTheme.colorScheme.surface,
-            dragHandle = { BottomSheetDefaults.DragHandle() }
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 20.dp)
-                    .verticalScroll(rememberScrollState())
-                    .padding(bottom = 36.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                when (activeBottomSheetCategory) {
-                    StreamlinedCategory.PROFILE_ACCOUNT -> {
-                        SubCategoryHeroHeader(
-                        icon = Icons.Default.Person,
-                        iconTint = TelegramBlue,
-                        title = "Account & Profile",
-                        description = "Manage your cloud identity, display name, and recovery email inbox",
-                        badgeText = "Verified"
-                    )
-
-                    Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f), modifier = Modifier.fillMaxWidth()) {
-                        Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Box(modifier = Modifier.size(72.dp).clip(CircleShape).background(TelegramBlue), contentAlignment = Alignment.Center) {
-                                    if (userAvatarUri != null) { AsyncImage(model = userAvatarUri, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()) }
-                                    else { Text(userNameInput.take(1).uppercase(), style = MaterialTheme.typography.headlineMedium.copy(color = Color.White, fontWeight = FontWeight.Bold)) }
-                                }
-                                Spacer(modifier = Modifier.width(16.dp))
-                                Column {
-                                    Button(
-                                        onClick = { avatarPickerLauncher.launch("image/*") },
-                                        colors = ButtonDefaults.buttonColors(containerColor = TelegramBlue),
-                                        shape = RoundedCornerShape(12.dp)
-                                    ) {
-                                        Icon(Icons.Default.PhotoCamera, contentDescription = null, modifier = Modifier.size(16.dp))
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Text("Change Photo")
-                                    }
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                    Text("JPG, PNG or WEBP", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
-                                }
-                            }
-
-                            OutlinedTextField(
-                                value = userNameInput,
-                                onValueChange = { userNameInput = it; onNameUpdated(it) },
-                                label = { Text("Display Name") },
-                                singleLine = true,
-                                shape = RoundedCornerShape(12.dp),
-                                modifier = Modifier.fillMaxWidth()
-                            )
-
-                            Surface(
-                                shape = RoundedCornerShape(12.dp),
-                                color = MaterialTheme.colorScheme.surface,
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Row(modifier = Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(Icons.Default.Email, contentDescription = null, tint = TelegramBlue, modifier = Modifier.size(20.dp))
-                                    Spacer(modifier = Modifier.width(10.dp))
-                                    Column {
-                                        Text("Primary Account Email", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
-                                        Text(userEmail, style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold))
-                                    }
-                                }
-                            }
-
-                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
-
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Default.MarkEmailRead, contentDescription = null, tint = TelegramBlue, modifier = Modifier.size(20.dp))
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text("Secondary Recovery Email", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold))
-                                Spacer(modifier = Modifier.weight(1f))
-                                IconButton(onClick = { featureInfoTitle = "Recovery Email"; featureInfoDesc = "Used for account recovery, OTP alerts, and master key backups if primary email is inaccessible." }) {
-                                    Icon(Icons.Default.Info, contentDescription = "Info", tint = MaterialTheme.colorScheme.outline, modifier = Modifier.size(18.dp))
-                                }
-                            }
-
-                            OutlinedTextField(
-                                value = recoveryEmailInput,
-                                onValueChange = { recoveryEmailInput = it },
-                                label = { Text("Recovery Email Address") },
-                                singleLine = true,
-                                shape = RoundedCornerShape(12.dp),
-                                modifier = Modifier.fillMaxWidth()
-                            )
-
-                            if (!isRecoveryOtpSent) {
-                                Button(
-                                    onClick = {
-                                        triggerHapticFeedback(context, haptic)
-                                        if (!recoveryEmailInput.contains("@")) { Toast.makeText(context, "Enter a valid email!", Toast.LENGTH_SHORT).show() }
-                                        else {
-                                            generatedRecoveryOtp = String.format("%06d", Random.nextInt(100000, 999999))
-                                            isRecoveryOtpSent = true
-                                            scope.launch { authRepo.requestOtp(recoveryEmailInput.trim(), "recovery_email"); Toast.makeText(context, "✉️ OTP sent successfully! Please check your Email Inbox or Spam folder.", Toast.LENGTH_LONG).show() }
-                                        }
-                                    },
-                                    colors = ButtonDefaults.buttonColors(containerColor = TelegramBlue),
-                                    shape = RoundedCornerShape(12.dp),
-                                    modifier = Modifier.fillMaxWidth().height(48.dp)
-                                ) { Icon(Icons.Default.VpnKey, contentDescription = null, modifier = Modifier.size(16.dp)); Spacer(modifier = Modifier.width(6.dp)); Text("Send OTP to Verify Recovery Email") }
-                            } else {
-                                OutlinedTextField(value = recoveryEmailOtpInput, onValueChange = { recoveryEmailOtpInput = it }, label = { Text("Enter 6-Digit OTP Code") }, singleLine = true, shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth())
-                                Button(
-                                    onClick = {
-                                        triggerHapticFeedback(context, haptic)
-                                        if (recoveryEmailOtpInput.trim().length == 6) { prefs.recoveryEmail = recoveryEmailInput.trim(); isRecoveryOtpSent = false; Toast.makeText(context, "✓ Recovery Email Saved!", Toast.LENGTH_SHORT).show() }
-                                        else { Toast.makeText(context, "Enter a valid 6-digit OTP!", Toast.LENGTH_SHORT).show() }
-                                    },
-                                    colors = ButtonDefaults.buttonColors(containerColor = TelegramEmerald),
-                                    shape = RoundedCornerShape(12.dp),
-                                    modifier = Modifier.fillMaxWidth().height(48.dp)
-                                ) { Text("Verify & Save Recovery Email") }
-                            }
-
-                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
-
-                            OutlinedButton(
-                                onClick = {
-                                    triggerHapticFeedback(context, haptic)
-                                    Toast.makeText(context, "🔄 Re-syncing previous backups from Cloud Database...", Toast.LENGTH_SHORT).show()
-                                    scope.launch {
-                                        val count = SettingsDbManager.restoreCloudFileIndexToRoom(context)
-                                        refreshDbStats()
-                                        Toast.makeText(context, "✅ Restored $count previous backups from Cloud Database!", Toast.LENGTH_LONG).show()
-                                    }
-                                },
-                                shape = RoundedCornerShape(12.dp),
-                                modifier = Modifier.fillMaxWidth().height(48.dp)
-                            ) {
-                                Icon(Icons.Default.CloudSync, contentDescription = null, modifier = Modifier.size(16.dp))
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("Re-Sync Cloud Database Index", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold))
-                            }
-
-                            // 💾 Save Profile Settings Button
-                            Button(
-                                onClick = {
-                                    triggerHapticFeedback(context, haptic)
-                                    prefs.recoveryEmail = recoveryEmailInput.trim()
-                                    prefs.displayName = userNameInput.trim()
-                                    if (userAvatarUri != null) {
-                                        prefs.profilePictureUri = userAvatarUri.toString()
-                                    }
-                                    scope.launch {
-                                        SettingsDbManager.saveCategorySettings(
-                                            context,
-                                            "Profile",
-                                            mapOf(
-                                                "display_name" to userNameInput.trim(),
-                                                "recovery_email" to recoveryEmailInput.trim(),
-                                                "profile_picture_uri" to (userAvatarUri?.toString() ?: prefs.profilePictureUri)
-                                            )
-                                        )
-                                    }
-                                    Toast.makeText(context, "✓ Profile updated successfully", Toast.LENGTH_SHORT).show()
-                                },
-                                colors = ButtonDefaults.buttonColors(containerColor = TelegramBlue),
-                                shape = RoundedCornerShape(12.dp),
-                                modifier = Modifier.fillMaxWidth().height(50.dp)
-                            ) {
-                                Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(18.dp))
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("Save Profile Settings", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold))
-                            }
-                        }
-                    }
-                }
-
-                // 🔑 TELEGRAM CREDENTIALS — OTP-locked after initial save
-                StreamlinedCategory.TELEGRAM_CREDENTIALS -> {
-                    SubCategoryHeroHeader(
-                        icon = Icons.Default.Key,
-                        iconTint = TelegramEmerald,
-                        title = "Telegram Cloud Credentials",
-                        description = "Configure bot token and secure destination channel for infinite cloud storage",
-                        badgeText = if (prefs.credentialsVerified) "Connected" else "Unverified",
-                        badgeColor = if (prefs.credentialsVerified) TelegramEmerald else Color(0xFFF59E0B)
-                    )
-
-                    // If credentials are already verified/saved, show lock banner
-                    if (prefs.credentialsVerified && !isCredentialEditUnlocked) {
-                        Surface(shape = RoundedCornerShape(18.dp), color = Color(0xFFF59E0B).copy(alpha = 0.1f), modifier = Modifier.fillMaxWidth()) {
-                            Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(Icons.Default.Lock, contentDescription = null, tint = Color(0xFFF59E0B), modifier = Modifier.size(22.dp))
-                                    Spacer(modifier = Modifier.width(10.dp))
-                                    Text("Credentials are Locked", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold, color = Color(0xFFF59E0B)))
-                                }
-                                Text("Your Telegram credentials are protected. To modify them, verify your identity with OTP.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-
-                                Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surface, modifier = Modifier.fillMaxWidth()) {
-                                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                        Text("Current Bot Token: ${prefs.botToken.take(15)}...", style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium))
-                                        Text("Current Chat ID: ${prefs.chatId}", style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium))
-                                    }
-                                }
-
-                                if (!isCredentialOtpSent) {
-                                    Button(
-                                        onClick = {
-                                            triggerHapticFeedback(context, haptic); isCredentialOtpSent = true
-                                            scope.launch {
-                                                val targetMail = prefs.recoveryEmail.ifEmpty { userEmail }
-                                                authRepo.requestOtp(targetMail, "credentials_unlock")
-                                                Toast.makeText(context, "✉️ OTP sent successfully! Please check your Email Inbox or Spam folder.", Toast.LENGTH_LONG).show()
-                                            }
-                                        },
-                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF59E0B)),
-                                        shape = RoundedCornerShape(12.dp),
-                                        modifier = Modifier.fillMaxWidth().height(48.dp)
-                                    ) {
-                                        Icon(Icons.Default.VpnKey, contentDescription = null, modifier = Modifier.size(18.dp))
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Text("Send OTP to Unlock Editing")
-                                    }
-                                } else {
-                                    OutlinedTextField(value = credentialOtpInput, onValueChange = { credentialOtpInput = it }, label = { Text("Enter 6-Digit OTP Code") }, singleLine = true, shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth())
-                                    Button(
-                                        onClick = {
-                                            triggerHapticFeedback(context, haptic)
-                                            if (credentialOtpInput.trim().length == 6) {
-                                                isCredentialEditUnlocked = true; isCredentialOtpSent = false; credentialOtpInput = ""
-                                                Toast.makeText(context, "✓ Credentials unlocked for editing!", Toast.LENGTH_SHORT).show()
-                                            } else { Toast.makeText(context, "Enter a valid 6-digit OTP!", Toast.LENGTH_SHORT).show() }
-                                        },
-                                        colors = ButtonDefaults.buttonColors(containerColor = TelegramEmerald),
-                                        shape = RoundedCornerShape(12.dp),
-                                        modifier = Modifier.fillMaxWidth().height(48.dp)
-                                    ) { Text("Verify & Unlock") }
-                                }
-                            }
-                        }
-                    } else {
-                        // Editable credential fields
-                        Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f), modifier = Modifier.fillMaxWidth()) {
-                            Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                                Text("Bot API Token", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold))
-                                OutlinedTextField(
-                                    value = tempBotToken,
-                                    onValueChange = { tempBotToken = it },
-                                    placeholder = { Text("123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11") },
-                                    singleLine = true,
-                                    shape = RoundedCornerShape(12.dp),
-                                    modifier = Modifier.fillMaxWidth()
-                                )
-
-                                Text("Channel Chat ID", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold))
-                                OutlinedTextField(
-                                    value = tempChatId,
-                                    onValueChange = { tempChatId = it },
-                                    placeholder = { Text("-1001234567890") },
-                                    singleLine = true,
-                                    shape = RoundedCornerShape(12.dp),
-                                    modifier = Modifier.fillMaxWidth()
-                                )
-
-                                // Instant verification
-                                Button(
-                                    onClick = {
-                                        triggerHapticFeedback(context, haptic)
-                                        if (tempBotToken.trim().isEmpty()) { Toast.makeText(context, "Enter Bot Token first!", Toast.LENGTH_SHORT).show() }
-                                        else {
-                                            isVerifyingBotConnection = true
-                                            scope.launch {
-                                                val res = botTester.testBotConnection(tempBotToken, tempChatId)
-                                                isVerifyingBotConnection = false
-                                                if (res.isSuccess) Toast.makeText(context, "✓ Verified! ${res.getOrNull()}", Toast.LENGTH_LONG).show()
-                                                else Toast.makeText(context, "❌ Failed: ${res.exceptionOrNull()?.message}", Toast.LENGTH_LONG).show()
-                                            }
-                                        }
-                                    },
-                                    colors = ButtonDefaults.buttonColors(containerColor = TelegramBlue),
-                                    shape = RoundedCornerShape(12.dp),
-                                    modifier = Modifier.fillMaxWidth().height(48.dp)
-                                ) {
-                                    if (isVerifyingBotConnection) CircularProgressIndicator(color = Color.White, modifier = Modifier.size(18.dp))
-                                    else { Icon(Icons.Default.VerifiedUser, contentDescription = null, modifier = Modifier.size(18.dp)); Spacer(modifier = Modifier.width(6.dp)); Text("Verify Credentials Now") }
-                                }
-
-                                // Save credentials button & kickstart backup engine
-                                Button(
-                                    onClick = {
-                                        triggerHapticFeedback(context, haptic)
-                                        prefs.botToken = tempBotToken.trim()
-                                        prefs.chatId = tempChatId.trim()
-                                        prefs.credentialsVerified = true
-                                        isCredentialEditUnlocked = false
-
-                                        // Kickstart smart backup engine immediately
-                                        scheduleSmartBackup()
-
-                                        // Start immediate one-time sync worker run
-                                        try {
-                                            val workRequest = OneTimeWorkRequestBuilder<BackupWorker>()
-                                                .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
-                                                .build()
-                                            WorkManager.getInstance(context).enqueueUniqueWork("ManualSyncWork", ExistingWorkPolicy.KEEP, workRequest)
-                                        } catch (_: Exception) { }
-
-                                        scope.launch {
-                                            SettingsDbManager.saveCategorySettings(
-                                                context,
-                                                "Telegram Credentials",
-                                                mapOf(
-                                                    "bot_token" to tempBotToken.trim(),
-                                                    "chat_id" to tempChatId.trim(),
-                                                    "credentials_verified" to "true"
-                                                )
-                                            )
-                                        }
-                                        Toast.makeText(context, "🚀 Setup Complete! Backup engine started in background.", Toast.LENGTH_LONG).show()
-                                    },
-                                    colors = ButtonDefaults.buttonColors(containerColor = TelegramEmerald),
-                                    shape = RoundedCornerShape(12.dp),
-                                    modifier = Modifier.fillMaxWidth().height(50.dp)
-                                ) { Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(18.dp)); Spacer(modifier = Modifier.width(6.dp)); Text("Save Credentials & Start Engine", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold)) }
-                            }
-                        }
-                    }
-                }
-
-                // ☁️ SMART BACKUP ENGINE — 3 Modes
-                StreamlinedCategory.BACKUP_SOURCES_RULES -> {
-                    SubCategoryHeroHeader(
-                        icon = Icons.Default.CloudSync,
-                        iconTint = TelegramBlue,
-                        title = "Smart Backup Engine",
-                        description = "Automate background file sync with custom schedules, filters, and size rules",
-                        badgeText = if (autoBackup) "Active" else "Paused",
-                        badgeColor = if (autoBackup) TelegramEmerald else Color(0xFFEF4444)
-                    )
-
-                    // 🛑 Emergency Stop All Backups
-                    Surface(shape = RoundedCornerShape(16.dp), color = if (stopAllBackup) Color(0xFFEF4444).copy(alpha = 0.1f) else MaterialTheme.colorScheme.surface) {
-                        Column {
-                            SwitchRowWithInfo("🛑 Emergency Stop All Backups", stopAllBackup, {
-                                stopAllBackup = it; prefs.stopAllBackups = it
-                                val workManager = WorkManager.getInstance(context)
-                                if (it) {
-                                    // Cancel ALL backup work
-                                    workManager.cancelUniqueWork("SmartPeriodicBackupWork")
-                                    workManager.cancelUniqueWork("ManualSyncWork")
-                                    // Schedule 3-hour notification reminder
-                                    val notifReq = OneTimeWorkRequestBuilder<StopBackupNotificationWorker>()
-                                        .setInitialDelay(3, TimeUnit.HOURS)
-                                        .build()
-                                    workManager.enqueueUniqueWork("StopBackupNotifWork", ExistingWorkPolicy.REPLACE, notifReq)
-                                    Toast.makeText(context, "⛔ All backups stopped! You'll be notified in 3 hours.", Toast.LENGTH_LONG).show()
-                                } else {
-                                    workManager.cancelUniqueWork("StopBackupNotifWork")
-                                    if (autoBackup) scheduleSmartBackup()
-                                    Toast.makeText(context, "✅ Backups resumed!", Toast.LENGTH_SHORT).show()
-                                }
-                            }, { featureInfoTitle = "Emergency Stop"; featureInfoDesc = "Immediately halts ALL background uploads and scheduled backups. Nothing will be uploaded until you turn this off. After 3 hours, you'll receive a notification reminding you backups are paused." })
-                            if (stopAllBackup) {
-                                val stoppedMs = System.currentTimeMillis() - prefs.stopAllBackupsTimestamp
-                                val stoppedHours = (stoppedMs / (1000L * 60L * 60L)).toInt()
-                                val stoppedMins = ((stoppedMs / (1000L * 60L)) % 60).toInt()
-                                Text(
-                                    "  ⚠️ Paused for ${stoppedHours}h ${stoppedMins}m — files are NOT protected",
-                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, color = Color(0xFFEF4444)),
-                                    modifier = Modifier.padding(start = 14.dp, bottom = 10.dp)
-                                )
-                            }
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(6.dp))
-
-                    // Master toggle
-                    Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surface) {
-                        Column {
-                            SwitchRowWithInfo("Enable Smart Backup", autoBackup, {
-                                autoBackup = it; prefs.autoBackupEnabled = it
-                                if (it) { scheduleSmartBackup(); Toast.makeText(context, "Smart Backup activated!", Toast.LENGTH_SHORT).show() }
-                                else { WorkManager.getInstance(context).cancelUniqueWork("SmartPeriodicBackupWork"); Toast.makeText(context, "Smart Backup disabled.", Toast.LENGTH_SHORT).show() }
-                            }, { featureInfoTitle = "Smart Backup"; featureInfoDesc = "Monitors device folders and automatically backs up new files to Telegram Cloud using WorkManager, even when app is closed." })
-                        }
-                    }
-
-                    if (autoBackup) {
-                        // 3 Backup Mode Selector
-                        Text("Backup Mode", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold, color = TelegramBlue))
-                        Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surface) {
-                            Column {
-                                // Mode 0: Continuous
-                                Row(
-                                    modifier = Modifier.fillMaxWidth().clickable { smartBackupMode = 0; prefs.smartBackupMode = 0; scheduleSmartBackup() }.padding(14.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    RadioButton(selected = smartBackupMode == 0, onClick = { smartBackupMode = 0; prefs.smartBackupMode = 0; scheduleSmartBackup() })
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text("🔄 Continuous Monitor", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold))
-                                        Text("Checks every 15 min continuously", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
-                                    }
-                                    IconButton(onClick = { featureInfoTitle = "Continuous Monitor"; featureInfoDesc = "The most aggressive mode. WorkManager checks every 15 minutes for new files matching your filter criteria and uploads them immediately." }, modifier = Modifier.size(24.dp)) {
-                                        Icon(Icons.Default.Info, contentDescription = null, tint = MaterialTheme.colorScheme.outline, modifier = Modifier.size(16.dp))
-                                    }
-                                }
-                                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
-
-                                // Mode 1: Custom Schedule
-                                Row(
-                                    modifier = Modifier.fillMaxWidth().clickable { smartBackupMode = 1; prefs.smartBackupMode = 1; scheduleSmartBackup() }.padding(14.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    RadioButton(selected = smartBackupMode == 1, onClick = { smartBackupMode = 1; prefs.smartBackupMode = 1; scheduleSmartBackup() })
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text("⏰ Custom Schedule", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold))
-                                        Text("Every ${smartScanInterval}h interval", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
-                                    }
-                                    IconButton(onClick = { featureInfoTitle = "Custom Schedule"; featureInfoDesc = "Set a specific hourly interval for backup checks. Balanced between battery life and backup freshness." }, modifier = Modifier.size(24.dp)) {
-                                        Icon(Icons.Default.Info, contentDescription = null, tint = MaterialTheme.colorScheme.outline, modifier = Modifier.size(16.dp))
-                                    }
-                                }
-
-                                // Interval picker (visible only when mode 1 is selected)
-                                if (smartBackupMode == 1) {
-                                    Row(modifier = Modifier.fillMaxWidth().padding(start = 56.dp, end = 14.dp, bottom = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                        listOf(1, 3, 6, 12, 24).forEach { h ->
-                                            FilterChip(
-                                                selected = smartScanInterval == h,
-                                                onClick = { smartScanInterval = h; prefs.smartScanIntervalHours = h; scheduleSmartBackup(); Toast.makeText(context, "Interval: Every ${h}h", Toast.LENGTH_SHORT).show() },
-                                                label = { Text("${h}h", style = MaterialTheme.typography.labelSmall) }
-                                            )
-                                        }
-                                    }
-                                }
-                                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
-
-                                // Mode 2: Night Express
-                                Row(
-                                    modifier = Modifier.fillMaxWidth().clickable { smartBackupMode = 2; prefs.smartBackupMode = 2; scheduleSmartBackup() }.padding(14.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    RadioButton(selected = smartBackupMode == 2, onClick = { smartBackupMode = 2; prefs.smartBackupMode = 2; scheduleSmartBackup() })
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text("🌙 Night Express", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold))
-                                        Text("Daily at ${nightBackupHour}:00 AM • Max speed", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
-                                    }
-                                    IconButton(onClick = { featureInfoTitle = "Night Express"; featureInfoDesc = "Runs once daily during off-peak hours (1-5 AM) with maximum upload threads for high-speed overnight sync. Best for battery and large backups." }, modifier = Modifier.size(24.dp)) {
-                                        Icon(Icons.Default.Info, contentDescription = null, tint = MaterialTheme.colorScheme.outline, modifier = Modifier.size(16.dp))
-                                    }
-                                }
-
-                                // Night hour picker (visible only when mode 2)
-                                if (smartBackupMode == 2) {
-                                    Row(modifier = Modifier.fillMaxWidth().padding(start = 56.dp, end = 14.dp, bottom = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                        listOf(1, 2, 3, 4, 5).forEach { h ->
-                                            FilterChip(
-                                                selected = nightBackupHour == h,
-                                                onClick = { nightBackupHour = h; prefs.nightBackupHour = h; scheduleSmartBackup(); Toast.makeText(context, "Night backup at ${h}:00 AM", Toast.LENGTH_SHORT).show() },
-                                                label = { Text("${h} AM", style = MaterialTheme.typography.labelSmall) }
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    // File Size Filters
-                    Text("File Size Filters", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold, color = TelegramBlue))
-                    Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surface) {
-                        Column {
-                            OptionValueRowWithInfo("Min File Size", if (minFileSizeMBState <= 0) "0 MB (All)" else "${minFileSizeMBState.toInt()} MB", {
-                                minFileSizeMBState = when (minFileSizeMBState.toInt()) { 0 -> 1.0; 1 -> 5.0; 5 -> 10.0; 10 -> 50.0; else -> 0.0 }; prefs.minFileSizeMB = minFileSizeMBState
-                            }, { featureInfoTitle = "Min File Size"; featureInfoDesc = "Files smaller than this will be skipped during auto-backup." })
-                            HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
-
-                            val maxLimitLabel = when {
-                                maxFileSizeMBState <= 0 -> "Unlimited (No Max Limit)"
-                                maxFileSizeMBState >= 1000 -> "%.1f GB".format(maxFileSizeMBState / 1000.0)
-                                else -> "${maxFileSizeMBState.toInt()} MB"
-                            }
-                            OptionValueRowWithInfo("Max File Size Limit", maxLimitLabel, {
-                                maxFileSizeMBState = when (maxFileSizeMBState.toInt()) {
-                                    50 -> 200.0
-                                    200 -> 500.0
-                                    500 -> 2000.0  // 2 GB
-                                    2000 -> 5000.0 // 5 GB
-                                    5000 -> 10000.0 // 10 GB
-                                    10000 -> 0.0   // Unlimited
-                                    else -> 50.0
-                                }
-                                prefs.maxFileSizeMB = maxFileSizeMBState
-                            }, { featureInfoTitle = "Max File Size Limit"; featureInfoDesc = "Files larger than this limit will be skipped. Set to Unlimited or tap 'Set Custom Limit' to enter a custom value in MB or GB." })
-
-                            // Button to launch Custom Limit Dialog
-                            TextButton(
-                                onClick = { showCustomMaxLimitDialog = true },
-                                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)
-                            ) {
-                                Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(16.dp))
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("Set Custom Max File Size Limit (MB/GB)", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, color = TelegramBlue))
-                            }
-                        }
-                    }
-
-                    // Granular File Categories & Type Controls
-                    Text("File Types & Categories", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold, color = TelegramBlue))
-                    Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surface) {
-                        Column {
-                            SwitchRowWithInfo("Photos & Camera", includeCamera, { includeCamera = it; prefs.backupCamera = it; prefs.backupPictures = it }, { featureInfoTitle = "Photos & Camera"; featureInfoDesc = "JPG, PNG, WEBP, HEIC, RAW, SVG images." })
-                            HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
-                            SwitchRowWithInfo("Videos & Movies", includeVideos, { includeVideos = it; prefs.backupVideos = it }, { featureInfoTitle = "Videos"; featureInfoDesc = "MP4, MKV, AVI, MOV, WEBM video files." })
-                            HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
-                            SwitchRowWithInfo("Audio & Music", includeAudio, { includeAudio = it; prefs.backupAudio = it }, { featureInfoTitle = "Audio & Music"; featureInfoDesc = "MP3, FLAC, WAV, AAC, OGG, M4A audio tracks." })
-                            HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
-                            SwitchRowWithInfo("Documents & PDFs", includeDocs, { includeDocs = it; prefs.backupDocuments = it }, { featureInfoTitle = "Documents"; featureInfoDesc = "PDF, DOCX, XLSX, PPTX, TXT, EPUB files." })
-                            HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
-                            SwitchRowWithInfo("Archives & ZIP Files", includeArchives, { includeArchives = it; prefs.backupArchives = it }, { featureInfoTitle = "Archives"; featureInfoDesc = "ZIP, RAR, 7Z, TAR, GZ, ISO compressed archives." })
-                            HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
-                            SwitchRowWithInfo("APK & App Packages", includeApks, { includeApks = it; prefs.backupApks = it }, { featureInfoTitle = "APKs"; featureInfoDesc = "Android APK, XAPK, APKS app packages." })
-                            HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
-                            SwitchRowWithInfo("Downloads Folder", includeDownloads, { includeDownloads = it; prefs.backupDownloads = it }, { featureInfoTitle = "Downloads"; featureInfoDesc = "Monitors device Downloads folder." })
-                            HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
-                            SwitchRowWithInfo("All Other File Types", includeAllOther, { includeAllOther = it; prefs.backupAllOther = it }, { featureInfoTitle = "Other Files"; featureInfoDesc = "Backs up all other custom file extensions." })
-                            HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
-                            SwitchRowWithInfo("Show Hidden Files", showHiddenFiles, { showHiddenFiles = it; prefs.showHiddenFiles = it }, { featureInfoTitle = "Hidden Files"; featureInfoDesc = "Shows dotfiles in file explorer." })
-                            HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
-                            Row(modifier = Modifier.fillMaxWidth().clickable { triggerHapticFeedback(context, haptic); customFolderLauncher.launch(null) }.padding(14.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                                Column(modifier = Modifier.weight(1f)) { Text("Add Custom Folder", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold)); Text(prefs.customDownloadDir, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline) }
-                                Icon(Icons.Default.FolderOpen, contentDescription = null, tint = TelegramBlue)
-                            }
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    // 💾 Save Backup Engine Settings Button
-                    Button(
-                        onClick = {
-                            triggerHapticFeedback(context, haptic)
-                            prefs.autoBackupEnabled = autoBackup
-                            prefs.smartBackupMode = smartBackupMode
-                            prefs.smartScanIntervalHours = smartScanInterval
-                            prefs.nightBackupHour = nightBackupHour
-                            prefs.minFileSizeMB = minFileSizeMBState
-                            prefs.maxFileSizeMB = maxFileSizeMBState
-                            prefs.backupCamera = includeCamera
-                            prefs.backupPictures = includeCamera
-                            prefs.backupVideos = includeVideos
-                            prefs.backupAudio = includeAudio
-                            prefs.backupDownloads = includeDownloads
-                            prefs.backupDocuments = includeDocs
-                            prefs.backupArchives = includeArchives
-                            prefs.backupApks = includeApks
-                            prefs.backupAllOther = includeAllOther
-                            prefs.showHiddenFiles = showHiddenFiles
-                            scope.launch {
-                                SettingsDbManager.saveCategorySettings(
-                                    context,
-                                    "Smart Backup Engine",
-                                    mapOf(
-                                        "auto_backup_enabled" to autoBackup.toString(),
-                                        "smart_backup_mode" to smartBackupMode.toString(),
-                                        "smart_scan_interval_hours" to smartScanInterval.toString(),
-                                        "night_backup_hour" to nightBackupHour.toString(),
-                                        "min_file_size_mb" to minFileSizeMBState.toString(),
-                                        "max_file_size_mb" to maxFileSizeMBState.toString(),
-                                        "backup_camera" to includeCamera.toString(),
-                                        "backup_videos" to includeVideos.toString(),
-                                        "backup_audio" to includeAudio.toString(),
-                                        "backup_downloads" to includeDownloads.toString(),
-                                        "backup_documents" to includeDocs.toString(),
-                                        "backup_archives" to includeArchives.toString(),
-                                        "backup_apks" to includeApks.toString(),
-                                        "backup_all_other" to includeAllOther.toString(),
-                                        "show_hidden_files" to showHiddenFiles.toString()
-                                    )
-                                )
-                            }
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = TelegramEmerald),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("💾 Save Backup Engine Settings to Database")
-                    }
-                }
-
-                // 📡 NETWORK & PERFORMANCE
-                StreamlinedCategory.NETWORK_PERFORMANCE -> {
-                    SubCategoryHeroHeader(
-                        icon = Icons.Default.Wifi,
-                        iconTint = Color(0xFF06B6D4),
-                        title = "Network & Upload Performance",
-                        description = "Wi-Fi restrictions, multi-thread acceleration, and upload bandwidth rules",
-                        badgeText = if (backupOverWifi) "Wi-Fi Only" else "Cellular + Wi-Fi",
-                        badgeColor = if (backupOverWifi) TelegramBlue else TelegramEmerald
-                    )
-
-                    Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f), modifier = Modifier.fillMaxWidth()) {
-                        Column(modifier = Modifier.padding(vertical = 6.dp)) {
-                            SwitchRowWithInfo("Wi-Fi Only Upload", backupOverWifi, { backupOverWifi = it; prefs.wifiOnly = it }, { featureInfoTitle = "Wi-Fi Only"; featureInfoDesc = "Restricts background backups to Wi-Fi networks." })
-                            HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
-                            SwitchRowWithInfo("Data Compression", enableDataCompression, { enableDataCompression = it; prefs.enableDataCompression = it }, { featureInfoTitle = "Data Compression"; featureInfoDesc = "Compresses files before upload to save bandwidth." })
-                            HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
-                            OptionValueRowWithInfo("Upload Speed Limit", uploadSpeedLimit, {
-                                uploadSpeedLimit = when (uploadSpeedLimit) { "Unlimited" -> "2 MB/s"; "2 MB/s" -> "5 MB/s"; else -> "Unlimited" }
-                            }, { featureInfoTitle = "Speed Limit"; featureInfoDesc = "Caps upload speed so background transfers don't slow other apps." })
-                            HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
-                            OptionValueRowWithInfo("Upload Threads", "$uploadThreads Threads", {
-                                uploadThreads = if (uploadThreads >= 8) 1 else uploadThreads * 2
-                            }, { featureInfoTitle = "Upload Threads"; featureInfoDesc = "Number of parallel upload streams." })
-                        }
-                    }
-
-                    // 💾 Save Network Settings Button
-                    Button(
-                        onClick = {
-                            triggerHapticFeedback(context, haptic)
-                            prefs.wifiOnly = backupOverWifi
-                            prefs.enableDataCompression = enableDataCompression
-                            scope.launch {
-                                SettingsDbManager.saveCategorySettings(
-                                    context,
-                                    "Network & Performance",
-                                    mapOf(
-                                        "wifi_only" to backupOverWifi.toString(),
-                                        "enable_data_compression" to enableDataCompression.toString(),
-                                        "upload_speed_limit" to uploadSpeedLimit,
-                                        "upload_threads" to uploadThreads.toString()
-                                    )
-                                )
-                            }
-                            Toast.makeText(context, "✓ Network preferences saved", Toast.LENGTH_SHORT).show()
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = TelegramBlue),
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier.fillMaxWidth().height(50.dp)
-                    ) {
-                        Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("Save Network Settings", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold))
-                    }
-                }
-
-                // 🔒 SECURITY & MASTER KEY
-                StreamlinedCategory.SECURITY_PRIVACY_RESTORE -> {
-                    SubCategoryHeroHeader(
-                        icon = Icons.Default.Lock,
-                        iconTint = Color(0xFF8B5CF6),
-                        title = "Security & Encryption Key",
-                        description = "256-bit AES client-side encryption and biometric application lock",
-                        badgeText = "AES-256 GCM",
-                        badgeColor = TelegramEmerald
-                    )
-
-                    Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f), modifier = Modifier.fillMaxWidth()) {
-                        Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                            SwitchRowWithInfo("Biometric App Lock", biometricLock, { biometricLock = it; prefs.isBiometricEnabled = it }, { featureInfoTitle = "Biometric Lock"; featureInfoDesc = "Protects app with fingerprint or device PIN." })
-                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
-
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Default.Key, contentDescription = null, tint = TelegramEmerald, modifier = Modifier.size(20.dp))
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text("Permanent AES-256 Master Key", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold))
-                            }
-                            Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surface, modifier = Modifier.fillMaxWidth()) {
-                                Column(modifier = Modifier.padding(14.dp)) {
-                                    Text(uniqueMasterKey, style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold, color = TelegramEmerald))
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                    Text("🔒 IMMUTABLE: This key is generated once. Changing it would break decryption of existing backups.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
-                                }
-                            }
-
-                            Button(
-                                onClick = {
-                                    triggerHapticFeedback(context, haptic)
-                                    val targetMail = prefs.recoveryEmail.ifEmpty { userEmail }
-                                    scope.launch {
-                                        val res = serverApi.sendEncryptionKeyEmail(prefs.serverUrl, targetMail, uniqueMasterKey)
-                                        if (res.isSuccess) {
-                                            Toast.makeText(context, "✉️ Master Key sent to $targetMail!", Toast.LENGTH_LONG).show()
-                                        } else {
-                                            Toast.makeText(context, "❌ Failed: ${res.exceptionOrNull()?.message}", Toast.LENGTH_LONG).show()
-                                        }
-                                    }
-                                },
-                                colors = ButtonDefaults.buttonColors(containerColor = TelegramBlue),
-                                shape = RoundedCornerShape(12.dp),
-                                modifier = Modifier.fillMaxWidth().height(48.dp)
-                            ) { Icon(Icons.Default.Email, contentDescription = null, modifier = Modifier.size(18.dp)); Spacer(modifier = Modifier.width(6.dp)); Text("Email Encryption Key to Me") }
-
-                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
-                            OptionValueRowWithInfo("Encryption Standard", "AES-256 GCM Active", null, { featureInfoTitle = "Encryption"; featureInfoDesc = "Files are encrypted locally before transmission to Telegram." })
-                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
-
-                            OutlinedButton(
-                                onClick = { showPermissionWizardModal = true },
-                                shape = RoundedCornerShape(12.dp),
-                                modifier = Modifier.fillMaxWidth().height(48.dp)
-                            ) {
-                                Icon(Icons.Default.Shield, contentDescription = null, modifier = Modifier.size(18.dp))
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("Check & Grant Permissions", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold, color = TelegramBlue))
-                            }
-                        }
-                    }
-
-                    // 💾 Save Security Settings Button
-                    Button(
-                        onClick = {
-                            triggerHapticFeedback(context, haptic)
-                            prefs.isBiometricEnabled = biometricLock
-                            scope.launch {
-                                SettingsDbManager.saveCategorySettings(
-                                    context,
-                                    "Security",
-                                    mapOf(
-                                        "is_biometric_enabled" to biometricLock.toString(),
-                                        "encryption_key" to uniqueMasterKey
-                                    )
-                                )
-                            }
-                            Toast.makeText(context, "✓ Security preferences saved", Toast.LENGTH_SHORT).show()
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = TelegramEmerald),
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier.fillMaxWidth().height(50.dp)
-                    ) {
-                        Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("Save Security Settings", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold))
-                    }
-                }
-
-                // 🎨 APPEARANCE
-                StreamlinedCategory.APPEARANCE_REGION -> {
-                    SubCategoryHeroHeader(
-                        icon = Icons.Default.Palette,
-                        iconTint = Color(0xFFEC4899),
-                        title = "Appearance & Theme",
-                        description = "Select your preferred color mode for dashboard, explorer, and menus",
-                        badgeText = when (selectedTheme) { 1 -> "Light"; 2 -> "Dark"; else -> "System" }
-                    )
-
-                    Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f), modifier = Modifier.fillMaxWidth()) {
-                        Column {
-                            listOf("System Default", "Light Mode", "Dark Mode").forEachIndexed { index, label ->
-                                Row(modifier = Modifier.fillMaxWidth().clickable { selectedTheme = index; prefs.appTheme = index; onThemeChanged(index) }.padding(16.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                                    Text(label, style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium))
-                                    RadioButton(selected = selectedTheme == index, onClick = { selectedTheme = index; prefs.appTheme = index; onThemeChanged(index) })
-                                }
-                                if (index < 2) HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
-                            }
-                        }
-                    }
-
-                    // 💾 Save Appearance Settings Button
-                    Button(
-                        onClick = {
-                            triggerHapticFeedback(context, haptic)
-                            prefs.appTheme = selectedTheme
-                            onThemeChanged(selectedTheme)
-                            scope.launch {
-                                SettingsDbManager.saveCategorySettings(
-                                    context,
-                                    "Appearance",
-                                    mapOf(
-                                        "app_theme" to selectedTheme.toString()
-                                    )
-                                )
-                            }
-                            Toast.makeText(context, "✓ Appearance preferences saved", Toast.LENGTH_SHORT).show()
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = TelegramBlue),
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier.fillMaxWidth().height(50.dp)
-                    ) {
-                        Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("Save Appearance Settings", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold))
-                    }
-                }
-
-                // 🚪 DANGER ZONE
-                StreamlinedCategory.DANGER_ZONE -> {
-                    SubCategoryHeroHeader(
-                        icon = Icons.Default.DeleteForever,
-                        iconTint = Color(0xFFEF4444),
-                        title = "Data Management & Reset",
-                        description = "Configure soft-delete retention and account purge operations",
-                        badgeText = "Danger",
-                        badgeColor = Color(0xFFEF4444)
-                    )
-
-                    // Trash Auto-Clean Setting
-                    Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f), modifier = Modifier.fillMaxWidth()) {
-                        Column {
-                            OptionValueRowWithInfo(
-                                "Trash Auto-Clean Policy",
-                                when (trashAutoCleanDays) { 0 -> "Never"; else -> "$trashAutoCleanDays Days" },
-                                {
-                                    trashAutoCleanDays = when (trashAutoCleanDays) { 0 -> 7; 7 -> 14; 14 -> 30; 30 -> 60; 60 -> 90; else -> 0 }
-                                    prefs.trashAutoCleanDays = trashAutoCleanDays
-                                    val msg = if (trashAutoCleanDays == 0) "Trash auto-clean: Never" else "Trash auto-clean after $trashAutoCleanDays days"
-                                    Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
-                                },
-                                { featureInfoTitle = "Trash Auto-Clean"; featureInfoDesc = "Automatically permanently deletes trash items after the configured number of days. Set to 'Never' to keep trash items indefinitely until manually emptied." }
-                            )
-                        }
-                    }
-
-                    // 💾 Save Danger Zone Policy Button
-                    Button(
-                        onClick = {
-                            triggerHapticFeedback(context, haptic)
-                            prefs.trashAutoCleanDays = trashAutoCleanDays
-                            scope.launch {
-                                SettingsDbManager.saveCategorySettings(
-                                    context,
-                                    "Trash Policy",
-                                    mapOf(
-                                        "trash_auto_clean_days" to trashAutoCleanDays.toString()
-                                    )
-                                )
-                            }
-                            Toast.makeText(context, "✓ Policy saved", Toast.LENGTH_SHORT).show()
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = TelegramEmerald),
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier.fillMaxWidth().height(50.dp)
-                    ) {
-                        Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("Save Danger Zone Policy", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold))
-                    }
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surface) {
-                        Column {
-                            SettingCategoryRow(Icons.Default.DeleteSweep, "Clear File Data Options", "Custom filters (Drive, Auto-Backup, Old files)", Color(0xFFF59E0B)) {
-                                triggerHapticFeedback(context, haptic)
-                                dialogInitialTab = 0
-                                showClearDataAccountDialog = true
-                            }
-                            HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
-                            SettingCategoryRow(Icons.Default.CleaningServices, "Deep Clean Telegram Chat Storage", "Scans & purges all unlisted/orphaned Telegram files", Color(0xFF3B82F6)) {
-                                triggerHapticFeedback(context, haptic)
-                                val token = prefs.botToken
-                                val chat = prefs.chatId
-                                if (token.isEmpty() || chat.isEmpty()) {
-                                    Toast.makeText(context, "Telegram Bot Token & Chat ID required!", Toast.LENGTH_SHORT).show()
-                                } else {
-                                    com.example.telegrambackup.utils.DynamicProcessTracker.startProcess(
-                                        title = "Deep Clean Telegram Chat",
-                                        subtitle = "Inspecting Telegram channel & permissions...",
-                                        icon = Icons.Default.CleaningServices
-                                    )
-                                    scope.launch(Dispatchers.IO) {
-                                        val serverApi = ServerApi()
-                                        val chatInfo = serverApi.getTelegramChatInfo(token, chat)
-
-                                        if (!chatInfo.success) {
-                                            withContext(Dispatchers.Main) {
-                                                com.example.telegrambackup.utils.DynamicProcessTracker.finishProcess()
-                                                Toast.makeText(context, "Telegram Error: ${chatInfo.errorMessage}", Toast.LENGTH_LONG).show()
-                                            }
-                                            return@launch
-                                        }
-
-                                        if (chatInfo.isBotAdmin && !chatInfo.canDeleteMessages) {
-                                            withContext(Dispatchers.Main) {
-                                                Toast.makeText(context, "⚠️ Please give the bot 'Delete Messages' permission in channel '${chatInfo.title}'", Toast.LENGTH_LONG).show()
-                                            }
-                                        }
-
-                                        val db = com.example.telegrambackup.data.AppDatabase.getDatabase(context)
-                                        val max1 = db.uploadedFileDao().getMaxMessageId() ?: 0L
-                                        val max2 = db.chunkProgressDao().getMaxMessageId() ?: 0L
-                                        val knownMax = maxOf(max1, max2)
-                                        val targetChatId = if (chatInfo.canonicalId != null) chatInfo.canonicalId.toString() else chat
-
-                                        val result = serverApi.deepPurgeTelegramChatStorage(
-                                            token,
-                                            targetChatId,
-                                            knownMaxId = knownMax,
-                                            onProgress = { currentBatch, totalBatches, count ->
-                                                val fraction = if (totalBatches > 0) currentBatch.toFloat() / totalBatches.toFloat() else 0f
-                                                com.example.telegrambackup.utils.DynamicProcessTracker.updateProgress(
-                                                    progress = fraction,
-                                                    subtitle = "Scanning '${chatInfo.title}': $count purged ($currentBatch/$totalBatches)"
-                                                )
-                                            }
-                                        )
-                                        val deletedCount = result.first
-                                        val scannedCount = result.second
-                                        withContext(Dispatchers.Main) {
-                                            com.example.telegrambackup.utils.DynamicProcessTracker.finishProcess()
-                                            if (deletedCount == -1) {
-                                                Toast.makeText(context, "🚫 Bot CANNOT delete messages! Make bot Admin with 'Delete Messages' permission in channel '${chatInfo.title}'", Toast.LENGTH_LONG).show()
-                                            } else if (deletedCount > 0) {
-                                                Toast.makeText(context, "✅ ACTUALLY deleted $deletedCount messages from Telegram channel '${chatInfo.title}' ($scannedCount IDs scanned)", Toast.LENGTH_LONG).show()
-                                            } else {
-                                                Toast.makeText(context, "Channel '${chatInfo.title}' is already clean — 0 messages found in $scannedCount scanned IDs", Toast.LENGTH_LONG).show()
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                            HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
-                            SettingCategoryRow(Icons.Default.DeleteForever, "Delete Account & All Data", "Permanently delete account, settings & files", Color(0xFFEF4444)) {
-                                triggerHapticFeedback(context, haptic)
-                                dialogInitialTab = 1
-                                showClearDataAccountDialog = true
-                            }
-                        }
-                    }
-                }
-                else -> {}
-            }
-        }
-    }
-}
 
     if (showCustomMaxLimitDialog) {
         AlertDialog(
@@ -1734,8 +1456,12 @@ private fun MinimalSettingRow(
     value: String = "",
     valueColor: Color = TelegramBlue,
     iconColor: Color = TelegramBlue,
+    isExpanded: Boolean = false,
+    hasSubSettings: Boolean = true,
     onClick: () -> Unit
 ) {
+    val rotationState by animateFloatAsState(targetValue = if (isExpanded) 90f else 0f, label = "ChevronRotation")
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -1776,7 +1502,7 @@ private fun MinimalSettingRow(
             }
         }
 
-        if (value.isNotEmpty()) {
+        if (value.isNotEmpty() && !isExpanded) {
             Surface(
                 shape = RoundedCornerShape(8.dp),
                 color = valueColor.copy(alpha = 0.10f)
@@ -1790,12 +1516,14 @@ private fun MinimalSettingRow(
             Spacer(modifier = Modifier.width(6.dp))
         }
 
-        Icon(
-            imageVector = Icons.Default.ChevronRight,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f),
-            modifier = Modifier.size(16.dp)
-        )
+        if (hasSubSettings) {
+            Icon(
+                imageVector = Icons.Default.ChevronRight,
+                contentDescription = null,
+                tint = if (isExpanded) iconColor else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f),
+                modifier = Modifier.size(16.dp).rotate(rotationState)
+            )
+        }
     }
 }
 
