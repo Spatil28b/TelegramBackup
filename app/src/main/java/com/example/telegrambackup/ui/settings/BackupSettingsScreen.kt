@@ -413,7 +413,78 @@ fun BackupSettingsScreen(
         )
     }
 
+    fun saveAllSettings(silent: Boolean = false) {
+        triggerHapticFeedback(context, haptic)
+        // 1. Profile
+        prefs.displayName = userNameInput.trim()
+        prefs.recoveryEmail = recoveryEmailInput.trim()
+        if (userAvatarUri != null) prefs.profilePictureUri = userAvatarUri.toString()
+
+        // 2. Telegram Credentials
+        if (tempBotToken.isNotEmpty()) {
+            prefs.botToken = tempBotToken.trim()
+            prefs.chatId = tempChatId.trim()
+        }
+
+        // 3. Smart Backup Engine
+        prefs.autoBackupEnabled = autoBackup
+        prefs.smartBackupMode = smartBackupMode
+        prefs.smartScanIntervalHours = smartScanInterval
+        prefs.backupCamera = includeCamera
+        prefs.backupVideos = includeVideos
+        prefs.backupDocuments = includeDocs
+        prefs.backupAudio = includeAudio
+        prefs.backupDownloads = includeDownloads
+        prefs.backupArchives = includeArchives
+        prefs.backupApks = includeApks
+        prefs.backupAllOther = includeAllOther
+        prefs.showHiddenFiles = showHiddenFiles
+        prefs.maxFileSizeMB = maxFileSizeMBState
+
+        // 4. Network & Performance
+        prefs.wifiOnly = backupOverWifi
+        prefs.enableDataCompression = enableDataCompression
+        prefs.uploadSpeedLimit = uploadSpeedLimit
+        prefs.uploadThreads = uploadThreads
+
+        // 5. Security
+        prefs.biometricLock = biometricLock
+
+        // 6. Appearance
+        prefs.appTheme = selectedTheme
+        onThemeChanged(selectedTheme)
+
+        // 7. Danger Zone
+        prefs.trashAutoCleanDays = trashAutoCleanDays
+
+        // Re-schedule engine
+        scheduleSmartBackup()
+
+        // Save to Database in background
+        scope.launch {
+            SettingsDbManager.saveCategorySettings(
+                context,
+                "All Settings",
+                mapOf(
+                    "display_name" to userNameInput.trim(),
+                    "recovery_email" to recoveryEmailInput.trim(),
+                    "smart_backup_mode" to smartBackupMode.toString(),
+                    "wifi_only" to backupOverWifi.toString(),
+                    "app_theme" to selectedTheme.toString(),
+                    "biometric_lock" to biometricLock.toString(),
+                    "trash_auto_clean_days" to trashAutoCleanDays.toString()
+                ),
+                showToast = false
+            )
+        }
+
+        if (!silent) {
+            Toast.makeText(context, "✓ All Settings Saved Successfully", Toast.LENGTH_SHORT).show()
+        }
+    }
+
     BackHandler(enabled = currentCategory != StreamlinedCategory.MAIN) {
+        saveAllSettings(silent = true)
         currentCategory = StreamlinedCategory.MAIN
     }
 
@@ -711,7 +782,7 @@ fun BackupSettingsScreen(
                             color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.40f)
                         ) {
                             Column {
-                                val currentVersion = remember { try { context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "2.1.34" } catch (_: Exception) { "2.1.34" } }
+                                val currentVersion = remember { try { context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "2.1.35" } catch (_: Exception) { "2.1.35" } }
                                 MinimalSettingRow(
                                     icon = Icons.Default.SystemUpdate,
                                     title = "About & Updates",
@@ -773,13 +844,34 @@ fun BackupSettingsScreen(
                 ) {
                     Row(
                         modifier = Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        IconButton(onClick = { triggerHapticFeedback(context, haptic); currentCategory = StreamlinedCategory.MAIN }) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f, fill = false)) {
+                            IconButton(onClick = {
+                                saveAllSettings(silent = true)
+                                currentCategory = StreamlinedCategory.MAIN
+                            }) {
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                            }
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Profile & Account", style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold), maxLines = 1)
                         }
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Profile & Account", style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold))
+
+                        Button(
+                            onClick = {
+                                saveAllSettings(silent = false)
+                                currentCategory = StreamlinedCategory.MAIN
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = TelegramEmerald),
+                            shape = RoundedCornerShape(10.dp),
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+                            modifier = Modifier.height(36.dp)
+                        ) {
+                            Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Save", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        }
                     }
 
                     Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.40f), modifier = Modifier.fillMaxWidth()) {
@@ -873,34 +965,6 @@ fun BackupSettingsScreen(
                                     modifier = Modifier.fillMaxWidth().height(48.dp)
                                 ) { Text("Verify & Save Email") }
                             }
-
-                            Button(
-                                onClick = {
-                                    triggerHapticFeedback(context, haptic)
-                                    prefs.recoveryEmail = recoveryEmailInput.trim()
-                                    prefs.displayName = userNameInput.trim()
-                                    if (userAvatarUri != null) prefs.profilePictureUri = userAvatarUri.toString()
-                                    scope.launch {
-                                        SettingsDbManager.saveCategorySettings(
-                                            context,
-                                            "Profile",
-                                            mapOf(
-                                                "display_name" to userNameInput.trim(),
-                                                "recovery_email" to recoveryEmailInput.trim(),
-                                                "profile_picture_uri" to (userAvatarUri?.toString() ?: prefs.profilePictureUri)
-                                            )
-                                        )
-                                    }
-                                    Toast.makeText(context, "✓ Profile saved", Toast.LENGTH_SHORT).show()
-                                },
-                                colors = ButtonDefaults.buttonColors(containerColor = TelegramBlue),
-                                shape = RoundedCornerShape(12.dp),
-                                modifier = Modifier.fillMaxWidth().height(50.dp)
-                            ) {
-                                Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(18.dp))
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("Save Profile Settings", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold))
-                            }
                         }
                     }
 
@@ -922,13 +986,36 @@ fun BackupSettingsScreen(
                 ) {
                     Row(
                         modifier = Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        IconButton(onClick = { triggerHapticFeedback(context, haptic); currentCategory = StreamlinedCategory.MAIN }) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f, fill = false)) {
+                            IconButton(onClick = {
+                                saveAllSettings(silent = true)
+                                currentCategory = StreamlinedCategory.MAIN
+                            }) {
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                            }
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Telegram Credentials", style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold), maxLines = 1)
                         }
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Telegram Credentials", style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold))
+
+                        Button(
+                            onClick = {
+                                prefs.credentialsVerified = true
+                                isCredentialEditUnlocked = false
+                                saveAllSettings(silent = false)
+                                currentCategory = StreamlinedCategory.MAIN
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = TelegramEmerald),
+                            shape = RoundedCornerShape(10.dp),
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+                            modifier = Modifier.height(36.dp)
+                        ) {
+                            Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Save", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        }
                     }
 
                     if (prefs.credentialsVerified && !isCredentialEditUnlocked) {
@@ -1006,62 +1093,28 @@ fun BackupSettingsScreen(
                                     modifier = Modifier.fillMaxWidth()
                                 )
 
-                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    OutlinedButton(
-                                        onClick = {
-                                            triggerHapticFeedback(context, haptic)
-                                            if (tempBotToken.trim().isEmpty()) { Toast.makeText(context, "Enter Bot Token first!", Toast.LENGTH_SHORT).show() }
-                                            else {
-                                                isVerifyingBotConnection = true
-                                                scope.launch {
-                                                    val res = botTester.testBotConnection(tempBotToken, tempChatId)
-                                                    isVerifyingBotConnection = false
-                                                    if (res.isSuccess) Toast.makeText(context, "✓ Verified! ${res.getOrNull()}", Toast.LENGTH_LONG).show()
-                                                    else Toast.makeText(context, "❌ Failed: ${res.exceptionOrNull()?.message}", Toast.LENGTH_LONG).show()
-                                                }
-                                            }
-                                        },
-                                        shape = RoundedCornerShape(12.dp),
-                                        modifier = Modifier.weight(1f).height(48.dp)
-                                    ) {
-                                        if (isVerifyingBotConnection) CircularProgressIndicator(modifier = Modifier.size(16.dp))
-                                        else Text("Test Connection")
-                                    }
-
-                                    Button(
-                                        onClick = {
-                                            triggerHapticFeedback(context, haptic)
-                                            prefs.botToken = tempBotToken.trim()
-                                            prefs.chatId = tempChatId.trim()
-                                            prefs.credentialsVerified = true
-                                            isCredentialEditUnlocked = false
-                                            scheduleSmartBackup()
-                                            try {
-                                                val workRequest = OneTimeWorkRequestBuilder<BackupWorker>()
-                                                    .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
-                                                    .build()
-                                                WorkManager.getInstance(context).enqueueUniqueWork("ImmediateSyncWork", ExistingWorkPolicy.REPLACE, workRequest)
-                                            } catch (_: Exception) {}
+                                OutlinedButton(
+                                    onClick = {
+                                        triggerHapticFeedback(context, haptic)
+                                        if (tempBotToken.trim().isEmpty()) { Toast.makeText(context, "Enter Bot Token first!", Toast.LENGTH_SHORT).show() }
+                                        else {
+                                            isVerifyingBotConnection = true
                                             scope.launch {
-                                                SettingsDbManager.saveCategorySettings(
-                                                    context,
-                                                    "Telegram Credentials",
-                                                    mapOf(
-                                                        "bot_token" to tempBotToken.trim(),
-                                                        "chat_id" to tempChatId.trim(),
-                                                        "credentials_verified" to "true"
-                                                    )
-                                                )
+                                                val res = botTester.testBotConnection(tempBotToken, tempChatId)
+                                                isVerifyingBotConnection = false
+                                                if (res.isSuccess) Toast.makeText(context, "✓ Verified! ${res.getOrNull()}", Toast.LENGTH_LONG).show()
+                                                else Toast.makeText(context, "❌ Failed: ${res.exceptionOrNull()?.message}", Toast.LENGTH_LONG).show()
                                             }
-                                            Toast.makeText(context, "✓ Credentials saved & engine active!", Toast.LENGTH_SHORT).show()
-                                        },
-                                        colors = ButtonDefaults.buttonColors(containerColor = TelegramEmerald),
-                                        shape = RoundedCornerShape(12.dp),
-                                        modifier = Modifier.weight(1f).height(48.dp)
-                                    ) {
-                                        Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(16.dp))
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text("Save")
+                                        }
+                                    },
+                                    shape = RoundedCornerShape(12.dp),
+                                    modifier = Modifier.fillMaxWidth().height(48.dp)
+                                ) {
+                                    if (isVerifyingBotConnection) CircularProgressIndicator(modifier = Modifier.size(16.dp))
+                                    else {
+                                        Icon(Icons.Default.VerifiedUser, contentDescription = null, modifier = Modifier.size(18.dp))
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text("Test Bot Connection")
                                     }
                                 }
                             }
@@ -1086,13 +1139,34 @@ fun BackupSettingsScreen(
                 ) {
                     Row(
                         modifier = Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        IconButton(onClick = { triggerHapticFeedback(context, haptic); currentCategory = StreamlinedCategory.MAIN }) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f, fill = false)) {
+                            IconButton(onClick = {
+                                saveAllSettings(silent = true)
+                                currentCategory = StreamlinedCategory.MAIN
+                            }) {
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                            }
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Smart Backup Engine", style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold), maxLines = 1)
                         }
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Smart Backup Engine", style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold))
+
+                        Button(
+                            onClick = {
+                                saveAllSettings(silent = false)
+                                currentCategory = StreamlinedCategory.MAIN
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = TelegramEmerald),
+                            shape = RoundedCornerShape(10.dp),
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+                            modifier = Modifier.height(36.dp)
+                        ) {
+                            Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Save", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        }
                     }
 
                     // Emergency Stop & Restart Engine
@@ -1190,44 +1264,6 @@ fun BackupSettingsScreen(
                         }
                     }
 
-                    Button(
-                        onClick = {
-                            triggerHapticFeedback(context, haptic)
-                            prefs.backupCamera = includeCamera
-                            prefs.backupVideos = includeVideos
-                            prefs.backupAudio = includeAudio
-                            prefs.backupDownloads = includeDownloads
-                            prefs.backupDocuments = includeDocs
-                            prefs.backupArchives = includeArchives
-                            prefs.backupApks = includeApks
-                            prefs.backupAllOther = includeAllOther
-                            prefs.showHiddenFiles = showHiddenFiles
-                            prefs.smartBackupMode = smartBackupMode
-                            prefs.smartScanIntervalHours = smartScanInterval
-                            scheduleSmartBackup()
-                            scope.launch {
-                                SettingsDbManager.saveCategorySettings(
-                                    context,
-                                    "Smart Backup Engine",
-                                    mapOf(
-                                        "smart_backup_mode" to smartBackupMode.toString(),
-                                        "backup_camera" to includeCamera.toString(),
-                                        "backup_videos" to includeVideos.toString(),
-                                        "backup_documents" to includeDocs.toString()
-                                    )
-                                )
-                            }
-                            Toast.makeText(context, "✓ Backup Engine settings saved", Toast.LENGTH_SHORT).show()
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = TelegramEmerald),
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier.fillMaxWidth().height(50.dp)
-                    ) {
-                        Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("Save Backup Engine Rules", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold))
-                    }
-
                     Spacer(modifier = Modifier.height(24.dp))
                 }
             }
@@ -1246,13 +1282,34 @@ fun BackupSettingsScreen(
                 ) {
                     Row(
                         modifier = Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        IconButton(onClick = { triggerHapticFeedback(context, haptic); currentCategory = StreamlinedCategory.MAIN }) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f, fill = false)) {
+                            IconButton(onClick = {
+                                saveAllSettings(silent = true)
+                                currentCategory = StreamlinedCategory.MAIN
+                            }) {
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                            }
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Network & Performance", style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold), maxLines = 1)
                         }
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Network & Performance", style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold))
+
+                        Button(
+                            onClick = {
+                                saveAllSettings(silent = false)
+                                currentCategory = StreamlinedCategory.MAIN
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = TelegramEmerald),
+                            shape = RoundedCornerShape(10.dp),
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+                            modifier = Modifier.height(36.dp)
+                        ) {
+                            Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Save", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        }
                     }
 
                     Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.40f), modifier = Modifier.fillMaxWidth()) {
@@ -1276,36 +1333,6 @@ fun BackupSettingsScreen(
                         }
                     }
 
-                    Button(
-                        onClick = {
-                            triggerHapticFeedback(context, haptic)
-                            prefs.wifiOnly = backupOverWifi
-                            prefs.enableDataCompression = enableDataCompression
-                            prefs.uploadSpeedLimit = uploadSpeedLimit
-                            prefs.uploadThreads = uploadThreads
-                            scope.launch {
-                                SettingsDbManager.saveCategorySettings(
-                                    context,
-                                    "Network & Performance",
-                                    mapOf(
-                                        "wifi_only" to backupOverWifi.toString(),
-                                        "enable_compression" to enableDataCompression.toString(),
-                                        "upload_speed_limit" to uploadSpeedLimit,
-                                        "upload_threads" to uploadThreads.toString()
-                                    )
-                                )
-                            }
-                            Toast.makeText(context, "✓ Network preferences saved", Toast.LENGTH_SHORT).show()
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = TelegramBlue),
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier.fillMaxWidth().height(50.dp)
-                    ) {
-                        Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("Save Network Preferences", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold))
-                    }
-
                     Spacer(modifier = Modifier.height(24.dp))
                 }
             }
@@ -1324,13 +1351,34 @@ fun BackupSettingsScreen(
                 ) {
                     Row(
                         modifier = Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        IconButton(onClick = { triggerHapticFeedback(context, haptic); currentCategory = StreamlinedCategory.MAIN }) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f, fill = false)) {
+                            IconButton(onClick = {
+                                saveAllSettings(silent = true)
+                                currentCategory = StreamlinedCategory.MAIN
+                            }) {
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                            }
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Security & Master Key", style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold), maxLines = 1)
                         }
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Security & Master Key", style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold))
+
+                        Button(
+                            onClick = {
+                                saveAllSettings(silent = false)
+                                currentCategory = StreamlinedCategory.MAIN
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = TelegramEmerald),
+                            shape = RoundedCornerShape(10.dp),
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+                            modifier = Modifier.height(36.dp)
+                        ) {
+                            Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Save", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        }
                     }
 
                     Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.40f), modifier = Modifier.fillMaxWidth()) {
@@ -1378,28 +1426,6 @@ fun BackupSettingsScreen(
                         }
                     }
 
-                    Button(
-                        onClick = {
-                            triggerHapticFeedback(context, haptic)
-                            prefs.biometricLock = biometricLock
-                            scope.launch {
-                                SettingsDbManager.saveCategorySettings(
-                                    context,
-                                    "Security & Privacy",
-                                    mapOf("biometric_lock" to biometricLock.toString())
-                                )
-                            }
-                            Toast.makeText(context, "✓ Security preferences saved", Toast.LENGTH_SHORT).show()
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = TelegramBlue),
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier.fillMaxWidth().height(50.dp)
-                    ) {
-                        Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("Save Security Preferences", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold))
-                    }
-
                     Spacer(modifier = Modifier.height(24.dp))
                 }
             }
@@ -1418,13 +1444,34 @@ fun BackupSettingsScreen(
                 ) {
                     Row(
                         modifier = Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        IconButton(onClick = { triggerHapticFeedback(context, haptic); currentCategory = StreamlinedCategory.MAIN }) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f, fill = false)) {
+                            IconButton(onClick = {
+                                saveAllSettings(silent = true)
+                                currentCategory = StreamlinedCategory.MAIN
+                            }) {
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                            }
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Appearance & Theme", style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold), maxLines = 1)
                         }
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Appearance & Theme", style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold))
+
+                        Button(
+                            onClick = {
+                                saveAllSettings(silent = false)
+                                currentCategory = StreamlinedCategory.MAIN
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = TelegramEmerald),
+                            shape = RoundedCornerShape(10.dp),
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+                            modifier = Modifier.height(36.dp)
+                        ) {
+                            Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Save", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        }
                     }
 
                     Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.40f), modifier = Modifier.fillMaxWidth()) {
@@ -1446,29 +1493,6 @@ fun BackupSettingsScreen(
                         }
                     }
 
-                    Button(
-                        onClick = {
-                            triggerHapticFeedback(context, haptic)
-                            prefs.appTheme = selectedTheme
-                            onThemeChanged(selectedTheme)
-                            scope.launch {
-                                SettingsDbManager.saveCategorySettings(
-                                    context,
-                                    "Appearance",
-                                    mapOf("app_theme" to selectedTheme.toString())
-                                )
-                            }
-                            Toast.makeText(context, "✓ Appearance preferences saved", Toast.LENGTH_SHORT).show()
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = TelegramBlue),
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier.fillMaxWidth().height(50.dp)
-                    ) {
-                        Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("Save Appearance Settings", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold))
-                    }
-
                     Spacer(modifier = Modifier.height(24.dp))
                 }
             }
@@ -1487,13 +1511,34 @@ fun BackupSettingsScreen(
                 ) {
                     Row(
                         modifier = Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        IconButton(onClick = { triggerHapticFeedback(context, haptic); currentCategory = StreamlinedCategory.MAIN }) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f, fill = false)) {
+                            IconButton(onClick = {
+                                saveAllSettings(silent = true)
+                                currentCategory = StreamlinedCategory.MAIN
+                            }) {
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                            }
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Data Management & Reset", style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold), maxLines = 1)
                         }
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Data Management & Reset", style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold))
+
+                        Button(
+                            onClick = {
+                                saveAllSettings(silent = false)
+                                currentCategory = StreamlinedCategory.MAIN
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = TelegramEmerald),
+                            shape = RoundedCornerShape(10.dp),
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+                            modifier = Modifier.height(36.dp)
+                        ) {
+                            Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Save", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        }
                     }
 
                     Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.40f), modifier = Modifier.fillMaxWidth()) {
@@ -1510,28 +1555,6 @@ fun BackupSettingsScreen(
                                 { featureInfoTitle = "Trash Auto-Clean"; featureInfoDesc = "Automatically deletes trash items after the configured days." }
                             )
                         }
-                    }
-
-                    Button(
-                        onClick = {
-                            triggerHapticFeedback(context, haptic)
-                            prefs.trashAutoCleanDays = trashAutoCleanDays
-                            scope.launch {
-                                SettingsDbManager.saveCategorySettings(
-                                    context,
-                                    "Trash Policy",
-                                    mapOf("trash_auto_clean_days" to trashAutoCleanDays.toString())
-                                )
-                            }
-                            Toast.makeText(context, "✓ Policy saved", Toast.LENGTH_SHORT).show()
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = TelegramEmerald),
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier.fillMaxWidth().height(50.dp)
-                    ) {
-                        Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("Save Danger Zone Policy", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold))
                     }
 
                     Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surface) {
