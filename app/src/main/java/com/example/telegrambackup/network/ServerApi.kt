@@ -71,6 +71,9 @@ class ServerApi {
                     downloadUrl = json.optString("downloadUrl", ""),
                     releaseNotes = json.optString("releaseNotes", "New performance and feature updates.")
                 )
+                if (info.downloadUrl.isNotEmpty()) {
+                    return@withContext info
+                }
                 candidates.add(info)
             }
         } catch (e: Exception) {
@@ -126,8 +129,8 @@ class ServerApi {
                 if (apkUrl.isEmpty()) {
                     apkUrl = "https://github.com/spatil28a/telegram_backup_backend/raw/main/Releases/TelegramBackup-latest.apk"
                 }
-                // Try parse code from tag or version string
-                val code = tagName.replace(".", "").toIntOrNull() ?: 1
+                val parts = tagName.split(".").mapNotNull { it.toIntOrNull() }
+                val code = if (parts.size >= 3) parts[2] + 3 else 1
                 candidates.add(
                     com.example.telegrambackup.ui.update.AppVersionInfo(
                         success = true,

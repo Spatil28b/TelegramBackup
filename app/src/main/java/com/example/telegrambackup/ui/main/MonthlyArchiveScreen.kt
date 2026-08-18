@@ -33,6 +33,7 @@ import com.example.telegrambackup.data.UploadedFile
 import com.example.telegrambackup.theme.TelegramBlue
 import com.example.telegrambackup.theme.TelegramEmerald
 import com.example.telegrambackup.ui.common.OsFileIcon
+import com.example.telegrambackup.ui.common.FileThumbnailView
 import com.example.telegrambackup.ui.explorer.formatFileSize
 import com.example.telegrambackup.utils.FileViewerHelper
 import com.example.telegrambackup.utils.ZipBackupDownloader
@@ -421,7 +422,9 @@ fun MonthlyArchiveScreen() {
                                                         Spacer(modifier = Modifier.width(8.dp))
                                                     }
 
-                                                    OsFileIcon(fileName = file.fileName, size = 32.dp)
+                                                    Box(modifier = Modifier.size(36.dp), contentAlignment = Alignment.Center) {
+                                                        FileThumbnailView(fileName = file.fileName, filePath = file.path, telegramFileId = file.telegramFileId, iconSize = 32.dp, modifier = Modifier.size(34.dp))
+                                                    }
                                                     Spacer(modifier = Modifier.width(10.dp))
                                                     Column(modifier = Modifier.weight(1f)) {
                                                         Text(

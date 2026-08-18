@@ -782,7 +782,7 @@ fun BackupSettingsScreen(
                             color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.40f)
                         ) {
                             Column {
-                                val currentVersion = remember { try { context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "2.1.37" } catch (_: Exception) { "2.1.37" } }
+                                val currentVersion = remember { try { context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "2.1.39" } catch (_: Exception) { "2.1.39" } }
                                 MinimalSettingRow(
                                     icon = Icons.Default.SystemUpdate,
                                     title = "About & Updates",
@@ -844,34 +844,16 @@ fun BackupSettingsScreen(
                 ) {
                     Row(
                         modifier = Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f, fill = false)) {
-                            IconButton(onClick = {
-                                saveAllSettings(silent = true)
-                                currentCategory = StreamlinedCategory.MAIN
-                            }) {
-                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                            }
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("Profile & Account", style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold), maxLines = 1)
+                        IconButton(onClick = {
+                            saveAllSettings(silent = true)
+                            currentCategory = StreamlinedCategory.MAIN
+                        }) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                         }
-
-                        Button(
-                            onClick = {
-                                saveAllSettings(silent = false)
-                                currentCategory = StreamlinedCategory.MAIN
-                            },
-                            colors = ButtonDefaults.buttonColors(containerColor = TelegramEmerald),
-                            shape = RoundedCornerShape(10.dp),
-                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
-                            modifier = Modifier.height(36.dp)
-                        ) {
-                            Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("Save", fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                        }
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Profile & Account", style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold), maxLines = 1)
                     }
 
                     Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.40f), modifier = Modifier.fillMaxWidth()) {
@@ -986,36 +968,18 @@ fun BackupSettingsScreen(
                 ) {
                     Row(
                         modifier = Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f, fill = false)) {
-                            IconButton(onClick = {
-                                saveAllSettings(silent = true)
-                                currentCategory = StreamlinedCategory.MAIN
-                            }) {
-                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                            }
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("Telegram Credentials", style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold), maxLines = 1)
+                        IconButton(onClick = {
+                            prefs.credentialsVerified = true
+                            isCredentialEditUnlocked = false
+                            saveAllSettings(silent = true)
+                            currentCategory = StreamlinedCategory.MAIN
+                        }) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                         }
-
-                        Button(
-                            onClick = {
-                                prefs.credentialsVerified = true
-                                isCredentialEditUnlocked = false
-                                saveAllSettings(silent = false)
-                                currentCategory = StreamlinedCategory.MAIN
-                            },
-                            colors = ButtonDefaults.buttonColors(containerColor = TelegramEmerald),
-                            shape = RoundedCornerShape(10.dp),
-                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
-                            modifier = Modifier.height(36.dp)
-                        ) {
-                            Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("Save", fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                        }
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Telegram Credentials", style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold), maxLines = 1)
                     }
 
                     if (prefs.credentialsVerified && !isCredentialEditUnlocked) {
@@ -1139,34 +1103,16 @@ fun BackupSettingsScreen(
                 ) {
                     Row(
                         modifier = Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f, fill = false)) {
-                            IconButton(onClick = {
-                                saveAllSettings(silent = true)
-                                currentCategory = StreamlinedCategory.MAIN
-                            }) {
-                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                            }
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("Smart Backup Engine", style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold), maxLines = 1)
+                        IconButton(onClick = {
+                            saveAllSettings(silent = true)
+                            currentCategory = StreamlinedCategory.MAIN
+                        }) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                         }
-
-                        Button(
-                            onClick = {
-                                saveAllSettings(silent = false)
-                                currentCategory = StreamlinedCategory.MAIN
-                            },
-                            colors = ButtonDefaults.buttonColors(containerColor = TelegramEmerald),
-                            shape = RoundedCornerShape(10.dp),
-                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
-                            modifier = Modifier.height(36.dp)
-                        ) {
-                            Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("Save", fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                        }
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Smart Backup Engine", style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold), maxLines = 1)
                     }
 
                     // Emergency Stop & Restart Engine
@@ -1282,34 +1228,16 @@ fun BackupSettingsScreen(
                 ) {
                     Row(
                         modifier = Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f, fill = false)) {
-                            IconButton(onClick = {
-                                saveAllSettings(silent = true)
-                                currentCategory = StreamlinedCategory.MAIN
-                            }) {
-                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                            }
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("Network & Performance", style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold), maxLines = 1)
+                        IconButton(onClick = {
+                            saveAllSettings(silent = true)
+                            currentCategory = StreamlinedCategory.MAIN
+                        }) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                         }
-
-                        Button(
-                            onClick = {
-                                saveAllSettings(silent = false)
-                                currentCategory = StreamlinedCategory.MAIN
-                            },
-                            colors = ButtonDefaults.buttonColors(containerColor = TelegramEmerald),
-                            shape = RoundedCornerShape(10.dp),
-                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
-                            modifier = Modifier.height(36.dp)
-                        ) {
-                            Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("Save", fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                        }
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Network & Performance", style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold), maxLines = 1)
                     }
 
                     Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.40f), modifier = Modifier.fillMaxWidth()) {
@@ -1351,34 +1279,16 @@ fun BackupSettingsScreen(
                 ) {
                     Row(
                         modifier = Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f, fill = false)) {
-                            IconButton(onClick = {
-                                saveAllSettings(silent = true)
-                                currentCategory = StreamlinedCategory.MAIN
-                            }) {
-                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                            }
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("Security & Master Key", style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold), maxLines = 1)
+                        IconButton(onClick = {
+                            saveAllSettings(silent = true)
+                            currentCategory = StreamlinedCategory.MAIN
+                        }) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                         }
-
-                        Button(
-                            onClick = {
-                                saveAllSettings(silent = false)
-                                currentCategory = StreamlinedCategory.MAIN
-                            },
-                            colors = ButtonDefaults.buttonColors(containerColor = TelegramEmerald),
-                            shape = RoundedCornerShape(10.dp),
-                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
-                            modifier = Modifier.height(36.dp)
-                        ) {
-                            Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("Save", fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                        }
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Security & Master Key", style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold), maxLines = 1)
                     }
 
                     Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.40f), modifier = Modifier.fillMaxWidth()) {
@@ -1444,34 +1354,16 @@ fun BackupSettingsScreen(
                 ) {
                     Row(
                         modifier = Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f, fill = false)) {
-                            IconButton(onClick = {
-                                saveAllSettings(silent = true)
-                                currentCategory = StreamlinedCategory.MAIN
-                            }) {
-                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                            }
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("Appearance & Theme", style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold), maxLines = 1)
+                        IconButton(onClick = {
+                            saveAllSettings(silent = true)
+                            currentCategory = StreamlinedCategory.MAIN
+                        }) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                         }
-
-                        Button(
-                            onClick = {
-                                saveAllSettings(silent = false)
-                                currentCategory = StreamlinedCategory.MAIN
-                            },
-                            colors = ButtonDefaults.buttonColors(containerColor = TelegramEmerald),
-                            shape = RoundedCornerShape(10.dp),
-                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
-                            modifier = Modifier.height(36.dp)
-                        ) {
-                            Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("Save", fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                        }
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Appearance & Theme", style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold), maxLines = 1)
                     }
 
                     Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.40f), modifier = Modifier.fillMaxWidth()) {
@@ -1511,34 +1403,16 @@ fun BackupSettingsScreen(
                 ) {
                     Row(
                         modifier = Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f, fill = false)) {
-                            IconButton(onClick = {
-                                saveAllSettings(silent = true)
-                                currentCategory = StreamlinedCategory.MAIN
-                            }) {
-                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                            }
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("Data Management & Reset", style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold), maxLines = 1)
+                        IconButton(onClick = {
+                            saveAllSettings(silent = true)
+                            currentCategory = StreamlinedCategory.MAIN
+                        }) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                         }
-
-                        Button(
-                            onClick = {
-                                saveAllSettings(silent = false)
-                                currentCategory = StreamlinedCategory.MAIN
-                            },
-                            colors = ButtonDefaults.buttonColors(containerColor = TelegramEmerald),
-                            shape = RoundedCornerShape(10.dp),
-                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
-                            modifier = Modifier.height(36.dp)
-                        ) {
-                            Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("Save", fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                        }
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Data Management & Reset", style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold), maxLines = 1)
                     }
 
                     Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.40f), modifier = Modifier.fillMaxWidth()) {

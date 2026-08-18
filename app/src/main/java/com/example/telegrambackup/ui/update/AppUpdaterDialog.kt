@@ -370,68 +370,99 @@ fun AppUpdaterDialog(
                         downloadStatusText = "Connecting to update server..."
 
                         scope.launch(Dispatchers.IO) {
-                            try {
-                                val client = HttpClientProvider.client
-                                val req = Request.Builder().url(versionInfo.downloadUrl).build()
-                                val res = client.newCall(req).execute()
+                            val candidateUrls = listOfNotNull(
+                                versionInfo.downloadUrl.ifEmpty { null },
+                                "https://telegram-backup-backend.vercel.app/api/app/download-latest",
+                                "https://github.com/spatil28a/telegram_backup_backend/releases/download/v${versionInfo.versionName}/TelegramBackup-v${versionInfo.versionName}.apk",
+                                "https://github.com/spatil28a/telegram_backup_backend/releases/download/v${versionInfo.versionName}/TelegramBackup-latest.apk",
+                                "https://github.com/spatil28a/telegram_backup_backend/raw/main/Releases/TelegramBackup-latest.apk"
+                            ).distinct()
 
-                                val body = res.body
-                                if (!res.isSuccessful || body == null) {
+                            var downloadSuccess = false
+                            var lastErrorMsg = ""
+
+                            val client = HttpClientProvider.client.newBuilder()
+                                .followRedirects(true)
+                                .followSslRedirects(true)
+                                .build()
+
+                            val updateDir = File(context.cacheDir, "updates").apply { mkdirs() }
+                            val updateFile = File(updateDir, "TelegramBackup_v${versionInfo.versionName}.apk")
+
+                            for ((index, targetUrl) in candidateUrls.withIndex()) {
+                                try {
                                     withContext(Dispatchers.Main) {
-                                        isDownloading = false
-                                        Toast.makeText(context, "Download failed (HTTP ${res.code}). Server error or URL issue.", Toast.LENGTH_LONG).show()
-                                        downloadStatusText = "❌ Download failed (HTTP ${res.code})"
+                                        downloadStatusText = if (index == 0) "Connecting to update server..." else "Trying fallback source (${index + 1}/${candidateUrls.size})..."
                                     }
-                                    return@launch
-                                }
 
-                                val totalBytes = body.contentLength()
-                                val updateDir = File(context.cacheDir, "updates").apply { mkdirs() }
-                                val updateFile = File(updateDir, "TelegramBackup_v${versionInfo.versionName}.apk")
-                                if (updateFile.exists()) {
-                                    updateFile.delete()
-                                }
+                                    if (updateFile.exists()) {
+                                        updateFile.delete()
+                                    }
 
-                                body.byteStream().use { input ->
-                                    FileOutputStream(updateFile).use { output ->
-                                        val buffer = ByteArray(16384)
-                                        var bytesRead: Int
-                                        var downloadedBytes = 0L
+                                    val req = Request.Builder()
+                                        .url(targetUrl)
+                                        .header("User-Agent", "TelegramBackup-Updater/2.0")
+                                        .build()
 
-                                        while (input.read(buffer).also { bytesRead = it } != -1) {
-                                            output.write(buffer, 0, bytesRead)
-                                            downloadedBytes += bytesRead
+                                    val res = client.newCall(req).execute()
+                                    val body = res.body
 
-                                            if (totalBytes > 0) {
-                                                val progress = downloadedBytes.toFloat() / totalBytes.toFloat()
-                                                val mbDownloaded = String.format(Locale.US, "%.1f", downloadedBytes / (1024f * 1024f))
-                                                val mbTotal = String.format(Locale.US, "%.1f", totalBytes / (1024f * 1024f))
-                                                withContext(Dispatchers.Main) {
-                                                    downloadProgress = progress
-                                                    downloadStatusText = "Downloading update... $mbDownloaded MB / $mbTotal MB (${(progress * 100).toInt()}%)"
-                                                }
-                                            } else {
-                                                val mbDownloaded = String.format(Locale.US, "%.1f", downloadedBytes / (1024f * 1024f))
-                                                withContext(Dispatchers.Main) {
-                                                    downloadStatusText = "Downloading update... $mbDownloaded MB"
+                                    if (!res.isSuccessful || body == null) {
+                                        lastErrorMsg = "HTTP ${res.code}"
+                                        continue
+                                    }
+
+                                    val totalBytes = body.contentLength()
+                                    body.byteStream().use { input ->
+                                        FileOutputStream(updateFile).use { output ->
+                                            val buffer = ByteArray(32768)
+                                            var bytesRead: Int
+                                            var downloadedBytes = 0L
+
+                                            while (input.read(buffer).also { bytesRead = it } != -1) {
+                                                output.write(buffer, 0, bytesRead)
+                                                downloadedBytes += bytesRead
+
+                                                if (totalBytes > 0) {
+                                                    val progress = downloadedBytes.toFloat() / totalBytes.toFloat()
+                                                    val mbDownloaded = String.format(Locale.US, "%.1f", downloadedBytes / (1024f * 1024f))
+                                                    val mbTotal = String.format(Locale.US, "%.1f", totalBytes / (1024f * 1024f))
+                                                    withContext(Dispatchers.Main) {
+                                                        downloadProgress = progress
+                                                        downloadStatusText = "Downloading update... $mbDownloaded MB / $mbTotal MB (${(progress * 100).toInt()}%)"
+                                                    }
+                                                } else {
+                                                    val mbDownloaded = String.format(Locale.US, "%.1f", downloadedBytes / (1024f * 1024f))
+                                                    withContext(Dispatchers.Main) {
+                                                        downloadStatusText = "Downloading update... $mbDownloaded MB"
+                                                    }
                                                 }
                                             }
+                                            output.flush()
                                         }
-                                        output.flush()
                                     }
-                                }
 
+                                    if (updateFile.exists() && updateFile.length() > 1024 * 1024) {
+                                        downloadSuccess = true
+                                        break
+                                    }
+                                } catch (e: Exception) {
+                                    lastErrorMsg = e.localizedMessage ?: "Connection error"
+                                }
+                            }
+
+                            if (downloadSuccess && updateFile.exists()) {
                                 withContext(Dispatchers.Main) {
                                     isDownloading = false
                                     downloadedApkFile = updateFile
                                     downloadStatusText = "Verifying package & opening installer..."
                                     installApk(updateFile)
                                 }
-                            } catch (e: Exception) {
+                            } else {
                                 withContext(Dispatchers.Main) {
                                     isDownloading = false
-                                    Toast.makeText(context, "Download error: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
-                                    downloadStatusText = "❌ Download error: ${e.localizedMessage}"
+                                    Toast.makeText(context, "Update download failed: $lastErrorMsg", Toast.LENGTH_LONG).show()
+                                    downloadStatusText = "❌ Download error: $lastErrorMsg"
                                 }
                             }
                         }

@@ -13,6 +13,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import com.example.telegrambackup.ui.common.OsFolderIcon
 import com.example.telegrambackup.ui.common.OsFileIcon
+import com.example.telegrambackup.ui.common.FileThumbnailView
 import com.example.telegrambackup.ui.common.FolderType
 import androidx.compose.animation.*
 import androidx.compose.foundation.BorderStroke
@@ -1052,7 +1053,7 @@ private fun GridDriveItemCard(
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
-            // TOP ICON DISPLAY AREA (65% HEIGHT) - Windows 11 Fluent Icon
+            // TOP ICON DISPLAY AREA (65% HEIGHT) - Smart Preview or Windows 11 Fluent Icon
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -1064,7 +1065,13 @@ private fun GridDriveItemCard(
                 if (isDir) {
                     OsFolderIcon(size = if (isBigGrid) 56.dp else 44.dp)
                 } else {
-                    OsFileIcon(fileName = item.fileName, size = if (isBigGrid) 52.dp else 40.dp)
+                    FileThumbnailView(
+                        fileName = item.fileName,
+                        filePath = item.path,
+                        telegramFileId = item.telegramFileId,
+                        iconSize = if (isBigGrid) 52.dp else 40.dp,
+                        modifier = Modifier.fillMaxSize()
+                    )
                 }
 
                 // Selection Checkmark Badge
@@ -1164,7 +1171,13 @@ private fun ListDriveItemCard(
                 } else if (isDir) {
                     OsFolderIcon(size = 40.dp)
                 } else {
-                    OsFileIcon(fileName = item.fileName, size = 38.dp)
+                    FileThumbnailView(
+                        fileName = item.fileName,
+                        filePath = item.path,
+                        telegramFileId = item.telegramFileId,
+                        iconSize = 38.dp,
+                        modifier = Modifier.size(42.dp)
+                    )
                 }
             }
 

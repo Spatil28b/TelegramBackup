@@ -40,6 +40,7 @@ import com.example.telegrambackup.utils.AppPrefs
 import com.example.telegrambackup.utils.FileViewerHelper
 import com.example.telegrambackup.ui.common.OsFolderIcon
 import com.example.telegrambackup.ui.common.OsFileIcon
+import com.example.telegrambackup.ui.common.FileThumbnailView
 import com.example.telegrambackup.ui.common.FolderType
 import com.example.telegrambackup.worker.BackupWorker
 import kotlinx.coroutines.Dispatchers
@@ -644,7 +645,9 @@ private fun FolderWiseView(
                     ) {
                         Checkbox(checked = isSelected, onCheckedChange = { onFileClick(item) })
                         Spacer(modifier = Modifier.width(6.dp))
-                        OsFileIcon(fileName = item.name, size = 34.dp)
+                        Box(modifier = Modifier.size(38.dp), contentAlignment = Alignment.Center) {
+                            FileThumbnailView(fileName = item.name, filePath = item.path, iconSize = 34.dp, modifier = Modifier.size(36.dp))
+                        }
                         Spacer(modifier = Modifier.width(12.dp))
                         Column(modifier = Modifier.weight(1f)) {
                             Text(item.name, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)

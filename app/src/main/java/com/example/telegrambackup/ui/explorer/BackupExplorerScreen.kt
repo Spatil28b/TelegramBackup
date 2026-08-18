@@ -31,6 +31,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import com.example.telegrambackup.ui.common.OsFolderIcon
 import com.example.telegrambackup.ui.common.OsFileIcon
+import com.example.telegrambackup.ui.common.FileThumbnailView
 import com.example.telegrambackup.ui.common.FolderType
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
@@ -835,7 +836,13 @@ private fun GridCloudMediaCard(
                     .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)),
                 contentAlignment = Alignment.Center
             ) {
-                OsFileIcon(fileName = cloudFile.fileName, size = if (isBigGrid) 46.dp else 36.dp)
+                FileThumbnailView(
+                    fileName = cloudFile.fileName,
+                    filePath = cloudFile.path,
+                    telegramFileId = cloudFile.telegramFileId,
+                    iconSize = if (isBigGrid) 46.dp else 36.dp,
+                    modifier = Modifier.fillMaxSize()
+                )
 
                 if (isSelectionMode || isSelected) {
                     Box(
@@ -907,7 +914,13 @@ private fun ListCloudFileCard(
                 modifier = Modifier.size(42.dp),
                 contentAlignment = Alignment.Center
             ) {
-                OsFileIcon(fileName = cloudFile.fileName, size = 36.dp)
+                FileThumbnailView(
+                    fileName = cloudFile.fileName,
+                    filePath = cloudFile.path,
+                    telegramFileId = cloudFile.telegramFileId,
+                    iconSize = 36.dp,
+                    modifier = Modifier.size(40.dp)
+                )
             }
 
             Spacer(modifier = Modifier.width(12.dp))
