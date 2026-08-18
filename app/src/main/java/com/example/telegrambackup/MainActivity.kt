@@ -396,7 +396,7 @@ fun MainApp(
                         }
                         Spacer(modifier = Modifier.width(14.dp))
                         Column {
-                            val drawerVersion = remember { try { context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "2.1.28" } catch (_: Exception) { "2.1.28" } }
+                            val drawerVersion = remember { try { context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "2.1.29" } catch (_: Exception) { "2.1.29" } }
                             Text("Cloud Sync Engine v$drawerVersion", style = MaterialTheme.typography.labelSmall.copy(color = TelegramBlue))
                         }
                     }
@@ -714,18 +714,16 @@ fun MainApp(
                             icon = { Icon(Icons.Default.CloudQueue, contentDescription = "Drive") },
                             label = { Text("Drive") }
                         )
-                        FloatingActionButton(
+                        NavigationBarItem(
+                            selected = selectedTab == MainTab.FILES,
                             onClick = {
                                 triggerHapticFeedback(context, haptic)
-                                quickUploadLauncher.launch("*/*")
+                                targetCategoryTitle = null
+                                selectedTab = MainTab.FILES
                             },
-                            containerColor = TelegramBlue,
-                            contentColor = Color.White,
-                            shape = CircleShape,
-                            modifier = Modifier.size(48.dp)
-                        ) {
-                            Icon(Icons.Default.Add, contentDescription = "Quick Upload", modifier = Modifier.size(26.dp))
-                        }
+                            icon = { Icon(Icons.Default.Folder, contentDescription = "Files") },
+                            label = { Text("Files") }
+                        )
                         NavigationBarItem(
                             selected = selectedTab == MainTab.MONTHLY_ARCHIVE,
                             onClick = {
