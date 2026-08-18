@@ -532,13 +532,13 @@ fun BackupSettingsScreen(
         // ==========================================
         if (q.isEmpty() || "cloud".contains(q) || "backup".contains(q) || "telegram".contains(q) || "token".contains(q) || "chat".contains(q) || "wifi".contains(q) || "speed".contains(q)) {
             Text(
-                "Cloud & Sync",
-                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
+                "CLOUD & SYNC",
+                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, letterSpacing = 0.8.sp)
             )
 
             Surface(
                 shape = RoundedCornerShape(18.dp),
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.40f)
             ) {
                 Column {
                     if (q.isEmpty() || "telegram".contains(q) || "token".contains(q) || "chat".contains(q) || "credentials".contains(q)) {
@@ -547,7 +547,8 @@ fun BackupSettingsScreen(
                             title = "Telegram Credentials",
                             subtitle = "Bot token & destination chat ID",
                             value = if (prefs.credentialsVerified) "Connected" else "Setup required",
-                            valueColor = if (prefs.credentialsVerified) TelegramEmerald else Color(0xFFF59E0B)
+                            valueColor = if (prefs.credentialsVerified) TelegramEmerald else Color(0xFFF59E0B),
+                            iconColor = Color(0xFF3B82F6)
                         ) {
                             triggerHapticFeedback(context, haptic)
                             activeBottomSheetCategory = StreamlinedCategory.TELEGRAM_CREDENTIALS
@@ -555,7 +556,7 @@ fun BackupSettingsScreen(
                     }
 
                     if (q.isEmpty() || "smart".contains(q) || "backup".contains(q) || "mode".contains(q) || "schedule".contains(q) || "folder".contains(q) || "filter".contains(q)) {
-                        if (q.isEmpty()) HorizontalDivider(modifier = Modifier.padding(start = 56.dp, end = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+                        if (q.isEmpty()) HorizontalDivider(modifier = Modifier.padding(start = 68.dp, end = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
                         val modeName = when (smartBackupMode) {
                             0 -> "Continuous"
                             1 -> "Every ${smartScanInterval}h"
@@ -566,7 +567,8 @@ fun BackupSettingsScreen(
                             title = "Smart Backup Engine",
                             subtitle = "Automation schedules & file filters",
                             value = if (autoBackup) modeName else "Off",
-                            valueColor = if (autoBackup) TelegramBlue else MaterialTheme.colorScheme.outline
+                            valueColor = if (autoBackup) TelegramBlue else MaterialTheme.colorScheme.outline,
+                            iconColor = Color(0xFF10B981)
                         ) {
                             triggerHapticFeedback(context, haptic)
                             activeBottomSheetCategory = StreamlinedCategory.BACKUP_SOURCES_RULES
@@ -574,12 +576,13 @@ fun BackupSettingsScreen(
                     }
 
                     if (q.isEmpty() || "network".contains(q) || "wifi".contains(q) || "speed".contains(q) || "threads".contains(q) || "performance".contains(q)) {
-                        if (q.isEmpty()) HorizontalDivider(modifier = Modifier.padding(start = 56.dp, end = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+                        if (q.isEmpty()) HorizontalDivider(modifier = Modifier.padding(start = 68.dp, end = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
                         MinimalSettingRow(
                             icon = Icons.Default.Wifi,
                             title = "Network & Upload Speed",
                             subtitle = "Wi-Fi rule, threads & compression",
-                            value = if (backupOverWifi) "Wi-Fi Only" else "Any"
+                            value = if (backupOverWifi) "Wi-Fi Only" else "Any",
+                            iconColor = Color(0xFF06B6D4)
                         ) {
                             triggerHapticFeedback(context, haptic)
                             activeBottomSheetCategory = StreamlinedCategory.NETWORK_PERFORMANCE
@@ -594,32 +597,36 @@ fun BackupSettingsScreen(
         // ==========================================
         if (q.isEmpty() || "security".contains(q) || "key".contains(q) || "encryption".contains(q) || "biometric".contains(q) || "master".contains(q) || "aes".contains(q)) {
             Text(
-                "Security & Privacy",
-                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
+                "SECURITY & PRIVACY",
+                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, letterSpacing = 0.8.sp)
             )
 
             Surface(
                 shape = RoundedCornerShape(18.dp),
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.40f)
             ) {
                 Column {
                     MinimalSettingRow(
                         icon = Icons.Default.Lock,
                         title = "Encryption & Master Key",
                         subtitle = "256-bit AES encryption & biometrics",
-                        value = if (biometricLock) "Biometrics Active" else "AES-256"
+                        value = if (biometricLock) "Biometrics Active" else "AES-256",
+                        valueColor = Color(0xFF8B5CF6),
+                        iconColor = Color(0xFF8B5CF6)
                     ) {
                         triggerHapticFeedback(context, haptic)
                         activeBottomSheetCategory = StreamlinedCategory.SECURITY_PRIVACY_RESTORE
                     }
 
-                    HorizontalDivider(modifier = Modifier.padding(start = 56.dp, end = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+                    HorizontalDivider(modifier = Modifier.padding(start = 68.dp, end = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
 
                     MinimalSettingRow(
                         icon = Icons.Default.HealthAndSafety,
                         title = "System Health & Diagnostics",
                         subtitle = "Server ping & bot verification test",
-                        value = "Run Test"
+                        value = "Run Test",
+                        valueColor = Color(0xFF14B8A6),
+                        iconColor = Color(0xFF14B8A6)
                     ) {
                         triggerHapticFeedback(context, haptic)
                         showDiagnosticModal = true
@@ -633,26 +640,27 @@ fun BackupSettingsScreen(
         // ==========================================
         if (q.isEmpty() || "profile".contains(q) || "email".contains(q) || "recovery".contains(q) || "theme".contains(q) || "appearance".contains(q) || "dark".contains(q)) {
             Text(
-                "Preferences",
-                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
+                "PREFERENCES",
+                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, letterSpacing = 0.8.sp)
             )
 
             Surface(
                 shape = RoundedCornerShape(18.dp),
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.40f)
             ) {
                 Column {
                     MinimalSettingRow(
                         icon = Icons.Default.Person,
                         title = "Profile & Recovery Email",
                         subtitle = "Display name & recovery inbox",
-                        value = if (prefs.recoveryEmail.isNotEmpty()) "Configured" else ""
+                        value = if (prefs.recoveryEmail.isNotEmpty()) "Configured" else "",
+                        iconColor = Color(0xFFEC4899)
                     ) {
                         triggerHapticFeedback(context, haptic)
                         activeBottomSheetCategory = StreamlinedCategory.PROFILE_ACCOUNT
                     }
 
-                    HorizontalDivider(modifier = Modifier.padding(start = 56.dp, end = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+                    HorizontalDivider(modifier = Modifier.padding(start = 68.dp, end = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
 
                     val themeLabel = when (selectedTheme) {
                         1 -> "Light"
@@ -663,7 +671,8 @@ fun BackupSettingsScreen(
                         icon = Icons.Default.Palette,
                         title = "Appearance",
                         subtitle = "Theme & dark mode preferences",
-                        value = themeLabel
+                        value = themeLabel,
+                        iconColor = Color(0xFFF59E0B)
                     ) {
                         triggerHapticFeedback(context, haptic)
                         activeBottomSheetCategory = StreamlinedCategory.APPEARANCE_REGION
@@ -677,27 +686,29 @@ fun BackupSettingsScreen(
         // ==========================================
         if (q.isEmpty() || "update".contains(q) || "version".contains(q) || "danger".contains(q) || "logout".contains(q) || "delete".contains(q) || "trash".contains(q) || "clean".contains(q)) {
             Text(
-                "System & Maintenance",
-                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
+                "SYSTEM & MAINTENANCE",
+                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, letterSpacing = 0.8.sp)
             )
 
             Surface(
                 shape = RoundedCornerShape(18.dp),
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.40f)
             ) {
                 Column {
-                    val currentVersion = remember { try { context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "2.1.31" } catch (_: Exception) { "2.1.31" } }
+                    val currentVersion = remember { try { context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "2.1.32" } catch (_: Exception) { "2.1.32" } }
                     MinimalSettingRow(
                         icon = Icons.Default.SystemUpdate,
                         title = "About & Updates",
                         subtitle = "Software specs & changelog",
-                        value = "v$currentVersion"
+                        value = "v$currentVersion",
+                        valueColor = Color(0xFF6366F1),
+                        iconColor = Color(0xFF6366F1)
                     ) {
                         triggerHapticFeedback(context, haptic)
                         showAppInfoModal = true
                     }
 
-                    HorizontalDivider(modifier = Modifier.padding(start = 56.dp, end = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+                    HorizontalDivider(modifier = Modifier.padding(start = 68.dp, end = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
 
                     MinimalSettingRow(
                         icon = Icons.Default.DeleteForever,
@@ -1729,13 +1740,13 @@ private fun MinimalSettingRow(
         modifier = Modifier
             .fillMaxWidth()
             .clickable { onClick() }
-            .padding(horizontal = 16.dp, vertical = 12.dp),
+            .padding(horizontal = 16.dp, vertical = 13.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(
             modifier = Modifier
-                .size(36.dp)
-                .clip(RoundedCornerShape(10.dp))
+                .size(38.dp)
+                .clip(RoundedCornerShape(11.dp))
                 .background(iconColor.copy(alpha = 0.12f)),
             contentAlignment = Alignment.Center
         ) {
@@ -1743,7 +1754,7 @@ private fun MinimalSettingRow(
                 imageVector = icon,
                 contentDescription = null,
                 tint = iconColor,
-                modifier = Modifier.size(18.dp)
+                modifier = Modifier.size(20.dp)
             )
         }
 
@@ -1759,27 +1770,30 @@ private fun MinimalSettingRow(
                 Text(
                     text = subtitle,
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.outline,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                     maxLines = 1
                 )
             }
         }
 
         if (value.isNotEmpty()) {
-            Text(
-                text = value,
-                style = MaterialTheme.typography.bodySmall.copy(
-                    fontWeight = FontWeight.Medium,
-                    color = valueColor
+            Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = valueColor.copy(alpha = 0.10f)
+            ) {
+                Text(
+                    text = value,
+                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold, color = valueColor, fontSize = 11.5.sp),
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
                 )
-            )
+            }
             Spacer(modifier = Modifier.width(6.dp))
         }
 
         Icon(
             imageVector = Icons.Default.ChevronRight,
             contentDescription = null,
-            tint = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
+            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f),
             modifier = Modifier.size(16.dp)
         )
     }
@@ -1886,9 +1900,9 @@ private fun SubCategoryHeroHeader(
         ) {
             Box(
                 modifier = Modifier
-                    .size(52.dp)
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(iconTint.copy(alpha = 0.15f)),
+                    .size(50.dp)
+                    .clip(RoundedCornerShape(15.dp))
+                    .background(iconTint.copy(alpha = 0.14f)),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(icon, contentDescription = null, tint = iconTint, modifier = Modifier.size(26.dp))
@@ -1900,19 +1914,19 @@ private fun SubCategoryHeroHeader(
                     if (badgeText != null) {
                         Spacer(modifier = Modifier.width(8.dp))
                         Surface(
-                            shape = RoundedCornerShape(8.dp),
+                            shape = RoundedCornerShape(7.dp),
                             color = badgeColor.copy(alpha = 0.12f)
                         ) {
                             Text(
                                 badgeText,
-                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, color = badgeColor, fontSize = 11.sp),
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, color = badgeColor, fontSize = 10.5.sp),
+                                modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.5.dp)
                             )
                         }
                     }
                 }
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
+                Spacer(modifier = Modifier.height(3.dp))
+                Text(description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f))
             }
         }
     }
