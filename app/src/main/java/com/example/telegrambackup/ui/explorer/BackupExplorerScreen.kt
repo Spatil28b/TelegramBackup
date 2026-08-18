@@ -30,13 +30,17 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import com.example.telegrambackup.ui.common.OsFolderIcon
+import com.example.telegrambackup.ui.common.OsFileIcon
 import com.example.telegrambackup.ui.common.FolderType
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.telegrambackup.data.AppDatabase
 import com.example.telegrambackup.data.UploadedFile
@@ -809,60 +813,64 @@ private fun GridCloudMediaCard(
     onClick: () -> Unit,
     onLongClick: () -> Unit
 ) {
-    val nameLower = cloudFile.fileName.lowercase()
-    val isImg = nameLower.endsWith(".jpg") || nameLower.endsWith(".jpeg") || nameLower.endsWith(".png") || nameLower.endsWith(".webp")
-    val imgSource = if (File(cloudFile.path).exists()) File(cloudFile.path) else cloudFile.telegramFileId
-
     Surface(
         shape = RoundedCornerShape(if (isBigGrid) 14.dp else 10.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant,
+        color = MaterialTheme.colorScheme.surface,
+        tonalElevation = 2.dp,
+        border = if (isSelected) BorderStroke(2.dp, TelegramBlue) else BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
         modifier = Modifier
-            .aspectRatio(1f)
+            .fillMaxWidth()
+            .height(if (isBigGrid) 145.dp else 125.dp)
             .combinedClickable(
                 onClick = onClick,
                 onLongClick = onLongClick
             )
     ) {
-        Box(modifier = Modifier.fillMaxSize()) {
-            if (isImg) {
-                AsyncImage(
-                    model = imgSource,
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize()
-                )
-            } else {
-                Box(
-                    modifier = Modifier.fillMaxSize().background(Color(0xFF1E293B)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = when {
-                            nameLower.endsWith(".mp4") || nameLower.endsWith(".mkv") -> Icons.Default.Movie
-                            nameLower.endsWith(".pdf") || nameLower.endsWith(".docx") -> Icons.Default.PictureAsPdf
-                            nameLower.endsWith(".apk") -> Icons.Default.Android
-                            else -> Icons.AutoMirrored.Filled.InsertDriveFile
-                        },
-                        contentDescription = null,
-                        tint = Color.White.copy(alpha = 0.6f),
-                        modifier = Modifier.size(if (isBigGrid) 34.dp else 24.dp)
-                    )
+        Column(modifier = Modifier.fillMaxSize()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .clip(RoundedCornerShape(topStart = if (isBigGrid) 14.dp else 10.dp, topEnd = if (isBigGrid) 14.dp else 10.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)),
+                contentAlignment = Alignment.Center
+            ) {
+                OsFileIcon(fileName = cloudFile.fileName, size = if (isBigGrid) 46.dp else 36.dp)
+
+                if (isSelectionMode || isSelected) {
+                    Box(
+                        modifier = Modifier
+                            .padding(6.dp)
+                            .size(20.dp)
+                            .align(Alignment.TopEnd)
+                            .clip(CircleShape)
+                            .background(if (isSelected) TelegramBlue else Color.Black.copy(alpha = 0.4f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (isSelected) {
+                            Icon(Icons.Default.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(12.dp))
+                        }
+                    }
                 }
             }
 
-            if (isSelectionMode || isSelected) {
-                Box(
-                    modifier = Modifier
-                        .padding(6.dp)
-                        .size(20.dp)
-                        .align(Alignment.TopEnd)
-                        .clip(CircleShape)
-                        .background(if (isSelected) TelegramBlue else Color.Black.copy(alpha = 0.4f)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    if (isSelected) {
-                        Icon(Icons.Default.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(12.dp))
-                    }
+            Surface(
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp)) {
+                    Text(
+                        text = cloudFile.fileName,
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = formatFileSize(cloudFile.size),
+                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                        color = MaterialTheme.colorScheme.outline
+                    )
                 }
             }
         }
@@ -878,13 +886,12 @@ private fun ListCloudFileCard(
     onClick: () -> Unit,
     onLongClick: () -> Unit
 ) {
-    val nameLower = cloudFile.fileName.lowercase()
-    val isImg = nameLower.endsWith(".jpg") || nameLower.endsWith(".jpeg") || nameLower.endsWith(".png") || nameLower.endsWith(".webp")
-    val imgSource = if (File(cloudFile.path).exists()) File(cloudFile.path) else cloudFile.telegramFileId
+    val ext = cloudFile.fileName.substringAfterLast('.', "").uppercase()
 
     Surface(
         shape = RoundedCornerShape(12.dp),
-        color = if (isSelected) TelegramBlue.copy(alpha = 0.1f) else MaterialTheme.colorScheme.surface,
+        color = if (isSelected) TelegramBlue.copy(alpha = 0.08f) else MaterialTheme.colorScheme.surface,
+        border = if (isSelected) BorderStroke(2.dp, TelegramBlue) else BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
         modifier = Modifier.fillMaxWidth().combinedClickable(onClick = onClick, onLongClick = onLongClick)
     ) {
         Row(
@@ -897,35 +904,27 @@ private fun ListCloudFileCard(
             }
 
             Box(
-                modifier = Modifier.size(44.dp).clip(RoundedCornerShape(8.dp)).background(TelegramBlue.copy(alpha = 0.12f)),
+                modifier = Modifier.size(42.dp),
                 contentAlignment = Alignment.Center
             ) {
-                if (isImg) {
-                    AsyncImage(
-                        model = imgSource,
-                        contentDescription = null,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize()
-                    )
-                } else {
-                    Icon(
-                        imageVector = when {
-                            nameLower.endsWith(".mp4") || nameLower.endsWith(".mkv") -> Icons.Default.Movie
-                            nameLower.endsWith(".pdf") || nameLower.endsWith(".docx") -> Icons.Default.PictureAsPdf
-                            nameLower.endsWith(".apk") -> Icons.Default.Android
-                            else -> Icons.AutoMirrored.Filled.InsertDriveFile
-                        },
-                        contentDescription = null,
-                        tint = TelegramBlue,
-                        modifier = Modifier.size(24.dp)
-                    )
-                }
+                OsFileIcon(fileName = cloudFile.fileName, size = 36.dp)
             }
 
             Spacer(modifier = Modifier.width(12.dp))
 
             Column(modifier = Modifier.weight(1f)) {
-                Text(cloudFile.fileName, style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold), maxLines = 1)
+                Text(
+                    text = cloudFile.fileName,
+                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = "${formatFileSize(cloudFile.size)} • ${ext.ifEmpty { "FILE" }}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.outline
+                )
             }
         }
     }

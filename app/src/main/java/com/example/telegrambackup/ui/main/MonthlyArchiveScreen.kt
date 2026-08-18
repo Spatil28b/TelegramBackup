@@ -32,6 +32,7 @@ import com.example.telegrambackup.data.AppDatabase
 import com.example.telegrambackup.data.UploadedFile
 import com.example.telegrambackup.theme.TelegramBlue
 import com.example.telegrambackup.theme.TelegramEmerald
+import com.example.telegrambackup.ui.common.OsFileIcon
 import com.example.telegrambackup.ui.explorer.formatFileSize
 import com.example.telegrambackup.utils.FileViewerHelper
 import com.example.telegrambackup.utils.ZipBackupDownloader
@@ -420,20 +421,7 @@ fun MonthlyArchiveScreen() {
                                                         Spacer(modifier = Modifier.width(8.dp))
                                                     }
 
-                                                    Box(
-                                                        modifier = Modifier
-                                                            .size(32.dp)
-                                                            .clip(RoundedCornerShape(8.dp))
-                                                            .background(getFileIconColor(file.fileName).copy(alpha = 0.12f)),
-                                                        contentAlignment = Alignment.Center
-                                                    ) {
-                                                        Icon(
-                                                            getFileIcon(file.fileName),
-                                                            contentDescription = null,
-                                                            tint = getFileIconColor(file.fileName),
-                                                            modifier = Modifier.size(16.dp)
-                                                        )
-                                                    }
+                                                    OsFileIcon(fileName = file.fileName, size = 32.dp)
                                                     Spacer(modifier = Modifier.width(10.dp))
                                                     Column(modifier = Modifier.weight(1f)) {
                                                         Text(

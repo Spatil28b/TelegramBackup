@@ -39,6 +39,7 @@ import com.example.telegrambackup.theme.TelegramEmerald
 import com.example.telegrambackup.utils.AppPrefs
 import com.example.telegrambackup.utils.FileViewerHelper
 import com.example.telegrambackup.ui.common.OsFolderIcon
+import com.example.telegrambackup.ui.common.OsFileIcon
 import com.example.telegrambackup.ui.common.FolderType
 import com.example.telegrambackup.worker.BackupWorker
 import kotlinx.coroutines.Dispatchers
@@ -642,8 +643,8 @@ private fun FolderWiseView(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Checkbox(checked = isSelected, onCheckedChange = { onFileClick(item) })
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Icon(Icons.Default.InsertDriveFile, contentDescription = null, tint = TelegramBlue)
+                        Spacer(modifier = Modifier.width(6.dp))
+                        OsFileIcon(fileName = item.name, size = 34.dp)
                         Spacer(modifier = Modifier.width(12.dp))
                         Column(modifier = Modifier.weight(1f)) {
                             Text(item.name, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)

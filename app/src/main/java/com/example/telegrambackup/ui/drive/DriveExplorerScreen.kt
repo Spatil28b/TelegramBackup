@@ -12,6 +12,7 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import com.example.telegrambackup.ui.common.OsFolderIcon
+import com.example.telegrambackup.ui.common.OsFileIcon
 import com.example.telegrambackup.ui.common.FolderType
 import androidx.compose.animation.*
 import androidx.compose.foundation.BorderStroke
@@ -871,15 +872,13 @@ fun DriveExplorerScreen(
                                             currentDriveDirectoryPath = driveItem.path
                                             driveFolderPathHistory.add(driveItem.path)
                                         } else {
+                                            val localFile = File(driveItem.path)
                                             if (FileViewerHelper.isAudioFile(driveItem.fileName)) {
                                                 activeAudioPlayerItem = Pair(driveItem.path, driveItem.fileName)
+                                            } else if (localFile.exists() && localFile.length() > 0) {
+                                                FileViewerHelper.openFile(context, driveItem.path, driveItem.fileName)
                                             } else {
-                                                val idx = activeDisplayFilesOnly.indexOfFirst { it.path == driveItem.path }
-                                                if (idx != -1) {
-                                                    activeDriveMediaIndex = idx
-                                                } else {
-                                                    FileViewerHelper.openFile(context, driveItem.path, driveItem.fileName)
-                                                }
+                                                itemOptionsFile = driveItem
                                             }
                                         }
                                     }
@@ -923,15 +922,13 @@ fun DriveExplorerScreen(
                                             currentDriveDirectoryPath = driveItem.path
                                             driveFolderPathHistory.add(driveItem.path)
                                         } else {
+                                            val localFile = File(driveItem.path)
                                             if (FileViewerHelper.isAudioFile(driveItem.fileName)) {
                                                 activeAudioPlayerItem = Pair(driveItem.path, driveItem.fileName)
+                                            } else if (localFile.exists() && localFile.length() > 0) {
+                                                FileViewerHelper.openFile(context, driveItem.path, driveItem.fileName)
                                             } else {
-                                                val idx = activeDisplayFilesOnly.indexOfFirst { it.path == driveItem.path }
-                                                if (idx != -1) {
-                                                    activeDriveMediaIndex = idx
-                                                } else {
-                                                    FileViewerHelper.openFile(context, driveItem.path, driveItem.fileName)
-                                                }
+                                                itemOptionsFile = driveItem
                                             }
                                         }
                                     }
@@ -1030,8 +1027,8 @@ fun DriveExplorerScreen(
 }
 
 /**
- * REDESIGNED GOOGLE DRIVE STYLE GRID CARD
- * Provides rich document previews and guaranteed 2-line visible titles!
+ * WINDOWS 11 FLUENT STYLE DRIVE GRID CARD
+ * Uses universal Windows 11 Blue File Icons & Folder Icons with 100% visible, guaranteed file names!
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -1044,80 +1041,30 @@ private fun GridDriveItemCard(
     onLongClick: () -> Unit,
     onOverflowClick: () -> Unit
 ) {
-    val nameLower = item.fileName.lowercase()
-    val ext = item.fileName.substringAfterLast('.', "").uppercase()
-    val isImg = !isDir && (nameLower.endsWith(".jpg") || nameLower.endsWith(".jpeg") || nameLower.endsWith(".png") || nameLower.endsWith(".webp") || nameLower.endsWith(".gif"))
-    val isNote = !isDir && (nameLower.endsWith(".txt") || nameLower.endsWith(".md"))
-    val isPdf = !isDir && nameLower.endsWith(".pdf")
-    val isVideo = !isDir && (nameLower.endsWith(".mp4") || nameLower.endsWith(".mkv") || nameLower.endsWith(".avi"))
-    val isApk = !isDir && nameLower.endsWith(".apk")
-    val isZip = !isDir && (nameLower.endsWith(".zip") || nameLower.endsWith(".rar") || nameLower.endsWith(".7z"))
-    val localFile = File(item.path)
-
     Surface(
         shape = RoundedCornerShape(16.dp),
         color = MaterialTheme.colorScheme.surface,
         tonalElevation = 2.dp,
-        border = if (isSelected) BorderStroke(2.dp, TelegramBlue) else BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant),
+        border = if (isSelected) BorderStroke(2.dp, TelegramBlue) else BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
         modifier = Modifier
             .fillMaxWidth()
-            .height(if (isBigGrid) 180.dp else 150.dp)
+            .height(if (isBigGrid) 175.dp else 145.dp)
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
-            // TOP PREVIEW BANNER (70% HEIGHT)
+            // TOP ICON DISPLAY AREA (65% HEIGHT) - Windows 11 Fluent Icon
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f)
                     .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
-                    .background(
-                        when {
-                            isDir -> TelegramBlue.copy(alpha = 0.12f)
-                            isImg && localFile.exists() -> Color.Transparent
-                            isPdf -> Color(0xFFFEF2F2)
-                            isVideo -> Color(0xFFF3E8FF)
-                            isApk -> Color(0xFFECFDF5)
-                            isZip -> Color(0xFFFEF3C7)
-                            isNote -> Color(0xFFF0F9FF)
-                            else -> MaterialTheme.colorScheme.surfaceVariant
-                        }
-                    ),
+                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)),
                 contentAlignment = Alignment.Center
             ) {
                 if (isDir) {
-                    OsFolderIcon(size = if (isBigGrid) 52.dp else 40.dp)
-                } else if (isImg && localFile.exists()) {
-                    AsyncImage(
-                        model = localFile,
-                        contentDescription = null,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize()
-                    )
+                    OsFolderIcon(size = if (isBigGrid) 56.dp else 44.dp)
                 } else {
-                    val (bannerIcon, bannerColor, badgeText) = when {
-                        isPdf -> Triple(Icons.Default.PictureAsPdf, Color(0xFFEF4444), "PDF")
-                        isVideo -> Triple(Icons.Default.Movie, Color(0xFF8B5CF6), "VIDEO")
-                        isApk -> Triple(Icons.Default.Android, Color(0xFF10B981), "APK")
-                        isZip -> Triple(Icons.Default.FolderZip, Color(0xFFF59E0B), "ZIP")
-                        isNote -> Triple(Icons.Default.Description, TelegramBlue, "NOTE")
-                        else -> Triple(Icons.AutoMirrored.Filled.InsertDriveFile, MaterialTheme.colorScheme.primary, ext.ifEmpty { "FILE" })
-                    }
-
-                    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                        Icon(imageVector = bannerIcon, contentDescription = null, tint = bannerColor, modifier = Modifier.size(if (isBigGrid) 38.dp else 28.dp))
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Surface(
-                            shape = RoundedCornerShape(4.dp),
-                            color = bannerColor.copy(alpha = 0.15f)
-                        ) {
-                            Text(
-                                text = badgeText,
-                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, color = bannerColor),
-                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
-                            )
-                        }
-                    }
+                    OsFileIcon(fileName = item.fileName, size = if (isBigGrid) 52.dp else 40.dp)
                 }
 
                 // Selection Checkmark Badge
@@ -1125,7 +1072,7 @@ private fun GridDriveItemCard(
                     Box(
                         modifier = Modifier
                             .padding(6.dp)
-                            .size(20.dp)
+                            .size(22.dp)
                             .clip(CircleShape)
                             .background(TelegramBlue)
                             .align(Alignment.TopEnd),
@@ -1136,9 +1083,9 @@ private fun GridDriveItemCard(
                 }
             }
 
-            // BOTTOM 2-LINE TITLE & METADATA BAR (30% HEIGHT) — GUARANTEED VISIBLE FILE NAMES
+            // BOTTOM 2-LINE TITLE & METADATA BAR (35% HEIGHT) — 100% VISIBLE FILE NAMES
             Surface(
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Row(
@@ -1156,6 +1103,7 @@ private fun GridDriveItemCard(
                             overflow = TextOverflow.Ellipsis,
                             color = MaterialTheme.colorScheme.onSurface
                         )
+                        Spacer(modifier = Modifier.height(1.dp))
                         Text(
                             text = if (isDir) "Folder" else formatFileSize(item.size),
                             style = MaterialTheme.typography.labelSmall,
@@ -1190,13 +1138,12 @@ private fun ListDriveItemCard(
     onLongClick: () -> Unit,
     onOverflowClick: () -> Unit
 ) {
-    val isNote = item.fileName.endsWith(".txt") || item.fileName.endsWith(".md")
     val ext = item.fileName.substringAfterLast('.', "").uppercase()
 
     Surface(
-        shape = RoundedCornerShape(12.dp),
-        color = MaterialTheme.colorScheme.surface,
-        border = if (isSelected) BorderStroke(2.dp, TelegramBlue) else null,
+        shape = RoundedCornerShape(14.dp),
+        color = if (isSelected) TelegramBlue.copy(alpha = 0.08f) else MaterialTheme.colorScheme.surface,
+        border = if (isSelected) BorderStroke(2.dp, TelegramBlue) else BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
         modifier = Modifier.fillMaxWidth().combinedClickable(onClick = onClick, onLongClick = onLongClick)
     ) {
         Row(
@@ -1204,28 +1151,38 @@ private fun ListDriveItemCard(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
-                modifier = Modifier.size(42.dp).clip(CircleShape).background(if (isSelected) TelegramBlue else if (isDir) Color.Transparent else if (isNote) Color(0xFF8B5CF6).copy(alpha = 0.15f) else TelegramEmerald.copy(alpha = 0.15f)),
+                modifier = Modifier.size(44.dp),
                 contentAlignment = Alignment.Center
             ) {
                 if (isSelected) {
-                    Icon(Icons.Default.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(22.dp))
+                    Box(
+                        modifier = Modifier.size(36.dp).clip(CircleShape).background(TelegramBlue),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(Icons.Default.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
+                    }
                 } else if (isDir) {
-                    OsFolderIcon(size = 38.dp)
+                    OsFolderIcon(size = 40.dp)
                 } else {
-                    Icon(
-                        imageVector = if (isNote) Icons.Default.Description else Icons.AutoMirrored.Filled.InsertDriveFile,
-                        contentDescription = null,
-                        tint = if (isNote) Color(0xFF8B5CF6) else TelegramEmerald,
-                        modifier = Modifier.size(24.dp)
-                    )
+                    OsFileIcon(fileName = item.fileName, size = 38.dp)
                 }
             }
 
             Spacer(modifier = Modifier.width(12.dp))
 
             Column(modifier = Modifier.weight(1f)) {
-                Text(item.fileName, style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold), maxLines = 2, overflow = TextOverflow.Ellipsis)
-                Text(if (isDir) "Directory Folder" else if (isNote) "Personal Text Note ($ext)" else "${formatFileSize(item.size)} • $ext", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+                Text(
+                    text = item.fileName,
+                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = if (isDir) "Directory Folder" else "${formatFileSize(item.size)} • ${ext.ifEmpty { "FILE" }}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.outline
+                )
             }
 
             IconButton(onClick = onOverflowClick) {

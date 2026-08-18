@@ -44,11 +44,21 @@ object FileViewerHelper {
 
             val chooser = Intent.createChooser(intent, "Open ${getFileTypeLabel(fileName)}")
             chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            chooser.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
 
-            if (intent.resolveActivity(context.packageManager) != null || true) {
+            try {
                 context.startActivity(chooser)
-            } else {
-                Toast.makeText(context, "No app found to open this file type", Toast.LENGTH_LONG).show()
+            } catch (anfe: Exception) {
+                // Fallback to generic */* MIME type
+                val fallbackIntent = Intent(Intent.ACTION_VIEW).apply {
+                    setDataAndType(uri, "*/*")
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                context.startActivity(Intent.createChooser(fallbackIntent, "Open with...").apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                })
             }
         } catch (e: Exception) {
             Toast.makeText(context, "Cannot open file: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
@@ -69,7 +79,14 @@ object FileViewerHelper {
             chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             context.startActivity(chooser)
         } catch (e: Exception) {
-            Toast.makeText(context, "Cannot open file: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+            try {
+                val browserIntent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                context.startActivity(browserIntent)
+            } catch (e2: Exception) {
+                Toast.makeText(context, "Cannot open link: ${e2.localizedMessage}", Toast.LENGTH_LONG).show()
+            }
         }
     }
 

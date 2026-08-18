@@ -782,7 +782,7 @@ fun BackupSettingsScreen(
                             color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.40f)
                         ) {
                             Column {
-                                val currentVersion = remember { try { context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "2.1.35" } catch (_: Exception) { "2.1.35" } }
+                                val currentVersion = remember { try { context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "2.1.36" } catch (_: Exception) { "2.1.36" } }
                                 MinimalSettingRow(
                                     icon = Icons.Default.SystemUpdate,
                                     title = "About & Updates",
