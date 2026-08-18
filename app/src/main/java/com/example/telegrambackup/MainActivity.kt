@@ -396,7 +396,7 @@ fun MainApp(
                         }
                         Spacer(modifier = Modifier.width(14.dp))
                         Column {
-                            val drawerVersion = remember { try { context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "2.1.33" } catch (_: Exception) { "2.1.33" } }
+                            val drawerVersion = remember { try { context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "2.1.34" } catch (_: Exception) { "2.1.34" } }
                             Text("Cloud Sync Engine v$drawerVersion", style = MaterialTheme.typography.labelSmall.copy(color = TelegramBlue))
                         }
                     }
