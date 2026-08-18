@@ -411,361 +411,347 @@ fun BackupSettingsScreen(
         )
     }
 
+    var activeBottomSheetCategory by remember { mutableStateOf<StreamlinedCategory?>(null) }
+
+    BackHandler(enabled = activeBottomSheetCategory != null) {
+        activeBottomSheetCategory = null
+    }
+
     var searchQuery by remember { mutableStateOf("") }
 
-    Column(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-        if (currentCategory != StreamlinedCategory.MAIN) {
-            CenterAlignedTopAppBar(
-                title = {
-                    Text(
-                        text = when (currentCategory) {
-                            StreamlinedCategory.MAIN -> "Settings"
-                            StreamlinedCategory.PROFILE_ACCOUNT -> "Profile & Account"
-                            StreamlinedCategory.TELEGRAM_CREDENTIALS -> "Telegram Credentials"
-                            StreamlinedCategory.BACKUP_SOURCES_RULES -> "Smart Backup Engine"
-                            StreamlinedCategory.NETWORK_PERFORMANCE -> "Network & Speed"
-                            StreamlinedCategory.SECURITY_PRIVACY_RESTORE -> "Security & Encryption"
-                            StreamlinedCategory.APPEARANCE_REGION -> "Appearance"
-                            StreamlinedCategory.DANGER_ZONE -> "Data & Reset"
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        Spacer(modifier = Modifier.height(2.dp))
+
+        // 🌟 Clean Minimal Profile & Storage Card
+        Surface(
+            shape = RoundedCornerShape(20.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+            modifier = Modifier.fillMaxWidth().clickable {
+                triggerHapticFeedback(context, haptic)
+                activeBottomSheetCategory = StreamlinedCategory.PROFILE_ACCOUNT
+            }
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier.size(52.dp).clip(CircleShape).background(TelegramBlue),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (userAvatarUri != null) {
+                            AsyncImage(model = userAvatarUri, contentDescription = "Avatar", contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                        } else {
+                            Text(userNameInput.take(1).uppercase(), style = MaterialTheme.typography.titleLarge.copy(color = Color.White, fontWeight = FontWeight.Bold))
+                        }
+                    }
+                    Spacer(modifier = Modifier.width(14.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(userNameInput, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
+                        Text(userEmail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            "${formatFileSize(realDbTotalBytes)} • $realDbRecordCount files protected",
+                            style = MaterialTheme.typography.labelSmall.copy(color = TelegramBlue, fontWeight = FontWeight.Medium)
+                        )
+                    }
+                    Icon(Icons.Default.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.outline.copy(alpha = 0.6f))
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(
+                        onClick = {
+                            triggerHapticFeedback(context, haptic)
+                            showDiagnosticModal = true
                         },
-                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
-                    )
-                },
-                navigationIcon = {
-                    IconButton(onClick = { triggerHapticFeedback(context, haptic); currentCategory = StreamlinedCategory.MAIN }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Icon(Icons.Default.HealthAndSafety, contentDescription = null, tint = TelegramEmerald, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Diagnostics", style = MaterialTheme.typography.labelMedium)
+                    }
+
+                    FilledTonalButton(
+                        onClick = {
+                            triggerHapticFeedback(context, haptic)
+                            try {
+                                val workRequest = OneTimeWorkRequestBuilder<BackupWorker>()
+                                    .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
+                                    .build()
+                                WorkManager.getInstance(context).enqueueUniqueWork("ManualSyncWork", ExistingWorkPolicy.KEEP, workRequest)
+                                Toast.makeText(context, "Sync initiated in background", Toast.LENGTH_SHORT).show()
+                            } catch (_: Exception) { }
+                        },
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Icon(Icons.Default.CloudSync, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Sync Now", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold))
                     }
                 }
-            )
+            }
         }
 
-        Column(
-            modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            Spacer(modifier = Modifier.height(2.dp))
-
-            AnimatedContent(
-                targetState = currentCategory,
-                transitionSpec = {
-                    if (targetState != StreamlinedCategory.MAIN) {
-                        (slideInHorizontally(animationSpec = tween(260)) { width -> width / 2 } + fadeIn(animationSpec = tween(260)))
-                            .togetherWith(slideOutHorizontally(animationSpec = tween(220)) { width -> -width / 4 } + fadeOut(animationSpec = tween(220)))
-                    } else {
-                        (slideInHorizontally(animationSpec = tween(260)) { width -> -width / 4 } + fadeIn(animationSpec = tween(260)))
-                            .togetherWith(slideOutHorizontally(animationSpec = tween(220)) { width -> width / 2 } + fadeOut(animationSpec = tween(220)))
+        // 🔍 Minimal Search Bar
+        OutlinedTextField(
+            value = searchQuery,
+            onValueChange = { searchQuery = it },
+            placeholder = { Text("Search settings...", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.outline) },
+            leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = MaterialTheme.colorScheme.outline, modifier = Modifier.size(18.dp)) },
+            trailingIcon = {
+                if (searchQuery.isNotEmpty()) {
+                    IconButton(onClick = { searchQuery = "" }) {
+                        Icon(Icons.Default.Clear, contentDescription = "Clear", modifier = Modifier.size(16.dp))
                     }
-                },
-                label = "CategoryTransition"
-            ) { targetCat ->
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    when (targetCat) {
-                        StreamlinedCategory.MAIN -> {
-                            // 🌟 Clean Minimal Profile & Storage Card
-                            Surface(
-                                shape = RoundedCornerShape(20.dp),
-                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
-                                modifier = Modifier.fillMaxWidth().clickable {
-                                    triggerHapticFeedback(context, haptic)
-                                    currentCategory = StreamlinedCategory.PROFILE_ACCOUNT
-                                }
-                            ) {
-                                Column(modifier = Modifier.padding(16.dp)) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Box(
-                                            modifier = Modifier.size(52.dp).clip(CircleShape).background(TelegramBlue),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            if (userAvatarUri != null) {
-                                                AsyncImage(model = userAvatarUri, contentDescription = "Avatar", contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
-                                            } else {
-                                                Text(userNameInput.take(1).uppercase(), style = MaterialTheme.typography.titleLarge.copy(color = Color.White, fontWeight = FontWeight.Bold))
-                                            }
-                                        }
-                                        Spacer(modifier = Modifier.width(14.dp))
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Text(userNameInput, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
-                                            Text(userEmail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
-                                            Spacer(modifier = Modifier.height(2.dp))
-                                            Text(
-                                                "${formatFileSize(realDbTotalBytes)} • $realDbRecordCount files protected",
-                                                style = MaterialTheme.typography.labelSmall.copy(color = TelegramBlue, fontWeight = FontWeight.Medium)
-                                            )
-                                        }
-                                        Icon(Icons.Default.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.outline.copy(alpha = 0.6f))
-                                    }
+                }
+            },
+            singleLine = true,
+            shape = RoundedCornerShape(14.dp),
+            colors = OutlinedTextFieldDefaults.colors(
+                unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+                focusedBorderColor = TelegramBlue
+            ),
+            modifier = Modifier.fillMaxWidth()
+        )
 
-                                    Spacer(modifier = Modifier.height(12.dp))
-                                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
-                                    Spacer(modifier = Modifier.height(8.dp))
+        val q = searchQuery.trim().lowercase()
 
-                                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                        TextButton(
-                                            onClick = {
-                                                triggerHapticFeedback(context, haptic)
-                                                showDiagnosticModal = true
-                                            },
-                                            modifier = Modifier.weight(1f),
-                                            shape = RoundedCornerShape(10.dp)
-                                        ) {
-                                            Icon(Icons.Default.HealthAndSafety, contentDescription = null, tint = TelegramEmerald, modifier = Modifier.size(16.dp))
-                                            Spacer(modifier = Modifier.width(6.dp))
-                                            Text("Diagnostics", style = MaterialTheme.typography.labelMedium)
-                                        }
+        // ==========================================
+        // 1. CLOUD & BACKUP
+        // ==========================================
+        if (q.isEmpty() || "cloud".contains(q) || "backup".contains(q) || "telegram".contains(q) || "token".contains(q) || "chat".contains(q) || "wifi".contains(q) || "speed".contains(q)) {
+            Text(
+                "Cloud & Sync",
+                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
+            )
 
-                                        FilledTonalButton(
-                                            onClick = {
-                                                triggerHapticFeedback(context, haptic)
-                                                try {
-                                                    val workRequest = OneTimeWorkRequestBuilder<BackupWorker>()
-                                                        .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
-                                                        .build()
-                                                    WorkManager.getInstance(context).enqueueUniqueWork("ManualSyncWork", ExistingWorkPolicy.KEEP, workRequest)
-                                                    Toast.makeText(context, "Sync initiated in background", Toast.LENGTH_SHORT).show()
-                                                } catch (_: Exception) { }
-                                            },
-                                            modifier = Modifier.weight(1f),
-                                            shape = RoundedCornerShape(10.dp)
-                                        ) {
-                                            Icon(Icons.Default.CloudSync, contentDescription = null, modifier = Modifier.size(16.dp))
-                                            Spacer(modifier = Modifier.width(6.dp))
-                                            Text("Sync Now", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold))
-                                        }
-                                    }
-                                }
-                            }
-
-                            // 🔍 Minimal Search Bar
-                            OutlinedTextField(
-                                value = searchQuery,
-                                onValueChange = { searchQuery = it },
-                                placeholder = { Text("Search settings...", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.outline) },
-                                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = MaterialTheme.colorScheme.outline, modifier = Modifier.size(18.dp)) },
-                                trailingIcon = {
-                                    if (searchQuery.isNotEmpty()) {
-                                        IconButton(onClick = { searchQuery = "" }) {
-                                            Icon(Icons.Default.Clear, contentDescription = "Clear", modifier = Modifier.size(16.dp))
-                                        }
-                                    }
-                                },
-                                singleLine = true,
-                                shape = RoundedCornerShape(14.dp),
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
-                                    focusedBorderColor = TelegramBlue
-                                ),
-                                modifier = Modifier.fillMaxWidth()
-                            )
-
-                            val q = searchQuery.trim().lowercase()
-
-                            // ==========================================
-                            // 1. CLOUD & BACKUP
-                            // ==========================================
-                            if (q.isEmpty() || "cloud".contains(q) || "backup".contains(q) || "telegram".contains(q) || "token".contains(q) || "chat".contains(q) || "wifi".contains(q) || "speed".contains(q)) {
-                                Text(
-                                    "Cloud & Sync",
-                                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
-                                )
-
-                                Surface(
-                                    shape = RoundedCornerShape(18.dp),
-                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
-                                ) {
-                                    Column {
-                                        if (q.isEmpty() || "telegram".contains(q) || "token".contains(q) || "chat".contains(q) || "credentials".contains(q)) {
-                                            MinimalSettingRow(
-                                                icon = Icons.Default.Key,
-                                                title = "Telegram Credentials",
-                                                subtitle = "Bot token & destination chat ID",
-                                                value = if (prefs.credentialsVerified) "Connected" else "Setup required",
-                                                valueColor = if (prefs.credentialsVerified) TelegramEmerald else Color(0xFFF59E0B)
-                                            ) {
-                                                triggerHapticFeedback(context, haptic)
-                                                currentCategory = StreamlinedCategory.TELEGRAM_CREDENTIALS
-                                            }
-                                        }
-
-                                        if (q.isEmpty() || "smart".contains(q) || "backup".contains(q) || "mode".contains(q) || "schedule".contains(q) || "folder".contains(q) || "filter".contains(q)) {
-                                            if (q.isEmpty()) HorizontalDivider(modifier = Modifier.padding(start = 56.dp, end = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
-                                            val modeName = when (smartBackupMode) {
-                                                0 -> "Continuous"
-                                                1 -> "Every ${smartScanInterval}h"
-                                                else -> "Nightly"
-                                            }
-                                            MinimalSettingRow(
-                                                icon = Icons.Default.CloudSync,
-                                                title = "Smart Backup Engine",
-                                                subtitle = "Automation schedules & file filters",
-                                                value = if (autoBackup) modeName else "Off",
-                                                valueColor = if (autoBackup) TelegramBlue else MaterialTheme.colorScheme.outline
-                                            ) {
-                                                triggerHapticFeedback(context, haptic)
-                                                currentCategory = StreamlinedCategory.BACKUP_SOURCES_RULES
-                                            }
-                                        }
-
-                                        if (q.isEmpty() || "network".contains(q) || "wifi".contains(q) || "speed".contains(q) || "threads".contains(q) || "performance".contains(q)) {
-                                            if (q.isEmpty()) HorizontalDivider(modifier = Modifier.padding(start = 56.dp, end = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
-                                            MinimalSettingRow(
-                                                icon = Icons.Default.Wifi,
-                                                title = "Network & Upload Speed",
-                                                subtitle = "Wi-Fi rule, threads & compression",
-                                                value = if (backupOverWifi) "Wi-Fi Only" else "Any"
-                                            ) {
-                                                triggerHapticFeedback(context, haptic)
-                                                currentCategory = StreamlinedCategory.NETWORK_PERFORMANCE
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-
-                            // ==========================================
-                            // 2. SECURITY & PRIVACY
-                            // ==========================================
-                            if (q.isEmpty() || "security".contains(q) || "key".contains(q) || "encryption".contains(q) || "biometric".contains(q) || "master".contains(q) || "aes".contains(q)) {
-                                Text(
-                                    "Security & Privacy",
-                                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
-                                )
-
-                                Surface(
-                                    shape = RoundedCornerShape(18.dp),
-                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
-                                ) {
-                                    Column {
-                                        MinimalSettingRow(
-                                            icon = Icons.Default.Lock,
-                                            title = "Encryption & Master Key",
-                                            subtitle = "256-bit AES encryption & biometrics",
-                                            value = if (biometricLock) "Biometrics Active" else "AES-256"
-                                        ) {
-                                            triggerHapticFeedback(context, haptic)
-                                            currentCategory = StreamlinedCategory.SECURITY_PRIVACY_RESTORE
-                                        }
-
-                                        HorizontalDivider(modifier = Modifier.padding(start = 56.dp, end = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
-
-                                        MinimalSettingRow(
-                                            icon = Icons.Default.HealthAndSafety,
-                                            title = "System Health & Diagnostics",
-                                            subtitle = "Server ping & bot verification test",
-                                            value = "Run Test"
-                                        ) {
-                                            triggerHapticFeedback(context, haptic)
-                                            showDiagnosticModal = true
-                                        }
-                                    }
-                                }
-                            }
-
-                            // ==========================================
-                            // 3. PREFERENCES
-                            // ==========================================
-                            if (q.isEmpty() || "profile".contains(q) || "email".contains(q) || "recovery".contains(q) || "theme".contains(q) || "appearance".contains(q) || "dark".contains(q)) {
-                                Text(
-                                    "Preferences",
-                                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
-                                )
-
-                                Surface(
-                                    shape = RoundedCornerShape(18.dp),
-                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
-                                ) {
-                                    Column {
-                                        MinimalSettingRow(
-                                            icon = Icons.Default.Person,
-                                            title = "Profile & Recovery Email",
-                                            subtitle = "Display name & recovery inbox",
-                                            value = if (prefs.recoveryEmail.isNotEmpty()) "Configured" else ""
-                                        ) {
-                                            triggerHapticFeedback(context, haptic)
-                                            currentCategory = StreamlinedCategory.PROFILE_ACCOUNT
-                                        }
-
-                                        HorizontalDivider(modifier = Modifier.padding(start = 56.dp, end = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
-
-                                        val themeLabel = when (selectedTheme) {
-                                            1 -> "Light"
-                                            2 -> "Dark"
-                                            else -> "System"
-                                        }
-                                        MinimalSettingRow(
-                                            icon = Icons.Default.Palette,
-                                            title = "Appearance",
-                                            subtitle = "Theme & dark mode preferences",
-                                            value = themeLabel
-                                        ) {
-                                            triggerHapticFeedback(context, haptic)
-                                            currentCategory = StreamlinedCategory.APPEARANCE_REGION
-                                        }
-                                    }
-                                }
-                            }
-
-                            // ==========================================
-                            // 4. SYSTEM & MAINTENANCE
-                            // ==========================================
-                            if (q.isEmpty() || "update".contains(q) || "version".contains(q) || "danger".contains(q) || "logout".contains(q) || "delete".contains(q) || "trash".contains(q) || "clean".contains(q)) {
-                                Text(
-                                    "System & Maintenance",
-                                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
-                                )
-
-                                Surface(
-                                    shape = RoundedCornerShape(18.dp),
-                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
-                                ) {
-                                    Column {
-                                        val currentVersion = remember { try { context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "2.1.29" } catch (_: Exception) { "2.1.29" } }
-                                        MinimalSettingRow(
-                                            icon = Icons.Default.SystemUpdate,
-                                            title = "About & Updates",
-                                            subtitle = "Software specs & changelog",
-                                            value = "v$currentVersion"
-                                        ) {
-                                            triggerHapticFeedback(context, haptic)
-                                            showAppInfoModal = true
-                                        }
-
-                                        HorizontalDivider(modifier = Modifier.padding(start = 56.dp, end = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
-
-                                        MinimalSettingRow(
-                                            icon = Icons.Default.DeleteForever,
-                                            title = "Data Management & Reset",
-                                            subtitle = "Trash auto-clean & data wipe",
-                                            value = "",
-                                            iconColor = Color(0xFFEF4444)
-                                        ) {
-                                            triggerHapticFeedback(context, haptic)
-                                            currentCategory = StreamlinedCategory.DANGER_ZONE
-                                        }
-                                    }
-                                }
-                            }
-
-                            Spacer(modifier = Modifier.height(4.dp))
-
-                            // Log Out Button
-                            OutlinedButton(
-                                onClick = { triggerHapticFeedback(context, haptic); onLogout() },
-                                shape = RoundedCornerShape(14.dp),
-                                colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFEF4444)),
-                                modifier = Modifier.fillMaxWidth().height(48.dp)
-                            ) {
-                                Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = null, modifier = Modifier.size(16.dp))
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text("Log Out Account", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                            }
+            Surface(
+                shape = RoundedCornerShape(18.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+            ) {
+                Column {
+                    if (q.isEmpty() || "telegram".contains(q) || "token".contains(q) || "chat".contains(q) || "credentials".contains(q)) {
+                        MinimalSettingRow(
+                            icon = Icons.Default.Key,
+                            title = "Telegram Credentials",
+                            subtitle = "Bot token & destination chat ID",
+                            value = if (prefs.credentialsVerified) "Connected" else "Setup required",
+                            valueColor = if (prefs.credentialsVerified) TelegramEmerald else Color(0xFFF59E0B)
+                        ) {
+                            triggerHapticFeedback(context, haptic)
+                            activeBottomSheetCategory = StreamlinedCategory.TELEGRAM_CREDENTIALS
                         }
+                    }
 
-                // 👤 PROFILE & RECOVERY EMAIL
-                StreamlinedCategory.PROFILE_ACCOUNT -> {
-                    SubCategoryHeroHeader(
+                    if (q.isEmpty() || "smart".contains(q) || "backup".contains(q) || "mode".contains(q) || "schedule".contains(q) || "folder".contains(q) || "filter".contains(q)) {
+                        if (q.isEmpty()) HorizontalDivider(modifier = Modifier.padding(start = 56.dp, end = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+                        val modeName = when (smartBackupMode) {
+                            0 -> "Continuous"
+                            1 -> "Every ${smartScanInterval}h"
+                            else -> "Nightly"
+                        }
+                        MinimalSettingRow(
+                            icon = Icons.Default.CloudSync,
+                            title = "Smart Backup Engine",
+                            subtitle = "Automation schedules & file filters",
+                            value = if (autoBackup) modeName else "Off",
+                            valueColor = if (autoBackup) TelegramBlue else MaterialTheme.colorScheme.outline
+                        ) {
+                            triggerHapticFeedback(context, haptic)
+                            activeBottomSheetCategory = StreamlinedCategory.BACKUP_SOURCES_RULES
+                        }
+                    }
+
+                    if (q.isEmpty() || "network".contains(q) || "wifi".contains(q) || "speed".contains(q) || "threads".contains(q) || "performance".contains(q)) {
+                        if (q.isEmpty()) HorizontalDivider(modifier = Modifier.padding(start = 56.dp, end = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+                        MinimalSettingRow(
+                            icon = Icons.Default.Wifi,
+                            title = "Network & Upload Speed",
+                            subtitle = "Wi-Fi rule, threads & compression",
+                            value = if (backupOverWifi) "Wi-Fi Only" else "Any"
+                        ) {
+                            triggerHapticFeedback(context, haptic)
+                            activeBottomSheetCategory = StreamlinedCategory.NETWORK_PERFORMANCE
+                        }
+                    }
+                }
+            }
+        }
+
+        // ==========================================
+        // 2. SECURITY & PRIVACY
+        // ==========================================
+        if (q.isEmpty() || "security".contains(q) || "key".contains(q) || "encryption".contains(q) || "biometric".contains(q) || "master".contains(q) || "aes".contains(q)) {
+            Text(
+                "Security & Privacy",
+                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
+            )
+
+            Surface(
+                shape = RoundedCornerShape(18.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+            ) {
+                Column {
+                    MinimalSettingRow(
+                        icon = Icons.Default.Lock,
+                        title = "Encryption & Master Key",
+                        subtitle = "256-bit AES encryption & biometrics",
+                        value = if (biometricLock) "Biometrics Active" else "AES-256"
+                    ) {
+                        triggerHapticFeedback(context, haptic)
+                        activeBottomSheetCategory = StreamlinedCategory.SECURITY_PRIVACY_RESTORE
+                    }
+
+                    HorizontalDivider(modifier = Modifier.padding(start = 56.dp, end = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+
+                    MinimalSettingRow(
+                        icon = Icons.Default.HealthAndSafety,
+                        title = "System Health & Diagnostics",
+                        subtitle = "Server ping & bot verification test",
+                        value = "Run Test"
+                    ) {
+                        triggerHapticFeedback(context, haptic)
+                        showDiagnosticModal = true
+                    }
+                }
+            }
+        }
+
+        // ==========================================
+        // 3. PREFERENCES
+        // ==========================================
+        if (q.isEmpty() || "profile".contains(q) || "email".contains(q) || "recovery".contains(q) || "theme".contains(q) || "appearance".contains(q) || "dark".contains(q)) {
+            Text(
+                "Preferences",
+                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
+            )
+
+            Surface(
+                shape = RoundedCornerShape(18.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+            ) {
+                Column {
+                    MinimalSettingRow(
+                        icon = Icons.Default.Person,
+                        title = "Profile & Recovery Email",
+                        subtitle = "Display name & recovery inbox",
+                        value = if (prefs.recoveryEmail.isNotEmpty()) "Configured" else ""
+                    ) {
+                        triggerHapticFeedback(context, haptic)
+                        activeBottomSheetCategory = StreamlinedCategory.PROFILE_ACCOUNT
+                    }
+
+                    HorizontalDivider(modifier = Modifier.padding(start = 56.dp, end = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+
+                    val themeLabel = when (selectedTheme) {
+                        1 -> "Light"
+                        2 -> "Dark"
+                        else -> "System"
+                    }
+                    MinimalSettingRow(
+                        icon = Icons.Default.Palette,
+                        title = "Appearance",
+                        subtitle = "Theme & dark mode preferences",
+                        value = themeLabel
+                    ) {
+                        triggerHapticFeedback(context, haptic)
+                        activeBottomSheetCategory = StreamlinedCategory.APPEARANCE_REGION
+                    }
+                }
+            }
+        }
+
+        // ==========================================
+        // 4. SYSTEM & MAINTENANCE
+        // ==========================================
+        if (q.isEmpty() || "update".contains(q) || "version".contains(q) || "danger".contains(q) || "logout".contains(q) || "delete".contains(q) || "trash".contains(q) || "clean".contains(q)) {
+            Text(
+                "System & Maintenance",
+                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
+            )
+
+            Surface(
+                shape = RoundedCornerShape(18.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+            ) {
+                Column {
+                    val currentVersion = remember { try { context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "2.1.31" } catch (_: Exception) { "2.1.31" } }
+                    MinimalSettingRow(
+                        icon = Icons.Default.SystemUpdate,
+                        title = "About & Updates",
+                        subtitle = "Software specs & changelog",
+                        value = "v$currentVersion"
+                    ) {
+                        triggerHapticFeedback(context, haptic)
+                        showAppInfoModal = true
+                    }
+
+                    HorizontalDivider(modifier = Modifier.padding(start = 56.dp, end = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+
+                    MinimalSettingRow(
+                        icon = Icons.Default.DeleteForever,
+                        title = "Data Management & Reset",
+                        subtitle = "Trash auto-clean & data wipe",
+                        value = "",
+                        iconColor = Color(0xFFEF4444)
+                    ) {
+                        triggerHapticFeedback(context, haptic)
+                        activeBottomSheetCategory = StreamlinedCategory.DANGER_ZONE
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(4.dp))
+
+        // Log Out Button
+        OutlinedButton(
+            onClick = { triggerHapticFeedback(context, haptic); onLogout() },
+            shape = RoundedCornerShape(14.dp),
+            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFEF4444)),
+            modifier = Modifier.fillMaxWidth().height(48.dp)
+        ) {
+            Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = null, modifier = Modifier.size(16.dp))
+            Spacer(modifier = Modifier.width(8.dp))
+            Text("Log Out Account", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+        }
+
+        Spacer(modifier = Modifier.height(24.dp))
+    }
+
+    // =========================================================================
+    // 📱 SUB-SETTINGS MODAL BOTTOM SHEET (Sleek Overlay, Non-Full Screen)
+    // =========================================================================
+    if (activeBottomSheetCategory != null) {
+        ModalBottomSheet(
+            onDismissRequest = { activeBottomSheetCategory = null },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false),
+            shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+            containerColor = MaterialTheme.colorScheme.surface,
+            dragHandle = { BottomSheetDefaults.DragHandle() }
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp)
+                    .verticalScroll(rememberScrollState())
+                    .padding(bottom = 36.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                when (activeBottomSheetCategory) {
+                    StreamlinedCategory.PROFILE_ACCOUNT -> {
+                        SubCategoryHeroHeader(
                         icon = Icons.Default.Person,
                         iconTint = TelegramBlue,
                         title = "Account & Profile",
@@ -1665,7 +1651,7 @@ fun BackupSettingsScreen(
                                     }
                                 }
                             }
-                            HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                            HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
                             SettingCategoryRow(Icons.Default.DeleteForever, "Delete Account & All Data", "Permanently delete account, settings & files", Color(0xFFEF4444)) {
                                 triggerHapticFeedback(context, haptic)
                                 dialogInitialTab = 1
@@ -1673,37 +1659,11 @@ fun BackupSettingsScreen(
                             }
                         }
                     }
-
-                    Spacer(modifier = Modifier.height(14.dp))
-
-                    Text("App Version & Update Center", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold, color = TelegramBlue))
-                    Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surface) {
-                        Column {
-                            val currentVersion = remember { try { context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "2.1.23" } catch (_: Exception) { "2.1.23" } }
-                            SettingCategoryRow(Icons.Default.Info, "App Info & Check for Updates", "Installed Version v$currentVersion • Tap to check updates", TelegramBlue) {
-                                triggerHapticFeedback(context, haptic)
-                                showAppInfoModal = true
-                            }
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(14.dp))
-
-                    Button(
-                        onClick = { triggerHapticFeedback(context, haptic); onLogout() },
-                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.errorContainer, contentColor = MaterialTheme.colorScheme.onErrorContainer),
-                        shape = RoundedCornerShape(14.dp),
-                        modifier = Modifier.fillMaxWidth().height(48.dp)
-                    ) {
-                        Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Log Out Account", fontWeight = FontWeight.Bold)
-                    }
                 }
+                else -> {}
             }
         }
     }
-    Spacer(modifier = Modifier.height(24.dp))
 }
 
     if (showCustomMaxLimitDialog) {
@@ -1753,7 +1713,6 @@ fun BackupSettingsScreen(
             }
         )
     }
-}
 }
 
 @Composable
