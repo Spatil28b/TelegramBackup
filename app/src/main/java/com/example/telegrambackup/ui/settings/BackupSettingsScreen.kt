@@ -765,33 +765,81 @@ fun BackupSettingsScreen(
 
                 // 👤 PROFILE & RECOVERY EMAIL
                 StreamlinedCategory.PROFILE_ACCOUNT -> {
-                    Text("Profile & Recovery Email Management", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
-                    Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surface) {
-                        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    SubCategoryHeroHeader(
+                        icon = Icons.Default.Person,
+                        iconTint = TelegramBlue,
+                        title = "Account & Profile",
+                        description = "Manage your cloud identity, display name, and recovery email inbox",
+                        badgeText = "Verified"
+                    )
+
+                    Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f), modifier = Modifier.fillMaxWidth()) {
+                        Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Box(modifier = Modifier.size(64.dp).clip(CircleShape).background(TelegramBlue), contentAlignment = Alignment.Center) {
+                                Box(modifier = Modifier.size(72.dp).clip(CircleShape).background(TelegramBlue), contentAlignment = Alignment.Center) {
                                     if (userAvatarUri != null) { AsyncImage(model = userAvatarUri, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()) }
                                     else { Text(userNameInput.take(1).uppercase(), style = MaterialTheme.typography.headlineMedium.copy(color = Color.White, fontWeight = FontWeight.Bold)) }
                                 }
-                                Spacer(modifier = Modifier.width(14.dp))
-                                Button(onClick = { avatarPickerLauncher.launch("image/*") }, colors = ButtonDefaults.buttonColors(containerColor = TelegramBlue), shape = RoundedCornerShape(10.dp)) {
-                                    Icon(Icons.Default.PhotoCamera, contentDescription = null, modifier = Modifier.size(16.dp)); Spacer(modifier = Modifier.width(6.dp)); Text("Change Photo")
+                                Spacer(modifier = Modifier.width(16.dp))
+                                Column {
+                                    Button(
+                                        onClick = { avatarPickerLauncher.launch("image/*") },
+                                        colors = ButtonDefaults.buttonColors(containerColor = TelegramBlue),
+                                        shape = RoundedCornerShape(12.dp)
+                                    ) {
+                                        Icon(Icons.Default.PhotoCamera, contentDescription = null, modifier = Modifier.size(16.dp))
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text("Change Photo")
+                                    }
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text("JPG, PNG or WEBP", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
                                 }
                             }
-                            OutlinedTextField(value = userNameInput, onValueChange = { userNameInput = it; onNameUpdated(it) }, label = { Text("Display Name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                            Text("Primary Email: $userEmail", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold))
-                            HorizontalDivider()
+
+                            OutlinedTextField(
+                                value = userNameInput,
+                                onValueChange = { userNameInput = it; onNameUpdated(it) },
+                                label = { Text("Display Name") },
+                                singleLine = true,
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = MaterialTheme.colorScheme.surface,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(modifier = Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Default.Email, contentDescription = null, tint = TelegramBlue, modifier = Modifier.size(20.dp))
+                                    Spacer(modifier = Modifier.width(10.dp))
+                                    Column {
+                                        Text("Primary Account Email", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+                                        Text(userEmail, style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold))
+                                    }
+                                }
+                            }
+
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
 
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Icon(Icons.Default.MarkEmailRead, contentDescription = null, tint = TelegramBlue, modifier = Modifier.size(20.dp))
-                                Spacer(modifier = Modifier.width(6.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
                                 Text("Secondary Recovery Email", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold))
                                 Spacer(modifier = Modifier.weight(1f))
                                 IconButton(onClick = { featureInfoTitle = "Recovery Email"; featureInfoDesc = "Used for account recovery, OTP alerts, and master key backups if primary email is inaccessible." }) {
                                     Icon(Icons.Default.Info, contentDescription = "Info", tint = MaterialTheme.colorScheme.outline, modifier = Modifier.size(18.dp))
                                 }
                             }
-                            OutlinedTextField(value = recoveryEmailInput, onValueChange = { recoveryEmailInput = it }, label = { Text("Recovery Email Address") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+
+                            OutlinedTextField(
+                                value = recoveryEmailInput,
+                                onValueChange = { recoveryEmailInput = it },
+                                label = { Text("Recovery Email Address") },
+                                singleLine = true,
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            )
 
                             if (!isRecoveryOtpSent) {
                                 Button(
@@ -804,37 +852,25 @@ fun BackupSettingsScreen(
                                             scope.launch { authRepo.requestOtp(recoveryEmailInput.trim(), "recovery_email"); Toast.makeText(context, "✉️ OTP sent successfully! Please check your Email Inbox or Spam folder.", Toast.LENGTH_LONG).show() }
                                         }
                                     },
-                                    colors = ButtonDefaults.buttonColors(containerColor = TelegramBlue), modifier = Modifier.fillMaxWidth()
+                                    colors = ButtonDefaults.buttonColors(containerColor = TelegramBlue),
+                                    shape = RoundedCornerShape(12.dp),
+                                    modifier = Modifier.fillMaxWidth().height(48.dp)
                                 ) { Icon(Icons.Default.VpnKey, contentDescription = null, modifier = Modifier.size(16.dp)); Spacer(modifier = Modifier.width(6.dp)); Text("Send OTP to Verify Recovery Email") }
                             } else {
-                                OutlinedTextField(value = recoveryEmailOtpInput, onValueChange = { recoveryEmailOtpInput = it }, label = { Text("Enter 6-Digit OTP Code") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                                OutlinedTextField(value = recoveryEmailOtpInput, onValueChange = { recoveryEmailOtpInput = it }, label = { Text("Enter 6-Digit OTP Code") }, singleLine = true, shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth())
                                 Button(
                                     onClick = {
                                         triggerHapticFeedback(context, haptic)
                                         if (recoveryEmailOtpInput.trim().length == 6) { prefs.recoveryEmail = recoveryEmailInput.trim(); isRecoveryOtpSent = false; Toast.makeText(context, "✓ Recovery Email Saved!", Toast.LENGTH_SHORT).show() }
                                         else { Toast.makeText(context, "Enter a valid 6-digit OTP!", Toast.LENGTH_SHORT).show() }
                                     },
-                                    colors = ButtonDefaults.buttonColors(containerColor = TelegramEmerald), modifier = Modifier.fillMaxWidth()
+                                    colors = ButtonDefaults.buttonColors(containerColor = TelegramEmerald),
+                                    shape = RoundedCornerShape(12.dp),
+                                    modifier = Modifier.fillMaxWidth().height(48.dp)
                                 ) { Text("Verify & Save Recovery Email") }
                             }
 
-                            HorizontalDivider()
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                                Text("Total Storage Filled", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold))
-                                Surface(shape = RoundedCornerShape(8.dp), color = TelegramBlue.copy(alpha = 0.15f)) {
-                                    Text(
-                                        "∞ Unlimited Cloud",
-                                        style = MaterialTheme.typography.labelSmall.copy(color = TelegramBlue, fontWeight = FontWeight.Bold),
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                                    )
-                                }
-                            }
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(formatFileSize(realDbTotalBytes), style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold, color = TelegramBlue))
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text("$realDbRecordCount Files Synced to Telegram Cloud", style = MaterialTheme.typography.labelSmall.copy(color = MaterialTheme.colorScheme.outline))
-
-                            Spacer(modifier = Modifier.height(8.dp))
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
 
                             OutlinedButton(
                                 onClick = {
@@ -846,14 +882,13 @@ fun BackupSettingsScreen(
                                         Toast.makeText(context, "✅ Restored $count previous backups from Cloud Database!", Toast.LENGTH_LONG).show()
                                     }
                                 },
-                                modifier = Modifier.fillMaxWidth()
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier.fillMaxWidth().height(48.dp)
                             ) {
                                 Icon(Icons.Default.CloudSync, contentDescription = null, modifier = Modifier.size(16.dp))
                                 Spacer(modifier = Modifier.width(6.dp))
-                                Text("🔄 Re-Sync Previous Backups from Cloud Database", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold))
+                                Text("Re-Sync Cloud Database Index", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold))
                             }
-
-                            Spacer(modifier = Modifier.height(12.dp))
 
                             // 💾 Save Profile Settings Button
                             Button(
@@ -875,13 +910,15 @@ fun BackupSettingsScreen(
                                             )
                                         )
                                     }
+                                    Toast.makeText(context, "✓ Profile updated successfully", Toast.LENGTH_SHORT).show()
                                 },
                                 colors = ButtonDefaults.buttonColors(containerColor = TelegramBlue),
-                                modifier = Modifier.fillMaxWidth()
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier.fillMaxWidth().height(50.dp)
                             ) {
                                 Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(18.dp))
                                 Spacer(modifier = Modifier.width(6.dp))
-                                Text("💾 Save Profile Settings to Database")
+                                Text("Save Profile Settings", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold))
                             }
                         }
                     }
@@ -889,21 +926,32 @@ fun BackupSettingsScreen(
 
                 // 🔑 TELEGRAM CREDENTIALS — OTP-locked after initial save
                 StreamlinedCategory.TELEGRAM_CREDENTIALS -> {
-                    Text("Telegram Cloud Credentials", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
+                    SubCategoryHeroHeader(
+                        icon = Icons.Default.Key,
+                        iconTint = TelegramEmerald,
+                        title = "Telegram Cloud Credentials",
+                        description = "Configure bot token and secure destination channel for infinite cloud storage",
+                        badgeText = if (prefs.credentialsVerified) "Connected" else "Unverified",
+                        badgeColor = if (prefs.credentialsVerified) TelegramEmerald else Color(0xFFF59E0B)
+                    )
 
                     // If credentials are already verified/saved, show lock banner
                     if (prefs.credentialsVerified && !isCredentialEditUnlocked) {
-                        Surface(shape = RoundedCornerShape(16.dp), color = Color(0xFFF59E0B).copy(alpha = 0.1f), modifier = Modifier.fillMaxWidth()) {
-                            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Surface(shape = RoundedCornerShape(18.dp), color = Color(0xFFF59E0B).copy(alpha = 0.1f), modifier = Modifier.fillMaxWidth()) {
+                            Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(Icons.Default.Lock, contentDescription = null, tint = Color(0xFFF59E0B), modifier = Modifier.size(20.dp))
-                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Icon(Icons.Default.Lock, contentDescription = null, tint = Color(0xFFF59E0B), modifier = Modifier.size(22.dp))
+                                    Spacer(modifier = Modifier.width(10.dp))
                                     Text("Credentials are Locked", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold, color = Color(0xFFF59E0B)))
                                 }
-                                Text("Your Telegram credentials are protected. To modify them, verify your identity with OTP.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
+                                Text("Your Telegram credentials are protected. To modify them, verify your identity with OTP.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
 
-                                Text("Current Bot Token: ${prefs.botToken.take(15)}...", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
-                                Text("Current Chat ID: ${prefs.chatId}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+                                Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surface, modifier = Modifier.fillMaxWidth()) {
+                                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        Text("Current Bot Token: ${prefs.botToken.take(15)}...", style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium))
+                                        Text("Current Chat ID: ${prefs.chatId}", style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium))
+                                    }
+                                }
 
                                 if (!isCredentialOtpSent) {
                                     Button(
@@ -916,14 +964,15 @@ fun BackupSettingsScreen(
                                             }
                                         },
                                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF59E0B)),
-                                        modifier = Modifier.fillMaxWidth()
+                                        shape = RoundedCornerShape(12.dp),
+                                        modifier = Modifier.fillMaxWidth().height(48.dp)
                                     ) {
                                         Icon(Icons.Default.VpnKey, contentDescription = null, modifier = Modifier.size(18.dp))
                                         Spacer(modifier = Modifier.width(6.dp))
                                         Text("Send OTP to Unlock Editing")
                                     }
                                 } else {
-                                    OutlinedTextField(value = credentialOtpInput, onValueChange = { credentialOtpInput = it }, label = { Text("Enter 6-Digit OTP Code") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                                    OutlinedTextField(value = credentialOtpInput, onValueChange = { credentialOtpInput = it }, label = { Text("Enter 6-Digit OTP Code") }, singleLine = true, shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth())
                                     Button(
                                         onClick = {
                                             triggerHapticFeedback(context, haptic)
@@ -932,23 +981,39 @@ fun BackupSettingsScreen(
                                                 Toast.makeText(context, "✓ Credentials unlocked for editing!", Toast.LENGTH_SHORT).show()
                                             } else { Toast.makeText(context, "Enter a valid 6-digit OTP!", Toast.LENGTH_SHORT).show() }
                                         },
-                                        colors = ButtonDefaults.buttonColors(containerColor = TelegramEmerald), modifier = Modifier.fillMaxWidth()
+                                        colors = ButtonDefaults.buttonColors(containerColor = TelegramEmerald),
+                                        shape = RoundedCornerShape(12.dp),
+                                        modifier = Modifier.fillMaxWidth().height(48.dp)
                                     ) { Text("Verify & Unlock") }
                                 }
                             }
                         }
                     } else {
                         // Editable credential fields
-                        Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surface) {
-                            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                                Text("Bot API Token", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold))
-                                OutlinedTextField(value = tempBotToken, onValueChange = { tempBotToken = it }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                        Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f), modifier = Modifier.fillMaxWidth()) {
+                            Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                                Text("Bot API Token", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold))
+                                OutlinedTextField(
+                                    value = tempBotToken,
+                                    onValueChange = { tempBotToken = it },
+                                    placeholder = { Text("123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11") },
+                                    singleLine = true,
+                                    shape = RoundedCornerShape(12.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                )
 
-                                Text("Channel Chat ID", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold))
-                                OutlinedTextField(value = tempChatId, onValueChange = { tempChatId = it }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                                Text("Channel Chat ID", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold))
+                                OutlinedTextField(
+                                    value = tempChatId,
+                                    onValueChange = { tempChatId = it },
+                                    placeholder = { Text("-1001234567890") },
+                                    singleLine = true,
+                                    shape = RoundedCornerShape(12.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                )
 
                                 // Instant verification
-                                 Button(
+                                Button(
                                     onClick = {
                                         triggerHapticFeedback(context, haptic)
                                         if (tempBotToken.trim().isEmpty()) { Toast.makeText(context, "Enter Bot Token first!", Toast.LENGTH_SHORT).show() }
@@ -962,7 +1027,9 @@ fun BackupSettingsScreen(
                                             }
                                         }
                                     },
-                                    colors = ButtonDefaults.buttonColors(containerColor = TelegramBlue), modifier = Modifier.fillMaxWidth()
+                                    colors = ButtonDefaults.buttonColors(containerColor = TelegramBlue),
+                                    shape = RoundedCornerShape(12.dp),
+                                    modifier = Modifier.fillMaxWidth().height(48.dp)
                                 ) {
                                     if (isVerifyingBotConnection) CircularProgressIndicator(color = Color.White, modifier = Modifier.size(18.dp))
                                     else { Icon(Icons.Default.VerifiedUser, contentDescription = null, modifier = Modifier.size(18.dp)); Spacer(modifier = Modifier.width(6.dp)); Text("Verify Credentials Now") }
@@ -1001,8 +1068,10 @@ fun BackupSettingsScreen(
                                         }
                                         Toast.makeText(context, "🚀 Setup Complete! Backup engine started in background.", Toast.LENGTH_LONG).show()
                                     },
-                                    colors = ButtonDefaults.buttonColors(containerColor = TelegramEmerald), modifier = Modifier.fillMaxWidth()
-                                ) { Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(18.dp)); Spacer(modifier = Modifier.width(6.dp)); Text("💾 Save Credentials & Start Backup Engine") }
+                                    colors = ButtonDefaults.buttonColors(containerColor = TelegramEmerald),
+                                    shape = RoundedCornerShape(12.dp),
+                                    modifier = Modifier.fillMaxWidth().height(50.dp)
+                                ) { Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(18.dp)); Spacer(modifier = Modifier.width(6.dp)); Text("Save Credentials & Start Engine", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold)) }
                             }
                         }
                     }
@@ -1010,7 +1079,14 @@ fun BackupSettingsScreen(
 
                 // ☁️ SMART BACKUP ENGINE — 3 Modes
                 StreamlinedCategory.BACKUP_SOURCES_RULES -> {
-                    Text("Smart Backup Engine", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
+                    SubCategoryHeroHeader(
+                        icon = Icons.Default.CloudSync,
+                        iconTint = TelegramBlue,
+                        title = "Smart Backup Engine",
+                        description = "Automate background file sync with custom schedules, filters, and size rules",
+                        badgeText = if (autoBackup) "Active" else "Paused",
+                        badgeColor = if (autoBackup) TelegramEmerald else Color(0xFFEF4444)
+                    )
 
                     // 🛑 Emergency Stop All Backups
                     Surface(shape = RoundedCornerShape(16.dp), color = if (stopAllBackup) Color(0xFFEF4444).copy(alpha = 0.1f) else MaterialTheme.colorScheme.surface) {
@@ -1269,24 +1345,30 @@ fun BackupSettingsScreen(
 
                 // 📡 NETWORK & PERFORMANCE
                 StreamlinedCategory.NETWORK_PERFORMANCE -> {
-                    Text("Network & Upload Performance", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
-                    Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surface) {
-                        Column {
+                    SubCategoryHeroHeader(
+                        icon = Icons.Default.Wifi,
+                        iconTint = Color(0xFF06B6D4),
+                        title = "Network & Upload Performance",
+                        description = "Wi-Fi restrictions, multi-thread acceleration, and upload bandwidth rules",
+                        badgeText = if (backupOverWifi) "Wi-Fi Only" else "Cellular + Wi-Fi",
+                        badgeColor = if (backupOverWifi) TelegramBlue else TelegramEmerald
+                    )
+
+                    Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f), modifier = Modifier.fillMaxWidth()) {
+                        Column(modifier = Modifier.padding(vertical = 6.dp)) {
                             SwitchRowWithInfo("Wi-Fi Only Upload", backupOverWifi, { backupOverWifi = it; prefs.wifiOnly = it }, { featureInfoTitle = "Wi-Fi Only"; featureInfoDesc = "Restricts background backups to Wi-Fi networks." })
-                            HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                            HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
                             SwitchRowWithInfo("Data Compression", enableDataCompression, { enableDataCompression = it; prefs.enableDataCompression = it }, { featureInfoTitle = "Data Compression"; featureInfoDesc = "Compresses files before upload to save bandwidth." })
-                            HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                            HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
                             OptionValueRowWithInfo("Upload Speed Limit", uploadSpeedLimit, {
                                 uploadSpeedLimit = when (uploadSpeedLimit) { "Unlimited" -> "2 MB/s"; "2 MB/s" -> "5 MB/s"; else -> "Unlimited" }
                             }, { featureInfoTitle = "Speed Limit"; featureInfoDesc = "Caps upload speed so background transfers don't slow other apps." })
-                            HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                            HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
                             OptionValueRowWithInfo("Upload Threads", "$uploadThreads Threads", {
                                 uploadThreads = if (uploadThreads >= 8) 1 else uploadThreads * 2
                             }, { featureInfoTitle = "Upload Threads"; featureInfoDesc = "Number of parallel upload streams." })
                         }
                     }
-
-                    Spacer(modifier = Modifier.height(12.dp))
 
                     // 💾 Save Network Settings Button
                     Button(
@@ -1306,38 +1388,47 @@ fun BackupSettingsScreen(
                                     )
                                 )
                             }
+                            Toast.makeText(context, "✓ Network preferences saved", Toast.LENGTH_SHORT).show()
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = TelegramBlue),
-                        modifier = Modifier.fillMaxWidth()
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth().height(50.dp)
                     ) {
                         Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text("💾 Save Network Settings to Database")
+                        Text("Save Network Settings", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold))
                     }
                 }
 
                 // 🔒 SECURITY & MASTER KEY
                 StreamlinedCategory.SECURITY_PRIVACY_RESTORE -> {
-                    Text("Security & Unique Master Key", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
-                    Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surface) {
-                        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                            SwitchRowWithInfo("Biometric Lock", biometricLock, { biometricLock = it; prefs.isBiometricEnabled = it }, { featureInfoTitle = "Biometric Lock"; featureInfoDesc = "Protects app with fingerprint or PIN." })
-                            HorizontalDivider()
+                    SubCategoryHeroHeader(
+                        icon = Icons.Default.Lock,
+                        iconTint = Color(0xFF8B5CF6),
+                        title = "Security & Encryption Key",
+                        description = "256-bit AES client-side encryption and biometric application lock",
+                        badgeText = "AES-256 GCM",
+                        badgeColor = TelegramEmerald
+                    )
+
+                    Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f), modifier = Modifier.fillMaxWidth()) {
+                        Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                            SwitchRowWithInfo("Biometric App Lock", biometricLock, { biometricLock = it; prefs.isBiometricEnabled = it }, { featureInfoTitle = "Biometric Lock"; featureInfoDesc = "Protects app with fingerprint or device PIN." })
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
 
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Default.Lock, contentDescription = null, tint = TelegramEmerald, modifier = Modifier.size(18.dp))
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("Permanent AES-256 Master Key", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold))
+                                Icon(Icons.Default.Key, contentDescription = null, tint = TelegramEmerald, modifier = Modifier.size(20.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Permanent AES-256 Master Key", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold))
                             }
-                            Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.fillMaxWidth()) {
-                                Column(modifier = Modifier.padding(12.dp)) {
+                            Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surface, modifier = Modifier.fillMaxWidth()) {
+                                Column(modifier = Modifier.padding(14.dp)) {
                                     Text(uniqueMasterKey, style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold, color = TelegramEmerald))
                                     Spacer(modifier = Modifier.height(4.dp))
                                     Text("🔒 IMMUTABLE: This key is generated once. Changing it would break decryption of existing backups.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
                                 }
                             }
 
-                            // FIXED: Actually sends encryption key via /api/auth/send-key
                             Button(
                                 onClick = {
                                     triggerHapticFeedback(context, haptic)
@@ -1351,26 +1442,26 @@ fun BackupSettingsScreen(
                                         }
                                     }
                                 },
-                                colors = ButtonDefaults.buttonColors(containerColor = TelegramBlue), modifier = Modifier.fillMaxWidth()
+                                colors = ButtonDefaults.buttonColors(containerColor = TelegramBlue),
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier.fillMaxWidth().height(48.dp)
                             ) { Icon(Icons.Default.Email, contentDescription = null, modifier = Modifier.size(18.dp)); Spacer(modifier = Modifier.width(6.dp)); Text("Email Encryption Key to Me") }
 
-                            HorizontalDivider()
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
                             OptionValueRowWithInfo("Encryption Standard", "AES-256 GCM Active", null, { featureInfoTitle = "Encryption"; featureInfoDesc = "Files are encrypted locally before transmission to Telegram." })
-                            HorizontalDivider()
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
 
-                            // Launch Required Permission Setup Wizard Modal Button
                             OutlinedButton(
                                 onClick = { showPermissionWizardModal = true },
-                                modifier = Modifier.fillMaxWidth()
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier.fillMaxWidth().height(48.dp)
                             ) {
                                 Icon(Icons.Default.Shield, contentDescription = null, modifier = Modifier.size(18.dp))
                                 Spacer(modifier = Modifier.width(6.dp))
-                                Text("🛡️ Check & Grant Backup Permissions", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, color = TelegramBlue))
+                                Text("Check & Grant Permissions", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold, color = TelegramBlue))
                             }
                         }
                     }
-
-                    Spacer(modifier = Modifier.height(12.dp))
 
                     // 💾 Save Security Settings Button
                     Button(
@@ -1387,32 +1478,39 @@ fun BackupSettingsScreen(
                                     )
                                 )
                             }
+                            Toast.makeText(context, "✓ Security preferences saved", Toast.LENGTH_SHORT).show()
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = TelegramEmerald),
-                        modifier = Modifier.fillMaxWidth()
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth().height(50.dp)
                     ) {
                         Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text("💾 Save Security Settings to Database")
+                        Text("Save Security Settings", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold))
                     }
                 }
 
                 // 🎨 APPEARANCE
                 StreamlinedCategory.APPEARANCE_REGION -> {
-                    Text("App Theme", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
-                    Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surface) {
+                    SubCategoryHeroHeader(
+                        icon = Icons.Default.Palette,
+                        iconTint = Color(0xFFEC4899),
+                        title = "Appearance & Theme",
+                        description = "Select your preferred color mode for dashboard, explorer, and menus",
+                        badgeText = when (selectedTheme) { 1 -> "Light"; 2 -> "Dark"; else -> "System" }
+                    )
+
+                    Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f), modifier = Modifier.fillMaxWidth()) {
                         Column {
                             listOf("System Default", "Light Mode", "Dark Mode").forEachIndexed { index, label ->
-                                Row(modifier = Modifier.fillMaxWidth().clickable { selectedTheme = index; prefs.appTheme = index; onThemeChanged(index) }.padding(14.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                                    Text(label, style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium))
+                                Row(modifier = Modifier.fillMaxWidth().clickable { selectedTheme = index; prefs.appTheme = index; onThemeChanged(index) }.padding(16.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                    Text(label, style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium))
                                     RadioButton(selected = selectedTheme == index, onClick = { selectedTheme = index; prefs.appTheme = index; onThemeChanged(index) })
                                 }
-                                if (index < 2) HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                                if (index < 2) HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
                             }
                         }
                     }
-
-                    Spacer(modifier = Modifier.height(12.dp))
 
                     // 💾 Save Appearance Settings Button
                     Button(
@@ -1429,22 +1527,31 @@ fun BackupSettingsScreen(
                                     )
                                 )
                             }
+                            Toast.makeText(context, "✓ Appearance preferences saved", Toast.LENGTH_SHORT).show()
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = TelegramBlue),
-                        modifier = Modifier.fillMaxWidth()
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth().height(50.dp)
                     ) {
                         Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text("💾 Save Appearance Settings to Database")
+                        Text("Save Appearance Settings", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold))
                     }
                 }
 
                 // 🚪 DANGER ZONE
                 StreamlinedCategory.DANGER_ZONE -> {
-                    Text("Danger Zone & Account Actions", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold, color = Color(0xFFEF4444)))
+                    SubCategoryHeroHeader(
+                        icon = Icons.Default.DeleteForever,
+                        iconTint = Color(0xFFEF4444),
+                        title = "Data Management & Reset",
+                        description = "Configure soft-delete retention and account purge operations",
+                        badgeText = "Danger",
+                        badgeColor = Color(0xFFEF4444)
+                    )
 
                     // Trash Auto-Clean Setting
-                    Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surface) {
+                    Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f), modifier = Modifier.fillMaxWidth()) {
                         Column {
                             OptionValueRowWithInfo(
                                 "Trash Auto-Clean Policy",
@@ -1460,8 +1567,6 @@ fun BackupSettingsScreen(
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(12.dp))
-
                     // 💾 Save Danger Zone Policy Button
                     Button(
                         onClick = {
@@ -1476,13 +1581,15 @@ fun BackupSettingsScreen(
                                     )
                                 )
                             }
+                            Toast.makeText(context, "✓ Policy saved", Toast.LENGTH_SHORT).show()
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = TelegramEmerald),
-                        modifier = Modifier.fillMaxWidth()
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth().height(50.dp)
                     ) {
                         Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text("💾 Save Danger Zone Policy to Database")
+                        Text("Save Danger Zone Policy", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold))
                     }
 
                     Spacer(modifier = Modifier.height(8.dp))
@@ -1797,5 +1904,57 @@ private fun SwitchRowWithInfo(title: String, checked: Boolean, onCheckedChange: 
             }
         }
         Switch(checked = checked, onCheckedChange = onCheckedChange)
+    }
+}
+
+@Composable
+private fun SubCategoryHeroHeader(
+    icon: ImageVector,
+    iconTint: Color,
+    title: String,
+    description: String,
+    badgeText: String? = null,
+    badgeColor: Color = TelegramBlue
+) {
+    Surface(
+        shape = RoundedCornerShape(20.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier.padding(18.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(52.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(iconTint.copy(alpha = 0.15f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(icon, contentDescription = null, tint = iconTint, modifier = Modifier.size(26.dp))
+            }
+            Spacer(modifier = Modifier.width(16.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(title, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
+                    if (badgeText != null) {
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = badgeColor.copy(alpha = 0.12f)
+                        ) {
+                            Text(
+                                badgeText,
+                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, color = badgeColor, fontSize = 11.sp),
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                            )
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
+            }
+        }
     }
 }
