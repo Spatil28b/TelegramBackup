@@ -3,10 +3,8 @@ package com.example.telegrambackup.ui.settings
 import android.content.Context
 import android.widget.Toast
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -18,7 +16,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.telegrambackup.data.AppDatabase
@@ -27,14 +24,11 @@ import com.example.telegrambackup.network.ServerApi
 import com.example.telegrambackup.theme.TelegramBlue
 import com.example.telegrambackup.utils.AppPrefs
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 private val DangerRed = Color(0xFFEF4444)
 private val WarningAmber = Color(0xFFF59E0B)
-private val DarkCardBg = Color(0xFF0F172A)
 private val SurfaceDark = Color(0xFF1E293B)
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -55,7 +49,6 @@ fun ClearDataAccountDialog(
     var purgeMode by remember { mutableStateOf("ALL") } // ALL, DRIVE_ONLY, AUTO_BACKUP_ONLY, OLDER_THAN_DAYS
     var selectedOlderDays by remember { mutableIntStateOf(30) }
     var purgeTelegramMessages by remember { mutableStateOf(true) }
-    var deepCleanTelegramChat by remember { mutableStateOf(false) }
     var clearLocalDb by remember { mutableStateOf(true) }
 
     // Option 2 States (Delete Account)
@@ -74,7 +67,7 @@ fun ClearDataAccountDialog(
                 com.example.telegrambackup.utils.DynamicProcessTracker.startProcess(
                     title = if (selectedTab == 0) "Clearing File Data" else "Deleting Account",
                     subtitle = statusMessage,
-                    icon = Icons.Default.CleaningServices
+                    icon = Icons.Default.DeleteSweep
                 )
             }
             com.example.telegrambackup.utils.DynamicProcessTracker.updateProgress(0.5f, statusMessage)
@@ -170,7 +163,7 @@ fun ClearDataAccountDialog(
                 if (selectedTab == 0) {
                     // OPTION 1: CLEAR FILE DATA ONLY (KEEP ACCOUNT ACTIVE)
                     Text(
-                        "Custom Data Filter Mode:",
+                        "Select Data to Clear:",
                         style = MaterialTheme.typography.labelSmall.copy(color = Color.White.copy(alpha = 0.7f)),
                         modifier = Modifier.padding(bottom = 6.dp)
                     )
@@ -191,7 +184,7 @@ fun ClearDataAccountDialog(
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Column {
-                            Text("Delete ALL Backed-Up Files & Drive Items", style = MaterialTheme.typography.bodySmall.copy(color = Color.White, fontWeight = FontWeight.Bold))
+                            Text("All Backed-Up Files & Drive Items", style = MaterialTheme.typography.bodySmall.copy(color = Color.White, fontWeight = FontWeight.Bold))
                             Text("Full wipe of all file records", style = MaterialTheme.typography.labelSmall.copy(color = Color.White.copy(alpha = 0.5f)))
                         }
                     }
@@ -212,8 +205,8 @@ fun ClearDataAccountDialog(
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Column {
-                            Text("Delete ONLY Cloud Drive Uploads", style = MaterialTheme.typography.bodySmall.copy(color = Color.White, fontWeight = FontWeight.Bold))
-                            Text("Leaves auto storage backups untouched", style = MaterialTheme.typography.labelSmall.copy(color = Color.White.copy(alpha = 0.5f)))
+                            Text("Cloud Drive Uploads Only", style = MaterialTheme.typography.bodySmall.copy(color = Color.White, fontWeight = FontWeight.Bold))
+                            Text("Leaves auto backups untouched", style = MaterialTheme.typography.labelSmall.copy(color = Color.White.copy(alpha = 0.5f)))
                         }
                     }
 
@@ -233,7 +226,7 @@ fun ClearDataAccountDialog(
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Column {
-                            Text("Delete ONLY Automatic Storage Backups", style = MaterialTheme.typography.bodySmall.copy(color = Color.White, fontWeight = FontWeight.Bold))
+                            Text("Automatic Storage Backups Only", style = MaterialTheme.typography.bodySmall.copy(color = Color.White, fontWeight = FontWeight.Bold))
                             Text("Leaves Cloud Drive items untouched", style = MaterialTheme.typography.labelSmall.copy(color = Color.White.copy(alpha = 0.5f)))
                         }
                     }
@@ -254,7 +247,7 @@ fun ClearDataAccountDialog(
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Column {
-                            Text("Delete Files Older Than $selectedOlderDays Days", style = MaterialTheme.typography.bodySmall.copy(color = Color.White, fontWeight = FontWeight.Bold))
+                            Text("Files Older Than $selectedOlderDays Days", style = MaterialTheme.typography.bodySmall.copy(color = Color.White, fontWeight = FontWeight.Bold))
                             if (purgeMode == "OLDER_THAN_DAYS") {
                                 Row(
                                     horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -278,7 +271,7 @@ fun ClearDataAccountDialog(
 
                     HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), color = Color.White.copy(alpha = 0.1f))
 
-                    // Customization Checkboxes
+                    // Working Action Options
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier.fillMaxWidth().clickable { purgeTelegramMessages = !purgeTelegramMessages }
@@ -289,23 +282,7 @@ fun ClearDataAccountDialog(
                             colors = CheckboxDefaults.colors(checkedColor = WarningAmber)
                         )
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("Purge messages from Telegram Cloud chat", style = MaterialTheme.typography.bodySmall.copy(color = Color.White))
-                    }
-
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.fillMaxWidth().clickable { deepCleanTelegramChat = !deepCleanTelegramChat }
-                    ) {
-                        Checkbox(
-                            checked = deepCleanTelegramChat,
-                            onCheckedChange = { deepCleanTelegramChat = it },
-                            colors = CheckboxDefaults.colors(checkedColor = WarningAmber)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Column {
-                            Text("🔥 Deep Scan & Purge Entire Telegram Chat Storage", style = MaterialTheme.typography.bodySmall.copy(color = WarningAmber, fontWeight = FontWeight.Bold))
-                            Text("Deletes unlisted & orphaned files not visible in app", style = MaterialTheme.typography.labelSmall.copy(color = Color.White.copy(alpha = 0.5f)))
-                        }
+                        Text("Delete files from Telegram Cloud chat", style = MaterialTheme.typography.bodySmall.copy(color = Color.White))
                     }
 
                     Row(
@@ -318,7 +295,7 @@ fun ClearDataAccountDialog(
                             colors = CheckboxDefaults.colors(checkedColor = WarningAmber)
                         )
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("Clear matching local phone database records", style = MaterialTheme.typography.bodySmall.copy(color = Color.White))
+                        Text("Clear local app database & cache", style = MaterialTheme.typography.bodySmall.copy(color = Color.White))
                     }
 
                 } else {
@@ -332,13 +309,12 @@ fun ClearDataAccountDialog(
                             Icon(Icons.Default.Warning, contentDescription = null, tint = DangerRed, modifier = Modifier.size(20.dp))
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                "Permanent Deletion: Your user account, cloud settings, saved credentials, and all backed-up files will be deleted from PostgreSQL server & Telegram Cloud.",
+                                "Permanent Deletion: Your user account, cloud settings, saved credentials, and all backed-up files will be permanently wiped.",
                                 style = MaterialTheme.typography.bodySmall.copy(color = Color.White.copy(alpha = 0.9f))
                             )
                         }
                     }
 
-                    // Account Customizations
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier.fillMaxWidth().clickable { accountPurgeTelegram = !accountPurgeTelegram }
@@ -349,23 +325,7 @@ fun ClearDataAccountDialog(
                             colors = CheckboxDefaults.colors(checkedColor = DangerRed)
                         )
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("Purge all user files from Telegram Bot chat", style = MaterialTheme.typography.bodySmall.copy(color = Color.White))
-                    }
-
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.fillMaxWidth().clickable { deepCleanTelegramChat = !deepCleanTelegramChat }
-                    ) {
-                        Checkbox(
-                            checked = deepCleanTelegramChat,
-                            onCheckedChange = { deepCleanTelegramChat = it },
-                            colors = CheckboxDefaults.colors(checkedColor = DangerRed)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Column {
-                            Text("🔥 Deep Scan & Purge Entire Telegram Chat Storage", style = MaterialTheme.typography.bodySmall.copy(color = DangerRed, fontWeight = FontWeight.Bold))
-                            Text("Deletes all past uploads & unlisted files from Telegram", style = MaterialTheme.typography.labelSmall.copy(color = Color.White.copy(alpha = 0.5f)))
-                        }
+                        Text("Delete all files from Telegram Cloud chat", style = MaterialTheme.typography.bodySmall.copy(color = Color.White))
                     }
 
                     Spacer(modifier = Modifier.height(8.dp))
@@ -430,29 +390,12 @@ fun ClearDataAccountDialog(
                                 val serverMsgIds = result.second
                                 val allMsgIds = (localMsgIds + serverMsgIds).toSet().toList()
 
-                                var deepDeletedCount = 0
-                                val shouldRunDeepPurge = purgeTelegramMessages || deepCleanTelegramChat
-                                if (shouldRunDeepPurge && botToken.isNotEmpty() && chatId.isNotEmpty()) {
-                                    if (allMsgIds.isNotEmpty()) {
-                                        withContext(Dispatchers.Main) { statusMessage = "Purging ${allMsgIds.size} file messages from Telegram Cloud..." }
-                                        val chunks = allMsgIds.chunked(20)
-                                        for (chunk in chunks) {
-                                            ServerApi().deleteTelegramMessagesBatch(botToken, chatId, chunk)
-                                        }
+                                if (purgeTelegramMessages && botToken.isNotEmpty() && chatId.isNotEmpty() && allMsgIds.isNotEmpty()) {
+                                    withContext(Dispatchers.Main) { statusMessage = "Deleting ${allMsgIds.size} files from Telegram..." }
+                                    val chunks = allMsgIds.chunked(20)
+                                    for (chunk in chunks) {
+                                        ServerApi().deleteTelegramMessagesBatch(botToken, chatId, chunk)
                                     }
-
-                                    // Deep Clean scan of entire Telegram Bot chat range to catch any unindexed or orphaned files
-                                    withContext(Dispatchers.Main) { statusMessage = "Deep scanning & purging Telegram Chat storage..." }
-                                    val res = ServerApi().deepPurgeTelegramChatStorage(
-                                        botToken,
-                                        chatId,
-                                        onProgress = { currentChunk, totalChunks, count ->
-                                            scope.launch(Dispatchers.Main) {
-                                                statusMessage = "Deep purging Telegram... ($count items purged, batch $currentChunk/$totalChunks)"
-                                            }
-                                        }
-                                    )
-                                    deepDeletedCount = res.first
                                 }
 
                                 if (clearLocalDb) {
@@ -468,7 +411,7 @@ fun ClearDataAccountDialog(
 
                                 withContext(Dispatchers.Main) {
                                     isProcessing = false
-                                    Toast.makeText(context, "✅ Data cleared & Telegram chat deep cleaned!", Toast.LENGTH_LONG).show()
+                                    Toast.makeText(context, "✅ Selected data cleared successfully!", Toast.LENGTH_LONG).show()
                                     onDismiss()
                                 }
                             } catch (e: Exception) {
@@ -495,33 +438,17 @@ fun ClearDataAccountDialog(
                                 val localFiles = try { db.uploadedFileDao().getAllFiles() } catch (_: Exception) { emptyList() }
                                 val localMsgIds = localFiles.mapNotNull { if (it.messageId > 0) it.messageId else null }
 
-                                withContext(Dispatchers.Main) { statusMessage = "Deleting account & cloud database..." }
+                                withContext(Dispatchers.Main) { statusMessage = "Deleting account from server..." }
                                 val result = ServerApi().deleteAccount(prefs.serverUrl, email)
                                 val serverMsgIds = result.second
                                 val allMsgIds = (localMsgIds + serverMsgIds).toSet().toList()
 
                                 if (accountPurgeTelegram && botToken.isNotEmpty() && chatId.isNotEmpty() && allMsgIds.isNotEmpty()) {
-                                    withContext(Dispatchers.Main) { statusMessage = "Purging ${allMsgIds.size} files from Telegram Cloud..." }
+                                    withContext(Dispatchers.Main) { statusMessage = "Purging ${allMsgIds.size} files from Telegram..." }
                                     val chunks = allMsgIds.chunked(20)
                                     for (chunk in chunks) {
                                         ServerApi().deleteTelegramMessagesBatch(botToken, chatId, chunk)
                                     }
-                                }
-
-                                // Deep Clean scan of entire Telegram Bot chat range
-                                var deepDeletedCount = 0
-                                if (deepCleanTelegramChat && botToken.isNotEmpty() && chatId.isNotEmpty()) {
-                                    withContext(Dispatchers.Main) { statusMessage = "Deep scanning & purging Telegram Chat storage..." }
-                                    val res = ServerApi().deepPurgeTelegramChatStorage(
-                                        botToken,
-                                        chatId,
-                                        onProgress = { currentChunk, totalChunks, count ->
-                                            scope.launch(Dispatchers.Main) {
-                                                statusMessage = "Deep purging Telegram... ($count items purged, batch $currentChunk/$totalChunks)"
-                                            }
-                                        }
-                                    )
-                                    deepDeletedCount = res.first
                                 }
 
                                 // Wipe local Room DB & session
@@ -530,7 +457,7 @@ fun ClearDataAccountDialog(
 
                                 withContext(Dispatchers.Main) {
                                     isProcessing = false
-                                    Toast.makeText(context, "👋 Account, data, & Telegram chat storage deleted permanently.", Toast.LENGTH_LONG).show()
+                                    Toast.makeText(context, "👋 Account and data deleted permanently.", Toast.LENGTH_LONG).show()
                                     onLogoutCompleted()
                                     onDismiss()
                                 }

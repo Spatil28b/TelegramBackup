@@ -782,7 +782,7 @@ fun BackupSettingsScreen(
                             color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.40f)
                         ) {
                             Column {
-                                val currentVersion = remember { try { context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "2.1.36" } catch (_: Exception) { "2.1.36" } }
+                                val currentVersion = remember { try { context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "2.1.37" } catch (_: Exception) { "2.1.37" } }
                                 MinimalSettingRow(
                                     icon = Icons.Default.SystemUpdate,
                                     title = "About & Updates",
@@ -1559,61 +1559,13 @@ fun BackupSettingsScreen(
 
                     Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surface) {
                         Column {
-                            SettingCategoryRow(Icons.Default.DeleteSweep, "Clear File Data Options", "Custom filters (Drive, Auto-Backup)", Color(0xFFF59E0B)) {
+                            SettingCategoryRow(Icons.Default.DeleteSweep, "Clear File Data Options", "Custom wipe filters (Drive, Auto-Backup, Old Files)", Color(0xFFF59E0B)) {
                                 triggerHapticFeedback(context, haptic)
                                 dialogInitialTab = 0
                                 showClearDataAccountDialog = true
                             }
                             HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
-                            SettingCategoryRow(Icons.Default.CleaningServices, "Deep Clean Telegram Storage", "Purges unlisted orphaned Telegram files", Color(0xFF3B82F6)) {
-                                triggerHapticFeedback(context, haptic)
-                                val token = prefs.botToken
-                                val chat = prefs.chatId
-                                if (token.isEmpty() || chat.isEmpty()) {
-                                    Toast.makeText(context, "Telegram Bot Token & Chat ID required!", Toast.LENGTH_SHORT).show()
-                                } else {
-                                    com.example.telegrambackup.utils.DynamicProcessTracker.startProcess(
-                                        title = "Deep Clean Telegram Chat",
-                                        subtitle = "Inspecting Telegram channel & permissions...",
-                                        icon = Icons.Default.CleaningServices
-                                    )
-                                    scope.launch(Dispatchers.IO) {
-                                        val serverApi = ServerApi()
-                                        val chatInfo = serverApi.getTelegramChatInfo(token, chat)
-                                        if (!chatInfo.success) {
-                                            withContext(Dispatchers.Main) {
-                                                com.example.telegrambackup.utils.DynamicProcessTracker.finishProcess()
-                                                Toast.makeText(context, "Telegram Error: ${chatInfo.errorMessage}", Toast.LENGTH_LONG).show()
-                                            }
-                                            return@launch
-                                        }
-                                        val db = com.example.telegrambackup.data.AppDatabase.getDatabase(context)
-                                        val max1 = db.uploadedFileDao().getMaxMessageId() ?: 0L
-                                        val max2 = db.chunkProgressDao().getMaxMessageId() ?: 0L
-                                        val knownMax = maxOf(max1, max2)
-                                        val targetChatId = if (chatInfo.canonicalId != null) chatInfo.canonicalId.toString() else chat
-                                        val result = serverApi.deepPurgeTelegramChatStorage(
-                                            token,
-                                            targetChatId,
-                                            knownMaxId = knownMax,
-                                            onProgress = { currentBatch, totalBatches, count ->
-                                                val fraction = if (totalBatches > 0) currentBatch.toFloat() / totalBatches.toFloat() else 0f
-                                                com.example.telegrambackup.utils.DynamicProcessTracker.updateProgress(
-                                                    progress = fraction,
-                                                    subtitle = "Scanning: $count purged ($currentBatch/$totalBatches)"
-                                                )
-                                            }
-                                        )
-                                        withContext(Dispatchers.Main) {
-                                            com.example.telegrambackup.utils.DynamicProcessTracker.finishProcess()
-                                            if (result.first > 0) Toast.makeText(context, "✅ Deleted ${result.first} messages from channel", Toast.LENGTH_LONG).show()
-                                            else Toast.makeText(context, "Channel is already clean", Toast.LENGTH_SHORT).show()
-                                        }
-                                    }
-                                }
-                            }
-                            HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
-                            SettingCategoryRow(Icons.Default.DeleteForever, "Delete Account & All Data", "Permanently wipe account, settings & files", Color(0xFFEF4444)) {
+                            SettingCategoryRow(Icons.Default.DeleteForever, "Delete Account & All Data", "Permanently wipe account, settings & cloud files", Color(0xFFEF4444)) {
                                 triggerHapticFeedback(context, haptic)
                                 dialogInitialTab = 1
                                 showClearDataAccountDialog = true
