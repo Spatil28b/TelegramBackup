@@ -389,6 +389,10 @@ class ServerApi {
      * Syncs a newly backed up file record (filename, Telegram fileId, size, path, timestamp)
      * to the user's cloud PostgreSQL database.
      */
+    /**
+     * Syncs a newly backed up file record (filename, Telegram fileId, size, path, timestamp)
+     * to the user's cloud PostgreSQL database.
+     */
     suspend fun indexFile(
         serverUrl: String,
         email: String,
@@ -424,11 +428,61 @@ class ServerApi {
     }
 
     /**
-     * Retrieves the complete list of backed up files from the user's cloud database account.
+     * Batch-syncs a list of file records to the user's cloud PostgreSQL database in a single network request.
      */
-    suspend fun listFiles(serverUrl: String, email: String): List<UploadedFile> = withContext(Dispatchers.IO) {
+    suspend fun indexFilesBatch(
+        serverUrl: String,
+        email: String,
+        files: List<UploadedFile>
+    ): Result<Int> = withContext(Dispatchers.IO) {
+        if (files.isEmpty() || email.isBlank()) return@withContext Result.success(0)
         try {
-            val url = cleanUrl(serverUrl, "/api/files/list?email=${email.trim().lowercase()}&limit=10000")
+            val url = cleanUrl(serverUrl, "/api/files/index-batch")
+            var totalSynced = 0
+
+            // Send in batches of 400 to maintain optimal payload sizes
+            for (batch in files.chunked(400)) {
+                val array = org.json.JSONArray()
+                for (f in batch) {
+                    val obj = JSONObject().apply {
+                        put("fileName", f.fileName)
+                        put("telegramFileId", f.telegramFileId)
+                        put("size", f.size)
+                        put("path", f.path)
+                        put("timestamp", f.timestamp)
+                        put("messageId", f.messageId)
+                        put("isDriveUpload", f.isDriveUpload)
+                    }
+                    array.put(obj)
+                }
+
+                val json = JSONObject().apply {
+                    put("email", email.trim().lowercase())
+                    put("files", array)
+                }
+
+                val requestBody = json.toString().toRequestBody("application/json".toMediaTypeOrNull())
+                val request = Request.Builder().url(url).post(requestBody).build()
+                val response = client.newCall(request).execute()
+                if (response.isSuccessful) {
+                    totalSynced += batch.size
+                }
+            }
+            return@withContext Result.success(totalSynced)
+        } catch (e: Exception) {
+            Log.e("ServerApi", "indexFilesBatch error", e)
+            return@withContext Result.failure(e)
+        }
+    }
+
+    /**
+     * Retrieves the list of backed up files from the user's cloud database account with delta sync support.
+     * @param since Optional timestamp filter in ms; if > 0, fetches only records added/modified after this time.
+     */
+    suspend fun listFiles(serverUrl: String, email: String, since: Long = 0L): List<UploadedFile> = withContext(Dispatchers.IO) {
+        try {
+            val sinceParam = if (since > 0L) "&since=$since" else ""
+            val url = cleanUrl(serverUrl, "/api/files/list?email=${email.trim().lowercase()}&limit=10000$sinceParam")
             val request = Request.Builder().url(url).get().build()
             val response = client.newCall(request).execute()
             val body = response.body?.string() ?: ""
@@ -441,6 +495,12 @@ class ServerApi {
                     val obj = array.getJSONObject(i)
                     val tgId = obj.optString("telegramFileId", "")
                     val pathStr = obj.optString("path", "")
+                    var fName = obj.optString("fileName", "")
+
+                    if (fName.isBlank() && pathStr.isNotBlank()) {
+                        fName = pathStr.substringAfterLast('/')
+                    }
+
                     val isDrive = obj.optBoolean("isDriveUpload", false) ||
                                  obj.optBoolean("is_drive_upload", false) ||
                                  tgId == "DIR_MARKER" ||
@@ -448,7 +508,7 @@ class ServerApi {
 
                     val entity = UploadedFile(
                         pathStr,
-                        obj.optString("fileName", ""),
+                        fName,
                         tgId,
                         obj.optLong("timestamp", System.currentTimeMillis()),
                         obj.optLong("size", 0L),
@@ -560,7 +620,8 @@ class ServerApi {
             if (!body.trim().startsWith("{")) return@withContext null
             val jsonRes = JSONObject(body)
             if (response.isSuccessful && jsonRes.optBoolean("success")) {
-                return@withContext jsonRes.optString("settings", "")
+                val manifest = jsonRes.optString("manifest", "").ifEmpty { jsonRes.optString("settings", "") }
+                return@withContext if (manifest.isNotEmpty()) manifest else null
             }
         } catch (e: Exception) {
             Log.e("ServerApi", "getUserSettings error", e)
@@ -818,8 +879,8 @@ class ServerApi {
         chatId: String,
         file: com.example.telegrambackup.data.UploadedFile
     ): Boolean = withContext(Dispatchers.IO) {
-        val cleanToken = botToken.trim()
-        val cleanChatId = chatId.trim()
+        val cleanToken = file.botTokenUsed.ifBlank { botToken }.trim()
+        val cleanChatId = file.channelId.ifBlank { chatId }.trim()
 
         val msgIds = mutableSetOf<Long>()
         if (file.messageId > 0) {
@@ -837,6 +898,15 @@ class ServerApi {
             chunks.forEach { chunk ->
                 if (chunk.messageId > 0) {
                     msgIds.add(chunk.messageId)
+                }
+            }
+            if (msgIds.size <= 1) {
+                // Fallback: check all chunks in case path normalization differed
+                val allChunks = db.chunkProgressDao().getAllChunks()
+                allChunks.filter { it.sourcePath.endsWith(file.fileName) || it.sourcePath.equals(file.path, ignoreCase = true) }.forEach { chunk ->
+                    if (chunk.messageId > 0) {
+                        msgIds.add(chunk.messageId)
+                    }
                 }
             }
         } catch (e: Exception) {
@@ -875,6 +945,18 @@ class ServerApi {
             }
             Log.d("ServerApi", "purgeFileComplete result for ${file.fileName}: $actuallyDeletedCount ACTUALLY deleted, permissionBlocked=$permissionBlocked, totalMsgIds=${idList.size}")
         }
+
+        // Clean local preview cache
+        try {
+            val previewCacheDir = java.io.File(context.cacheDir, "cloud_preview_cache")
+            if (previewCacheDir.exists()) {
+                val safeName = file.fileName.replace(Regex("[^a-zA-Z0-9._-]"), "_")
+                previewCacheDir.listFiles()?.filter { 
+                    it.name.contains(file.telegramFileId.hashCode().toString()) || 
+                    (safeName.isNotEmpty() && it.name.endsWith(safeName)) 
+                }?.forEach { it.delete() }
+            }
+        } catch (_: Exception) {}
 
         // CRITICAL: Only clear Room DB records if Telegram deletion was NOT blocked by permissions
         // If permission was denied, keep DB records so files appear in the app (they still exist in channel)
@@ -1248,5 +1330,61 @@ class ServerApi {
 
         Log.d("ServerApi", "deepPurge COMPLETE: $totalDeleted unlisted messages ACTUALLY deleted from Telegram out of $totalScanned scanned IDs")
         return@withContext Pair(totalDeleted, totalScanned)
+    }
+
+    /**
+     * Sends a text message to a Telegram chat / channel.
+     */
+    suspend fun sendTelegramMessage(botToken: String, chatId: String, text: String): Long? = withContext(Dispatchers.IO) {
+        try {
+            val url = "https://api.telegram.org/bot$botToken/sendMessage"
+            val form = okhttp3.FormBody.Builder()
+                .add("chat_id", chatId.trim())
+                .add("text", text)
+                .build()
+            val request = Request.Builder().url(url).post(form).build()
+            val response = client.newCall(request).execute()
+            val body = response.body?.string() ?: ""
+            if (response.isSuccessful) {
+                val json = JSONObject(body)
+                if (json.optBoolean("ok")) {
+                    return@withContext json.optJSONObject("result")?.optLong("message_id")
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("ServerApi", "sendTelegramMessage error", e)
+        }
+        return@withContext null
+    }
+
+    /**
+     * Queries recent messages from a Telegram channel / bot updates.
+     */
+    suspend fun getRecentChannelMessages(botToken: String, chatId: String, limit: Int = 30): List<JSONObject> = withContext(Dispatchers.IO) {
+        val list = mutableListOf<JSONObject>()
+        try {
+            val url = "https://api.telegram.org/bot$botToken/getUpdates?limit=${limit.coerceIn(1, 100)}"
+            val request = Request.Builder().url(url).get().build()
+            val response = client.newCall(request).execute()
+            val body = response.body?.string() ?: ""
+            if (response.isSuccessful) {
+                val json = JSONObject(body)
+                if (json.optBoolean("ok")) {
+                    val results = json.optJSONArray("result") ?: JSONArray()
+                    for (i in 0 until results.length()) {
+                        val update = results.optJSONObject(i) ?: continue
+                        val msg = update.optJSONObject("channel_post") 
+                            ?: update.optJSONObject("message")
+                            ?: update.optJSONObject("edited_message")
+                        if (msg != null) {
+                            list.add(msg)
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("ServerApi", "getRecentChannelMessages error", e)
+        }
+        return@withContext list
     }
 }

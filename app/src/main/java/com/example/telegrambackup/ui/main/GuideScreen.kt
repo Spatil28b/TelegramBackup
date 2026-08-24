@@ -49,14 +49,19 @@ fun GuideScreen() {
             ),
             GuideSection(
                 Icons.Default.Chat, TelegramEmerald,
-                "Step 2: Get Your Chat ID",
+                "Step 2: Get Your Chat ID (Instant & Easy)",
                 listOf(
-                    "1. Create a new Channel in Telegram (private is recommended)",
-                    "2. Add your bot as an Administrator to the channel",
-                    "3. Send any message in the channel",
-                    "4. Open this URL in a browser: https://api.telegram.org/bot<YOUR_TOKEN>/getUpdates",
-                    "5. Find the 'chat' object — your Chat ID starts with '-100'",
-                    "6. Copy the full Chat ID number (including the minus sign)"
+                    "Option A — Direct Chat ID (Easiest in 5 seconds):",
+                    "   1. Open Telegram and search for @userinfobot or @getmyid_bot",
+                    "   2. Tap 'Start' or send /start",
+                    "   3. The bot will instantly reply with your Chat ID (e.g. 123456789) — copy it!",
+                    "",
+                    "Option B — Private Backup Channel (Best for organized storage):",
+                    "   1. Create a new Private Channel in Telegram (e.g. 'My Cloud Backup')",
+                    "   2. Add your Bot as Administrator with 'Post Messages' & 'Delete Messages' enabled",
+                    "   3. Send any text message in your new channel",
+                    "   4. Forward that message to @userinfobot or @getmyid_bot",
+                    "   5. The bot will reply with your Channel ID starting with '-100' (e.g. -1001234567890) — copy it!"
                 )
             ),
             GuideSection(

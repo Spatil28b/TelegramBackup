@@ -84,46 +84,34 @@ object SettingsDbManager {
                     settingsMap["credentials_verified"]?.let { prefs.credentialsVerified = it.toBoolean() }
                 }
 
-                // Cloud Telegram Bot Credentials & User Settings Restoration
+                // Sync credentials to PostgreSQL DB if missing, or retrieve if local is completely blank
                 val authPrefs = context.getSharedPreferences("auth_prefs", Context.MODE_PRIVATE)
                 val userEmail = authPrefs.getString("user_email", "") ?: prefs.recoveryEmail
                 if (userEmail.isNotEmpty()) {
                     val serverApi = ServerApi()
-                    // 1. Restore Bot Credentials from PostgreSQL DB if local is empty or outdated
                     try {
-                        val creds = serverApi.getCredentials(prefs.serverUrl, userEmail)
-                        if (creds != null && creds.first.isNotEmpty()) {
-                            prefs.botToken = creds.first
-                            prefs.chatId = creds.second
-                            prefs.credentialsVerified = true
-                            dao.saveSettings(
-                                listOf(
-                                    AppSettingEntity("bot_token", creds.first),
-                                    AppSettingEntity("chat_id", creds.second),
-                                    AppSettingEntity("credentials_verified", "true")
+                        if (prefs.botToken.isEmpty()) {
+                            val creds = serverApi.getCredentials(prefs.serverUrl, userEmail)
+                            if (creds != null && creds.first.isNotEmpty()) {
+                                prefs.botToken = creds.first
+                                prefs.chatId = creds.second
+                                prefs.credentialsVerified = true
+                                dao.saveSettings(
+                                    listOf(
+                                        AppSettingEntity("bot_token", creds.first),
+                                        AppSettingEntity("chat_id", creds.second),
+                                        AppSettingEntity("credentials_verified", "true")
+                                    )
                                 )
-                            )
-                        } else if (prefs.botToken.isNotEmpty()) {
+                            }
+                        } else {
                             serverApi.saveCredentials(prefs.serverUrl, userEmail, prefs.botToken, prefs.chatId)
                         }
                     } catch (_: Exception) { }
-
-                    // 2. Restore All User Settings from PostgreSQL DB
-                    try {
-                        val serverSettingsStr = serverApi.getUserSettings(prefs.serverUrl, userEmail)
-                        if (!serverSettingsStr.isNullOrEmpty()) {
-                            val serverSettingsJson = org.json.JSONObject(serverSettingsStr)
-                            if (serverSettingsJson.has("display_name")) prefs.displayName = serverSettingsJson.optString("display_name")
-                            if (serverSettingsJson.has("bot_token")) prefs.botToken = serverSettingsJson.optString("bot_token")
-                            if (serverSettingsJson.has("chat_id")) prefs.chatId = serverSettingsJson.optString("chat_id")
-                            if (serverSettingsJson.has("encryption_key")) prefs.encryptionKey = serverSettingsJson.optString("encryption_key")
-                            if (serverSettingsJson.has("auto_backup_enabled")) prefs.autoBackupEnabled = serverSettingsJson.optBoolean("auto_backup_enabled", true)
-                            if (serverSettingsJson.has("smart_backup_mode")) prefs.smartBackupMode = serverSettingsJson.optInt("smart_backup_mode", 0)
-                            if (serverSettingsJson.has("wifi_only")) prefs.wifiOnly = serverSettingsJson.optBoolean("wifi_only", false)
-                            if (serverSettingsJson.has("app_theme")) prefs.appTheme = serverSettingsJson.optInt("app_theme", 0)
-                        }
-                    } catch (_: Exception) { }
                 }
+
+                // Auto-restore complete profile, master encryption key, bot fleet, channel routes, and sub-settings from cloud
+                CloudProfileSyncManager.autoRestoreConfigFromCloud(context)
 
                 // Automatically restore cloud file index into local Room DB
                 restoreCloudFileIndexToRoom(context)
@@ -138,44 +126,56 @@ object SettingsDbManager {
      * Inserts any missing cloud files into local Room Database table `uploaded_files`.
      * Guarantees that app updates or database migrations NEVER lose previous backup history!
      */
-    suspend fun restoreCloudFileIndexToRoom(context: Context): Int = withContext(Dispatchers.IO) {
+    suspend fun restoreCloudFileIndexToRoom(context: Context, forceFullSync: Boolean = false): Int = withContext(Dispatchers.IO) {
         try {
             val authPrefs = context.getSharedPreferences("auth_prefs", Context.MODE_PRIVATE)
             val prefs = AppPrefs(context)
             var userEmail = authPrefs.getString("user_email", "") ?: ""
             if (userEmail.isEmpty()) {
+                userEmail = prefs.userEmail.trim().lowercase()
+            }
+            if (userEmail.isEmpty()) {
                 userEmail = prefs.recoveryEmail.trim().lowercase()
             }
             if (userEmail.isEmpty()) return@withContext 0
 
-            val serverApi = ServerApi()
-            val cloudFiles = serverApi.listFiles(prefs.serverUrl, userEmail)
-
             val db = AppDatabase.getDatabase(context)
             val dao = db.uploadedFileDao()
 
-            if (cloudFiles.isNotEmpty()) {
-                dao.insertAll(cloudFiles)
+            // Calculate delta sync threshold if local database already has records
+            val existingCount = try { dao.getCount() } catch (_: Exception) { 0 }
+            val sinceTimestamp = if (existingCount > 0 && !forceFullSync) {
+                val latestTime = try { dao.getAllFiles().firstOrNull()?.timestamp ?: 0L } catch (_: Exception) { 0L }
+                (latestTime - 60_000L).coerceAtLeast(0L) // 1 min buffer
+            } else {
+                0L
             }
 
-            // Two-Way Synchronization: Push any unsynced local Room DB records to PostgreSQL Cloud DB
+            val serverApi = ServerApi()
+            val cloudFiles = serverApi.listFiles(prefs.serverUrl, userEmail, since = sinceTimestamp)
+
+            if (cloudFiles.isNotEmpty()) {
+                val existingTrashMap = try { dao.getTrashFiles().associateBy { it.path } } catch (_: Exception) { emptyMap() }
+                val filesToInsert = cloudFiles.map { cloudFile ->
+                    val trashRecord = existingTrashMap[cloudFile.path]
+                    if (trashRecord != null) {
+                        cloudFile.isDeleted = true
+                        cloudFile.deletedAt = trashRecord.deletedAt
+                    }
+                    cloudFile
+                }
+                // Batch insert in chunks of 500 to avoid SQLite argument limits
+                filesToInsert.chunked(500).forEach { batch ->
+                    dao.insertAll(batch)
+                }
+            }
+
+            // High-Speed Two-Way Synchronization: Push any unsynced local records using Batch API
             val localFiles = dao.getAllFiles()
             val cloudPathMap = cloudFiles.map { it.path }.toSet()
             val unsyncedLocal = localFiles.filter { !cloudPathMap.contains(it.path) }
-            for (unsynced in unsyncedLocal) {
-                try {
-                    serverApi.indexFile(
-                        prefs.serverUrl,
-                        userEmail,
-                        unsynced.fileName,
-                        unsynced.telegramFileId,
-                        unsynced.size,
-                        unsynced.path,
-                        unsynced.timestamp,
-                        unsynced.messageId,
-                        unsynced.isDriveUpload
-                    )
-                } catch (_: Exception) {}
+            if (unsyncedLocal.isNotEmpty()) {
+                serverApi.indexFilesBatch(prefs.serverUrl, userEmail, unsyncedLocal)
             }
 
             return@withContext (cloudFiles.size + unsyncedLocal.size)
@@ -221,23 +221,12 @@ object SettingsDbManager {
                 settingsMap["min_file_size_mb"]?.let { prefs.minFileSizeMB = it.toDoubleOrNull() ?: 0.0 }
                 settingsMap["max_file_size_mb"]?.let { prefs.maxFileSizeMB = it.toDoubleOrNull() ?: 2000.0 }
 
-                // Sync Bot Token & Chat ID and complete User Settings to PostgreSQL server database
-                val authPrefs = context.getSharedPreferences("auth_prefs", Context.MODE_PRIVATE)
-                val userEmail = authPrefs.getString("user_email", "") ?: prefs.recoveryEmail
-                if (userEmail.isNotEmpty()) {
-                    try {
-                        val serverApi = ServerApi()
-                        if (prefs.botToken.isNotEmpty()) {
-                            serverApi.saveCredentials(prefs.serverUrl, userEmail, prefs.botToken, prefs.chatId)
-                        }
-                        val jsonSettings = org.json.JSONObject(settingsMap).toString()
-                        serverApi.saveUserSettings(prefs.serverUrl, userEmail, jsonSettings)
-                    } catch (_: Exception) { }
-                }
+                // Trigger complete cloud profile, fleet, and settings manifest synchronization
+                CloudProfileSyncManager.syncLocalConfigToCloud(context)
 
                 withContext(Dispatchers.Main) {
                     if (showToast) {
-                        Toast.makeText(context, "💾 $categoryName Settings Saved to Database!", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "💾 $categoryName Settings Saved & Synced!", Toast.LENGTH_SHORT).show()
                     }
                 }
             } catch (e: Exception) {

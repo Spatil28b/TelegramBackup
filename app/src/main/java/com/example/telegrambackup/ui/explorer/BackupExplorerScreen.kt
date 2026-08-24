@@ -46,9 +46,13 @@ import coil.compose.AsyncImage
 import com.example.telegrambackup.data.AppDatabase
 import com.example.telegrambackup.data.UploadedFile
 import com.example.telegrambackup.theme.TelegramBlue
+import com.example.telegrambackup.utils.FileViewerHelper
 import com.example.telegrambackup.theme.TelegramEmerald
 import com.example.telegrambackup.utils.AppPrefs
+import com.example.telegrambackup.utils.DuplicateFileManager
+import com.example.telegrambackup.utils.FolderZipDownloader
 import com.example.telegrambackup.utils.SettingsDbManager
+import com.example.telegrambackup.utils.ShareLinkManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -58,8 +62,8 @@ import java.util.*
 fun formatFileSize(sizeBytes: Long): String {
     if (sizeBytes <= 0) return "0 B"
     val units = arrayOf("B", "KB", "MB", "GB", "TB")
-    val digitGroups = (Math.log10(sizeBytes.toDouble()) / Math.log10(1024.0)).toInt()
-    return String.format(Locale.getDefault(), "%.1f %s", sizeBytes / Math.pow(1024.0, digitGroups.toDouble()), units[digitGroups])
+    val digitGroups = (Math.log10(sizeBytes.toDouble()) / Math.log10(1024.0)).toInt().coerceIn(0, units.size - 1)
+    return String.format(Locale.US, "%.1f %s", sizeBytes / Math.pow(1024.0, digitGroups.toDouble()), units[digitGroups])
 }
 
 private fun triggerHapticFeedback(context: Context, haptic: androidx.compose.ui.hapticfeedback.HapticFeedback) {
@@ -107,6 +111,17 @@ fun BackupExplorerScreen(
     var currentFolderDirectoryPath by remember { mutableStateOf("Internal Storage") }
     val folderPathHistory = remember { mutableStateListOf("Internal Storage") }
 
+    LaunchedEffect(initialTab, initialCategoryTitle) {
+        if (initialCategoryTitle != null) {
+            selectedCategoryTitle = initialCategoryTitle
+            activeSubTab = 2
+            currentFolderDirectoryPath = "Internal Storage"
+        } else {
+            selectedCategoryTitle = null
+            activeSubTab = initialTab
+        }
+    }
+
     var sortOption by remember { mutableStateOf(FileSortOption.DATE) }
     var selectedViewMode by remember { mutableIntStateOf(0) }
 
@@ -121,14 +136,70 @@ fun BackupExplorerScreen(
     var showDetailedMetadataDialog by remember { mutableStateOf(false) }
 
     var activeViewerIndex by remember { mutableIntStateOf(-1) }
+    var activeAudioPlayerItem by remember { mutableStateOf<Pair<String, String>?>(null) }
+    var activeVideoPlayerItem by remember { mutableStateOf<Pair<String, String>?>(null) }
 
     var showCloudRestoreWizard by remember { mutableStateOf(false) }
     var restoreTargetFiles by remember { mutableStateOf<List<UploadedFile>>(emptyList()) }
+
+    var showDuplicateCleaner by remember { mutableStateOf(false) }
+    var shareModalFile by remember { mutableStateOf<UploadedFile?>(null) }
+    var isZippingFolder by remember { mutableStateOf(false) }
+
+    fun refreshCloudData() {
+        scope.launch {
+            isDataLoading = true
+            val files = withContext(Dispatchers.IO) {
+                try {
+                    SettingsDbManager.restoreCloudFileIndexToRoom(context)
+                    AppDatabase.getDatabase(context).uploadedFileDao().getAllFiles()
+                } catch (e: Exception) {
+                    emptyList()
+                }
+            }
+            cloudFileList = files
+            isDataLoading = false
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        refreshCloudData()
+    }
+
+    if (showDuplicateCleaner) {
+        DuplicateCleanerDialog(
+            onDismiss = { showDuplicateCleaner = false },
+            onCleanComplete = { refreshCloudData() }
+        )
+    }
+
+    if (shareModalFile != null) {
+        ShareLinkModal(
+            file = shareModalFile!!,
+            onDismiss = { shareModalFile = null }
+        )
+    }
 
     if (showCloudRestoreWizard) {
         CloudRestoreWizardDialog(
             filesToRestore = restoreTargetFiles,
             onDismiss = { showCloudRestoreWizard = false }
+        )
+    }
+
+    if (activeAudioPlayerItem != null) {
+        com.example.telegrambackup.ui.player.ModernAudioPlayerSheet(
+            filePathOrUrl = activeAudioPlayerItem!!.first,
+            fileName = activeAudioPlayerItem!!.second,
+            onDismiss = { activeAudioPlayerItem = null }
+        )
+    }
+
+    if (activeVideoPlayerItem != null) {
+        com.example.telegrambackup.ui.player.ModernVideoPlayerDialog(
+            filePathOrUrl = activeVideoPlayerItem!!.first,
+            fileName = activeVideoPlayerItem!!.second,
+            onDismiss = { activeVideoPlayerItem = null }
         )
     }
 
@@ -150,26 +221,6 @@ fun BackupExplorerScreen(
             folderPathHistory.removeAt(folderPathHistory.size - 1)
             currentFolderDirectoryPath = folderPathHistory.last()
         }
-    }
-
-    fun refreshCloudData() {
-        scope.launch {
-            isDataLoading = true
-            val files = withContext(Dispatchers.IO) {
-                try {
-                    SettingsDbManager.restoreCloudFileIndexToRoom(context)
-                    AppDatabase.getDatabase(context).uploadedFileDao().getAllFiles()
-                } catch (e: Exception) {
-                    emptyList()
-                }
-            }
-            cloudFileList = files
-            isDataLoading = false
-        }
-    }
-
-    LaunchedEffect(Unit) {
-        refreshCloudData()
     }
 
     val categoriesData = remember(cloudFileList) {
@@ -205,10 +256,15 @@ fun BackupExplorerScreen(
         var clean = path.replace("\\", "/").trim()
         if (clean.contains("storage/emulated/0")) {
             clean = clean.substringAfter("storage/emulated/0").removePrefix("/")
-        } else if (clean.contains(":")) {
-            clean = clean.substringAfter(":").removePrefix("/")
+        } else if (clean.matches(Regex("^[A-Za-z]:[/\\\\].*"))) {
+            clean = clean.substring(2).removePrefix("/")
+        } else if (clean.startsWith("primary:")) {
+            clean = clean.removePrefix("primary:").removePrefix("/")
+        } else if (clean.startsWith("raw:")) {
+            clean = clean.removePrefix("raw:").removePrefix("/")
         }
-        return if (clean.isEmpty()) "Internal Storage" else "Internal Storage/$clean"
+        clean = clean.trimEnd('/')
+        return if (clean.isEmpty()) "Internal Storage" else if (clean.startsWith("Internal Storage")) clean else "Internal Storage/$clean"
     }
 
     val currentPathSubFolders = remember(cloudFileList, currentFolderDirectoryPath) {
@@ -240,8 +296,32 @@ fun BackupExplorerScreen(
         }.sortedByDescending { it.filesCount }
     }
 
+    val monthlyTimelineFolders = remember(cloudFileList) {
+        val format = java.text.SimpleDateFormat("yyyy - MMMM", Locale.US)
+        val monthMap = mutableMapOf<String, MutableList<UploadedFile>>()
+        cloudFileList.forEach { file ->
+            val dateKey = if (file.timestamp > 0) format.format(java.util.Date(file.timestamp)) else "Unknown Date"
+            monthMap.getOrPut(dateKey) { mutableListOf() }.add(file)
+        }
+        monthMap.map { (monthName, files) ->
+            LocalFolderModel(
+                folderName = monthName,
+                folderPath = "Timeline/$monthName",
+                filesCount = files.size,
+                totalSizeBytes = files.sumOf { it.size }
+            )
+        }.sortedByDescending { it.folderName }
+    }
+
     val currentPathFiles = remember(cloudFileList, selectedCategoryTitle, currentFolderDirectoryPath, activeSubTab) {
-        if (activeSubTab == 0) {
+        if (currentFolderDirectoryPath.startsWith("Timeline/")) {
+            val monthName = currentFolderDirectoryPath.removePrefix("Timeline/")
+            val format = java.text.SimpleDateFormat("yyyy - MMMM", Locale.US)
+            cloudFileList.filter { f ->
+                val dateKey = if (f.timestamp > 0) format.format(java.util.Date(f.timestamp)) else "Unknown Date"
+                dateKey == monthName
+            }
+        } else if (activeSubTab == 2) {
             if (selectedCategoryTitle == null) emptyList()
             else {
                 val title = selectedCategoryTitle!!
@@ -268,14 +348,38 @@ fun BackupExplorerScreen(
         }
     }
 
-    val activeDisplayFiles = remember(currentPathFiles, externalSearchQuery, sortOption) {
-        var list = currentPathFiles.filter { externalSearchQuery.isEmpty() || it.fileName.contains(externalSearchQuery, true) }
+    val activeDisplayFiles = remember(cloudFileList, currentPathFiles, externalSearchQuery, sortOption) {
+        val q = externalSearchQuery.trim()
+        var list = if (q.isNotEmpty()) {
+            cloudFileList.filter { it.fileName.contains(q, ignoreCase = true) || it.path.contains(q, ignoreCase = true) }
+        } else {
+            currentPathFiles
+        }
         list = when (sortOption) {
-            FileSortOption.NAME -> list.sortedBy { it.fileName }
+            FileSortOption.NAME -> list.sortedBy { it.fileName.lowercase() }
             FileSortOption.SIZE -> list.sortedByDescending { it.size }
             FileSortOption.DATE -> list.sortedByDescending { it.timestamp }
         }
         list
+    }
+
+    if (activeViewerIndex != -1 && activeViewerIndex < activeDisplayFiles.size) {
+        AdvancedMediaViewerDialog(
+            initialIndex = activeViewerIndex,
+            filesList = activeDisplayFiles,
+            onDismiss = { activeViewerIndex = -1 },
+            onDeleteRequested = { fileToDelete ->
+                activeViewerIndex = -1
+                scope.launch(Dispatchers.IO) {
+                    AppDatabase.getDatabase(context).uploadedFileDao().softDelete(fileToDelete.path, fileToDelete.telegramFileId, System.currentTimeMillis())
+                    withContext(Dispatchers.Main) { refreshCloudData() }
+                }
+            },
+            onInfoRequested = { fileToInspect ->
+                infoSheetFile = fileToInspect
+                showDetailedMetadataDialog = true
+            }
+        )
     }
 
     // LONG PRESS ITEM OPTIONS & INFO MODAL
@@ -326,14 +430,39 @@ fun BackupExplorerScreen(
                             Text("Restore & Download Item to Device", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold))
                         }
                         HorizontalDivider()
-                        Row(modifier = Modifier.fillMaxWidth().clickable {
-                            triggerHapticFeedback(context, haptic)
-                            Toast.makeText(context, "Sharing link...", Toast.LENGTH_SHORT).show()
-                            infoSheetFile = null; infoSheetFolder = null
-                        }.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Share, contentDescription = null, tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(22.dp))
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Text("Share Item Link", style = MaterialTheme.typography.bodyMedium)
+                        if (infoSheetFile != null) {
+                            Row(modifier = Modifier.fillMaxWidth().clickable {
+                                triggerHapticFeedback(context, haptic)
+                                val f = infoSheetFile
+                                infoSheetFile = null; infoSheetFolder = null
+                                shareModalFile = f
+                            }.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.Share, contentDescription = null, tint = TelegramBlue, modifier = Modifier.size(22.dp))
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Text("Generate Fast Cloud Share Link", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold))
+                            }
+                        } else if (infoSheetFolder != null) {
+                            Row(modifier = Modifier.fillMaxWidth().clickable {
+                                triggerHapticFeedback(context, haptic)
+                                val fol = infoSheetFolder!!
+                                infoSheetFolder = null
+                                scope.launch {
+                                    Toast.makeText(context, "📦 Compressing '${fol.folderName}' into ZIP...", Toast.LENGTH_SHORT).show()
+                                    val filesInFolder = cloudFileList.filter { it.path.startsWith(fol.folderPath) || it.path.contains(fol.folderName) }
+                                    val zip = FolderZipDownloader.downloadFolderAsZip(context, fol.folderName, filesInFolder) { _, _, _ -> }
+                                    withContext(Dispatchers.Main) {
+                                        if (zip != null) {
+                                            Toast.makeText(context, "✓ Saved ${zip.name} in Downloads/TelegramBackup_Zips!", Toast.LENGTH_LONG).show()
+                                        } else {
+                                            Toast.makeText(context, "Could not create ZIP", Toast.LENGTH_SHORT).show()
+                                        }
+                                    }
+                                }
+                            }.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.Archive, contentDescription = null, tint = TelegramEmerald, modifier = Modifier.size(22.dp))
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Text("Download Entire Folder as ZIP", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold, color = TelegramEmerald))
+                            }
                         }
                         HorizontalDivider()
                         Row(modifier = Modifier.fillMaxWidth().clickable {
@@ -395,8 +524,10 @@ fun BackupExplorerScreen(
         )
     }
 
+    val isSearching = externalSearchQuery.trim().isNotEmpty()
+
     Column(modifier = Modifier.fillMaxSize()) {
-        if (selectedCategoryTitle == null && currentFolderDirectoryPath == "Internal Storage") {
+        if (!isSearching && selectedCategoryTitle == null && currentFolderDirectoryPath == "Internal Storage") {
             PrimaryTabRow(
                 selectedTabIndex = activeSubTab,
                 modifier = Modifier.fillMaxWidth(),
@@ -407,9 +538,9 @@ fun BackupExplorerScreen(
                     onClick = { triggerHapticFeedback(context, haptic); activeSubTab = 0 },
                     text = {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Category, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("Categories", fontWeight = FontWeight.Bold)
+                            Icon(Icons.Default.CalendarMonth, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Monthly", fontWeight = FontWeight.Bold, maxLines = 1)
                         }
                     }
                 )
@@ -418,17 +549,119 @@ fun BackupExplorerScreen(
                     onClick = { triggerHapticFeedback(context, haptic); activeSubTab = 1 },
                     text = {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Folder, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("Cloud Storage Replica", fontWeight = FontWeight.Bold)
+                            Icon(Icons.Default.Folder, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Phone Folders", fontWeight = FontWeight.Bold, maxLines = 1)
+                        }
+                    }
+                )
+                Tab(
+                    selected = activeSubTab == 2,
+                    onClick = { triggerHapticFeedback(context, haptic); activeSubTab = 2 },
+                    text = {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Category, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Categories", fontWeight = FontWeight.Bold, maxLines = 1)
                         }
                     }
                 )
             }
         }
 
-        if (selectedCategoryTitle == null && currentFolderDirectoryPath == "Internal Storage") {
+        if (!isSearching && selectedCategoryTitle == null && currentFolderDirectoryPath == "Internal Storage") {
             if (activeSubTab == 0) {
+                // 📅 MONTHLY TIMELINE VIEW
+                Column(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Monthly Cloud Archive", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                            TextButton(
+                                onClick = {
+                                    triggerHapticFeedback(context, haptic)
+                                    showDuplicateCleaner = true
+                                },
+                                shape = RoundedCornerShape(8.dp),
+                                colors = ButtonDefaults.textButtonColors(containerColor = TelegramEmerald.copy(alpha = 0.12f))
+                            ) {
+                                Icon(Icons.Default.CleaningServices, contentDescription = null, tint = TelegramEmerald, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Deduplicate", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, color = TelegramEmerald))
+                            }
+                            Surface(shape = RoundedCornerShape(8.dp), color = TelegramBlue.copy(alpha = 0.15f)) {
+                                Text("${monthlyTimelineFolders.size} Months", style = MaterialTheme.typography.labelSmall.copy(color = TelegramBlue, fontWeight = FontWeight.Bold), modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    if (isDataLoading) {
+                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+                    } else if (monthlyTimelineFolders.isEmpty()) {
+                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(24.dp)) {
+                                Icon(Icons.Default.EventBusy, contentDescription = null, tint = TelegramBlue, modifier = Modifier.size(64.dp))
+                                Spacer(modifier = Modifier.height(16.dp))
+                                Text("No Backups Recorded", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
+                            }
+                        }
+                    } else {
+                        LazyColumn(
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                            contentPadding = PaddingValues(bottom = 24.dp)
+                        ) {
+                            items(monthlyTimelineFolders) { folder ->
+                                Surface(
+                                    shape = RoundedCornerShape(16.dp),
+                                    color = MaterialTheme.colorScheme.surface,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .combinedClickable(
+                                            onClick = {
+                                                triggerHapticFeedback(context, haptic)
+                                                currentFolderDirectoryPath = folder.folderPath
+                                                folderPathHistory.add(folder.folderPath)
+                                            },
+                                            onLongClick = {
+                                                triggerHapticFeedback(context, haptic)
+                                                infoSheetFolder = folder
+                                            }
+                                        )
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(14.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Box(
+                                            modifier = Modifier.size(44.dp).clip(CircleShape).background(TelegramBlue.copy(alpha = 0.12f)),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(Icons.Default.CalendarMonth, contentDescription = null, tint = TelegramBlue, modifier = Modifier.size(24.dp))
+                                        }
+
+                                        Spacer(modifier = Modifier.width(14.dp))
+
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(folder.folderName, style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold))
+                                            Text("${folder.filesCount} items • ${formatFileSize(folder.totalSizeBytes)}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+                                        }
+
+                                        Icon(Icons.Default.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.outline)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            } else if (activeSubTab == 2) {
+                // 🏷️ CATEGORIES VIEW
                 Column(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
                     Spacer(modifier = Modifier.height(12.dp))
 
@@ -494,6 +727,7 @@ fun BackupExplorerScreen(
                     }
                 }
             } else {
+                // 📂 PHONE STORAGE REPLICA VIEW
                 Column(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
                     Spacer(modifier = Modifier.height(12.dp))
 
@@ -566,7 +800,7 @@ fun BackupExplorerScreen(
                 }
             }
         } else {
-            val titleText = selectedCategoryTitle ?: File(currentFolderDirectoryPath).name
+            val titleText = if (isSearching) "Search: \"$externalSearchQuery\"" else (selectedCategoryTitle ?: File(currentFolderDirectoryPath).name)
 
             Box(modifier = Modifier.fillMaxSize()) {
                 Column(
@@ -619,6 +853,31 @@ fun BackupExplorerScreen(
                                         onClick = { triggerHapticFeedback(context, haptic); sortOption = FileSortOption.SIZE },
                                         label = { Text("Size", style = MaterialTheme.typography.labelSmall) }
                                     )
+
+                                    IconButton(
+                                        onClick = {
+                                            triggerHapticFeedback(context, haptic)
+                                            val folName = selectedCategoryTitle ?: File(currentFolderDirectoryPath).name
+                                            scope.launch {
+                                                Toast.makeText(context, "📦 Compressing '$folName' into ZIP archive...", Toast.LENGTH_SHORT).show()
+                                                val filesInFol = activeDisplayFiles
+                                                val zip = FolderZipDownloader.downloadFolderAsZip(context, folName, filesInFol) { _, _, _ -> }
+                                                withContext(Dispatchers.Main) {
+                                                    if (zip != null) {
+                                                        Toast.makeText(context, "✓ Saved ${zip.name} in Downloads/TelegramBackup_Zips!", Toast.LENGTH_LONG).show()
+                                                    } else {
+                                                        Toast.makeText(context, "Could not create ZIP", Toast.LENGTH_SHORT).show()
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Archive,
+                                            contentDescription = "Download as ZIP",
+                                            tint = TelegramEmerald
+                                        )
+                                    }
 
                                     IconButton(
                                         onClick = {
@@ -756,7 +1015,20 @@ fun BackupExplorerScreen(
                                                 if (isSelected) selectedFilesList.removeAll { it.path == cloudFile.path }
                                                 else selectedFilesList.add(cloudFile)
                                             } else {
-                                                activeViewerIndex = index
+                                                val localFile = File(cloudFile.path)
+                                                val hasLocal = localFile.exists() && localFile.length() > 0
+
+                                                if (FileViewerHelper.isAudioFile(cloudFile.fileName)) {
+                                                    activeAudioPlayerItem = Pair(if (hasLocal) cloudFile.path else cloudFile.telegramFileId, cloudFile.fileName)
+                                                } else if (FileViewerHelper.isVideoFile(cloudFile.fileName)) {
+                                                    activeVideoPlayerItem = Pair(if (hasLocal) cloudFile.path else cloudFile.telegramFileId, cloudFile.fileName)
+                                                } else if (FileViewerHelper.isImageFile(cloudFile.fileName) || FileViewerHelper.isPdfFile(cloudFile.fileName)) {
+                                                    activeViewerIndex = index
+                                                } else if (hasLocal) {
+                                                    FileViewerHelper.openFile(context, cloudFile.path, cloudFile.fileName, cloudFile.telegramFileId)
+                                                } else {
+                                                    activeViewerIndex = index
+                                                }
                                             }
                                         },
                                         onLongClick = {
@@ -785,7 +1057,20 @@ fun BackupExplorerScreen(
                                                 if (isSelected) selectedFilesList.removeAll { it.path == cloudFile.path }
                                                 else selectedFilesList.add(cloudFile)
                                             } else {
-                                                activeViewerIndex = index
+                                                val localFile = File(cloudFile.path)
+                                                val hasLocal = localFile.exists() && localFile.length() > 0
+
+                                                if (FileViewerHelper.isAudioFile(cloudFile.fileName)) {
+                                                    activeAudioPlayerItem = Pair(if (hasLocal) cloudFile.path else cloudFile.telegramFileId, cloudFile.fileName)
+                                                } else if (FileViewerHelper.isVideoFile(cloudFile.fileName)) {
+                                                    activeVideoPlayerItem = Pair(if (hasLocal) cloudFile.path else cloudFile.telegramFileId, cloudFile.fileName)
+                                                } else if (FileViewerHelper.isImageFile(cloudFile.fileName) || FileViewerHelper.isPdfFile(cloudFile.fileName)) {
+                                                    activeViewerIndex = index
+                                                } else if (hasLocal) {
+                                                    FileViewerHelper.openFile(context, cloudFile.path, cloudFile.fileName, cloudFile.telegramFileId)
+                                                } else {
+                                                    activeViewerIndex = index
+                                                }
                                             }
                                         },
                                         onLongClick = {
@@ -832,15 +1117,15 @@ private fun GridCloudMediaCard(
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f)
-                    .clip(RoundedCornerShape(topStart = if (isBigGrid) 14.dp else 10.dp, topEnd = if (isBigGrid) 14.dp else 10.dp))
-                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)),
+                    .clip(RoundedCornerShape(topStart = if (isBigGrid) 16.dp else 12.dp, topEnd = if (isBigGrid) 16.dp else 12.dp))
+                    .background(Color.Transparent),
                 contentAlignment = Alignment.Center
             ) {
                 FileThumbnailView(
                     fileName = cloudFile.fileName,
                     filePath = cloudFile.path,
                     telegramFileId = cloudFile.telegramFileId,
-                    iconSize = if (isBigGrid) 46.dp else 36.dp,
+                    iconSize = if (isBigGrid) 56.dp else 44.dp,
                     modifier = Modifier.fillMaxSize()
                 )
 
@@ -862,7 +1147,7 @@ private fun GridCloudMediaCard(
             }
 
             Surface(
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp)) {
@@ -911,15 +1196,15 @@ private fun ListCloudFileCard(
             }
 
             Box(
-                modifier = Modifier.size(42.dp),
+                modifier = Modifier.size(46.dp),
                 contentAlignment = Alignment.Center
             ) {
                 FileThumbnailView(
                     fileName = cloudFile.fileName,
                     filePath = cloudFile.path,
                     telegramFileId = cloudFile.telegramFileId,
-                    iconSize = 36.dp,
-                    modifier = Modifier.size(40.dp)
+                    iconSize = 40.dp,
+                    modifier = Modifier.size(44.dp)
                 )
             }
 

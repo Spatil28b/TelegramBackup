@@ -45,8 +45,11 @@ import androidx.compose.ui.unit.sp
 import androidx.work.*
 import coil.compose.AsyncImage
 import com.example.telegrambackup.data.AppDatabase
+import com.example.telegrambackup.data.AppSettingEntity
 import com.example.telegrambackup.data.AuthRepository
 import com.example.telegrambackup.network.ServerApi
+import com.example.telegrambackup.utils.AppCacheManager
+import com.example.telegrambackup.utils.CloudProfileSyncManager
 import com.example.telegrambackup.theme.TelegramBlue
 import com.example.telegrambackup.theme.TelegramEmerald
 import com.example.telegrambackup.utils.AppPrefs
@@ -65,8 +68,8 @@ import kotlin.random.Random
 private fun formatFileSize(sizeBytes: Long): String {
     if (sizeBytes <= 0) return "0 B"
     val units = arrayOf("B", "KB", "MB", "GB", "TB")
-    val digitGroups = (Math.log10(sizeBytes.toDouble()) / Math.log10(1024.0)).toInt()
-    return String.format(Locale.getDefault(), "%.1f %s", sizeBytes / Math.pow(1024.0, digitGroups.toDouble()), units[digitGroups])
+    val digitGroups = (Math.log10(sizeBytes.toDouble()) / Math.log10(1024.0)).toInt().coerceIn(0, units.size - 1)
+    return String.format(Locale.US, "%.1f %s", sizeBytes / Math.pow(1024.0, digitGroups.toDouble()), units[digitGroups])
 }
 
 private fun triggerHapticFeedback(context: Context, haptic: androidx.compose.ui.hapticfeedback.HapticFeedback?) {
@@ -89,6 +92,7 @@ enum class StreamlinedCategory {
     MAIN,
     PROFILE_ACCOUNT,
     TELEGRAM_CREDENTIALS,
+    BOT_FLEET,
     BACKUP_SOURCES_RULES,
     NETWORK_PERFORMANCE,
     SECURITY_PRIVACY_RESTORE,
@@ -193,6 +197,10 @@ fun BackupSettingsScreen(
     var clearDataOtpInput by remember { mutableStateOf("") }
     var isClearOtpSent by remember { mutableStateOf(false) }
 
+    // IMPORT & EXPORT BOTS STATE
+    var showImportExportBotsDialog by remember { mutableStateOf(false) }
+    var importExportInitialMode by remember { mutableIntStateOf(0) }
+
     // FEATURE INFO DIALOG
     var featureInfoTitle by remember { mutableStateOf<String?>(null) }
     var featureInfoDesc by remember { mutableStateOf<String?>(null) }
@@ -232,6 +240,7 @@ fun BackupSettingsScreen(
     val uniqueMasterKey = remember { prefs.encryptionKey }
     var trashAutoCleanDays by remember { mutableIntStateOf(prefs.trashAutoCleanDays) }
     var stopAllBackup by remember { mutableStateOf(prefs.stopAllBackups) }
+    var driveSyncEnabledState by remember { mutableStateOf(prefs.driveSyncEnabled) }
 
     // Custom max file size limit dialog state
     var showCustomMaxLimitDialog by remember { mutableStateOf(false) }
@@ -242,8 +251,30 @@ fun BackupSettingsScreen(
     var dialogInitialTab by remember { mutableIntStateOf(0) }
     var showDiagnosticModal by remember { mutableStateOf(false) }
     var showAppInfoModal by remember { mutableStateOf(false) }
+    var showDeepReindexModal by remember { mutableStateOf(false) }
+    var showFreeUpSpaceModal by remember { mutableStateOf(false) }
     var manualUpdateInfo by remember { mutableStateOf<com.example.telegrambackup.ui.update.AppVersionInfo?>(null) }
     var zeroKnowledgeActive by remember { mutableStateOf(prefs.isZeroKnowledgeEnabled) }
+
+    var maxCacheBudgetMB by remember { mutableLongStateOf(prefs.maxCacheSizeMB) }
+    var cacheStats by remember { mutableStateOf(AppCacheManager.getCacheStats(context)) }
+    var showCacheOptimizerModal by remember { mutableStateOf(false) }
+    var isClearingCache by remember { mutableStateOf(false) }
+    var chargingOnlyState by remember { mutableStateOf(prefs.chargingOnly) }
+    var lowBatteryProtectionState by remember { mutableStateOf(prefs.lowBatteryProtection) }
+    var showNetworkSelfAnalysisModal by remember { mutableStateOf(false) }
+
+    if (showDeepReindexModal) {
+        DeepReindexDialog(onDismiss = { showDeepReindexModal = false })
+    }
+
+    if (showFreeUpSpaceModal) {
+        FreeUpSpaceDialog(onDismiss = { showFreeUpSpaceModal = false })
+    }
+
+    if (showNetworkSelfAnalysisModal) {
+        NetworkAnalysisReportModal(onDismiss = { showNetworkSelfAnalysisModal = false })
+    }
 
     if (showDiagnosticModal) {
         SystemHealthDiagnosticDialog(onDismiss = { showDiagnosticModal = false })
@@ -251,6 +282,105 @@ fun BackupSettingsScreen(
 
     if (showAppInfoModal) {
         AppInfoDialog(onDismiss = { showAppInfoModal = false })
+    }
+
+    if (showCacheOptimizerModal) {
+        AlertDialog(
+            onDismissRequest = { showCacheOptimizerModal = false },
+            icon = { Icon(Icons.Default.CleaningServices, contentDescription = null, tint = TelegramBlue, modifier = Modifier.size(32.dp)) },
+            title = { Text("Cache & Storage Optimization", fontWeight = FontWeight.Bold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    // Gauge & Usage Bar
+                    Surface(
+                        shape = RoundedCornerShape(14.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                    ) {
+                        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text("Current Cache Used", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
+                                Text(
+                                    "${AppCacheManager.formatBytes(cacheStats.totalBytes)} / ${maxCacheBudgetMB} MB",
+                                    fontWeight = FontWeight.Bold,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = if (cacheStats.usagePercentage > 0.85f) Color(0xFFEF4444) else TelegramEmerald
+                                )
+                            }
+                            LinearProgressIndicator(
+                                progress = { cacheStats.usagePercentage },
+                                modifier = Modifier.fillMaxWidth().height(6.dp).clip(CircleShape),
+                                color = if (cacheStats.usagePercentage > 0.85f) Color(0xFFEF4444) else TelegramEmerald,
+                                trackColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
+                            )
+                        }
+                    }
+
+                    // Breakdown
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text("STORAGE BREAKDOWN", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary))
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("🎬 Cloud Media Previews", style = MaterialTheme.typography.bodySmall)
+                            Text(AppCacheManager.formatBytes(cacheStats.previewsBytes), fontWeight = FontWeight.Medium, style = MaterialTheme.typography.bodySmall)
+                        }
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("📦 Transient Chunks & Temp", style = MaterialTheme.typography.bodySmall)
+                            Text(AppCacheManager.formatBytes(cacheStats.tempChunksBytes), fontWeight = FontWeight.Medium, style = MaterialTheme.typography.bodySmall)
+                        }
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("🗜️ Archive & Update Packages", style = MaterialTheme.typography.bodySmall)
+                            Text(AppCacheManager.formatBytes(cacheStats.archiveBytes), fontWeight = FontWeight.Medium, style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+
+                    // Max Cache Budget Selector
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text("MAX CACHE BUDGET LIMIT", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary))
+                        OptIn(ExperimentalLayoutApi::class)
+                        FlowRow(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            listOf(256L to "256 MB", 512L to "512 MB", 1024L to "1 GB", 2048L to "2 GB", 5120L to "5 GB").forEach { (budgetMB, label) ->
+                                FilterChip(
+                                    selected = maxCacheBudgetMB == budgetMB,
+                                    onClick = {
+                                        maxCacheBudgetMB = budgetMB
+                                        prefs.maxCacheSizeMB = budgetMB
+                                        scope.launch { AppCacheManager.autoPruneCache(context); cacheStats = AppCacheManager.getCacheStats(context) }
+                                    },
+                                    label = { Text(label, style = MaterialTheme.typography.labelSmall) }
+                                )
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        triggerHapticFeedback(context, haptic)
+                        isClearingCache = true
+                        scope.launch {
+                            val reclaimed = AppCacheManager.clearAllCache(context)
+                            cacheStats = AppCacheManager.getCacheStats(context)
+                            isClearingCache = false
+                            showCacheOptimizerModal = false
+                            Toast.makeText(context, "🧹 Reclaimed ${AppCacheManager.formatBytes(reclaimed)} of storage!", Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444)),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Icon(Icons.Default.DeleteSweep, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(if (isClearingCache) "Clearing..." else "Clear All Cache Now")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showCacheOptimizerModal = false }) { Text("Close") }
+            }
+        )
     }
 
     if (manualUpdateInfo != null) {
@@ -317,6 +447,77 @@ fun BackupSettingsScreen(
         }
     }
 
+    var dailyDataLimitMBState by remember { mutableLongStateOf(prefs.dailyDataLimitMB) }
+    var showCustomDailyLimitDialog by remember { mutableStateOf(false) }
+    var customDailyLimitInput by remember { mutableStateOf("") }
+
+    // AUTO-SAVE SETTINGS ENGINE: Instantly persists any change to AppPrefs and Room Database
+    LaunchedEffect(
+        autoBackup, smartBackupMode, smartScanInterval, nightBackupHour,
+        includeCamera, includeVideos, includeDocs, includeAudio, includeDownloads,
+        includeArchives, includeApks, includeAllOther, showHiddenFiles,
+        maxFileSizeMBState, dailyDataLimitMBState, backupOverWifi, enableDataCompression, selectedTheme,
+        trashAutoCleanDays, stopAllBackup, biometricLock, zeroKnowledgeActive
+    ) {
+        prefs.autoBackupEnabled = autoBackup
+        prefs.smartBackupMode = smartBackupMode
+        prefs.smartScanIntervalHours = smartScanInterval
+        prefs.nightBackupHour = nightBackupHour
+        prefs.backupCamera = includeCamera
+        prefs.backupVideos = includeVideos
+        prefs.backupDocuments = includeDocs
+        prefs.backupAudio = includeAudio
+        prefs.backupDownloads = includeDownloads
+        prefs.backupArchives = includeArchives
+        prefs.backupApks = includeApks
+        prefs.backupAllOther = includeAllOther
+        prefs.showHiddenFiles = showHiddenFiles
+        prefs.maxFileSizeMB = maxFileSizeMBState
+        prefs.dailyDataLimitMB = dailyDataLimitMBState
+        prefs.wifiOnly = backupOverWifi
+        prefs.enableDataCompression = enableDataCompression
+        prefs.appTheme = selectedTheme
+        prefs.trashAutoCleanDays = trashAutoCleanDays
+        prefs.stopAllBackups = stopAllBackup
+        prefs.isBiometricEnabled = biometricLock
+        prefs.isZeroKnowledgeEnabled = zeroKnowledgeActive
+
+        // Schedule / Update Background Work
+        scheduleSmartBackup()
+
+        // Background Database Persistence
+        scope.launch(Dispatchers.IO) {
+            try {
+                val db = AppDatabase.getDatabase(context)
+                val dao = db.appSettingDao()
+                val settingsList = listOf(
+                    AppSettingEntity("auto_backup_enabled", autoBackup.toString()),
+                    AppSettingEntity("smart_backup_mode", smartBackupMode.toString()),
+                    AppSettingEntity("smart_scan_interval_hours", smartScanInterval.toString()),
+                    AppSettingEntity("night_backup_hour", nightBackupHour.toString()),
+                    AppSettingEntity("backup_camera", includeCamera.toString()),
+                    AppSettingEntity("backup_videos", includeVideos.toString()),
+                    AppSettingEntity("backup_documents", includeDocs.toString()),
+                    AppSettingEntity("backup_audio", includeAudio.toString()),
+                    AppSettingEntity("backup_downloads", includeDownloads.toString()),
+                    AppSettingEntity("backup_archives", includeArchives.toString()),
+                    AppSettingEntity("backup_apks", includeApks.toString()),
+                    AppSettingEntity("backup_all_other", includeAllOther.toString()),
+                    AppSettingEntity("show_hidden_files", showHiddenFiles.toString()),
+                    AppSettingEntity("max_file_size_mb", maxFileSizeMBState.toString()),
+                    AppSettingEntity("daily_data_limit_mb", dailyDataLimitMBState.toString()),
+                    AppSettingEntity("wifi_only", backupOverWifi.toString()),
+                    AppSettingEntity("enable_data_compression", enableDataCompression.toString()),
+                    AppSettingEntity("app_theme", selectedTheme.toString()),
+                    AppSettingEntity("trash_auto_clean_days", trashAutoCleanDays.toString()),
+                    AppSettingEntity("stop_all_backups", stopAllBackup.toString()),
+                    AppSettingEntity("is_biometric_enabled", biometricLock.toString())
+                )
+                dao.saveSettings(settingsList)
+            } catch (_: Exception) {}
+        }
+    }
+
     // FEATURE INFO MODAL
     if (featureInfoTitle != null && featureInfoDesc != null) {
         AlertDialog(
@@ -326,6 +527,120 @@ fun BackupSettingsScreen(
             text = { Text(featureInfoDesc!!, style = MaterialTheme.typography.bodyMedium) },
             confirmButton = {
                 Button(onClick = { featureInfoTitle = null; featureInfoDesc = null }, colors = ButtonDefaults.buttonColors(containerColor = TelegramBlue)) { Text("Got It") }
+            }
+        )
+    }
+
+    // CUSTOM DAILY DATA LIMIT MODAL
+    if (showCustomDailyLimitDialog) {
+        AlertDialog(
+            onDismissRequest = { showCustomDailyLimitDialog = false },
+            icon = { Icon(Icons.Default.DataUsage, contentDescription = null, tint = TelegramBlue, modifier = Modifier.size(32.dp)) },
+            title = { Text("Daily Data Limit", fontWeight = FontWeight.Bold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("Select a preset or enter a custom daily limit in MB. 0 means Unlimited.", style = MaterialTheme.typography.bodySmall)
+                    OptIn(ExperimentalLayoutApi::class)
+                    FlowRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        listOf(0L to "∞", 500L to "500MB", 1024L to "1GB", 2048L to "2GB", 5120L to "5GB").forEach { (limit, label) ->
+                            FilterChip(
+                                selected = dailyDataLimitMBState == limit,
+                                onClick = {
+                                    dailyDataLimitMBState = limit
+                                    prefs.dailyDataLimitMB = limit
+                                    showCustomDailyLimitDialog = false
+                                },
+                                label = { Text(label, style = MaterialTheme.typography.labelSmall) }
+                            )
+                        }
+                    }
+                    OutlinedTextField(
+                        value = customDailyLimitInput,
+                        onValueChange = { customDailyLimitInput = it.filter { ch -> ch.isDigit() } },
+                        label = { Text("Custom Limit (MB)") },
+                        placeholder = { Text("e.g. 1024 for 1 GB") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val inputMB = customDailyLimitInput.toLongOrNull()
+                        if (inputMB != null && inputMB >= 0) {
+                            dailyDataLimitMBState = inputMB
+                            prefs.dailyDataLimitMB = inputMB
+                        }
+                        showCustomDailyLimitDialog = false
+                        customDailyLimitInput = ""
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = TelegramBlue)
+                ) { Text("Apply") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showCustomDailyLimitDialog = false; customDailyLimitInput = "" }) { Text("Cancel") }
+            }
+        )
+    }
+
+    // CUSTOM MAX FILE SIZE LIMIT MODAL
+    if (showCustomMaxLimitDialog) {
+        AlertDialog(
+            onDismissRequest = { showCustomMaxLimitDialog = false },
+            icon = { Icon(Icons.Default.FilterAlt, contentDescription = null, tint = TelegramBlue, modifier = Modifier.size(32.dp)) },
+            title = { Text("Max File Size Limit", fontWeight = FontWeight.Bold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("Select a preset or enter a custom max file size in MB. 0 means Unlimited (up to 2000 MB).", style = MaterialTheme.typography.bodySmall)
+                    OptIn(ExperimentalLayoutApi::class)
+                    FlowRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        listOf(0.0 to "∞", 50.0 to "50MB", 200.0 to "200MB", 500.0 to "500MB", 2000.0 to "2GB").forEach { (limit, label) ->
+                            FilterChip(
+                                selected = maxFileSizeMBState == limit,
+                                onClick = {
+                                    maxFileSizeMBState = limit
+                                    prefs.maxFileSizeMB = limit
+                                    showCustomMaxLimitDialog = false
+                                },
+                                label = { Text(label, style = MaterialTheme.typography.labelSmall) }
+                            )
+                        }
+                    }
+                    OutlinedTextField(
+                        value = customMaxLimitInput,
+                        onValueChange = { customMaxLimitInput = it.filter { ch -> ch.isDigit() } },
+                        label = { Text("Custom Max File Size (MB)") },
+                        placeholder = { Text("e.g. 500") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val inputMB = customMaxLimitInput.toDoubleOrNull()
+                        if (inputMB != null && inputMB >= 0) {
+                            maxFileSizeMBState = inputMB
+                            prefs.maxFileSizeMB = inputMB
+                        }
+                        showCustomMaxLimitDialog = false
+                        customMaxLimitInput = ""
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = TelegramBlue)
+                ) { Text("Apply") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showCustomMaxLimitDialog = false; customMaxLimitInput = "" }) { Text("Cancel") }
             }
         )
     }
@@ -553,7 +868,20 @@ fun BackupSettingsScreen(
                             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
                             Spacer(modifier = Modifier.height(8.dp))
 
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                TextButton(
+                                    onClick = {
+                                        triggerHapticFeedback(context, haptic)
+                                        showNetworkSelfAnalysisModal = true
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(10.dp)
+                                ) {
+                                    Icon(Icons.Default.Insights, contentDescription = null, tint = TelegramBlue, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("7-Day AI", style = MaterialTheme.typography.labelMedium, maxLines = 1)
+                                }
+
                                 TextButton(
                                     onClick = {
                                         triggerHapticFeedback(context, haptic)
@@ -563,8 +891,8 @@ fun BackupSettingsScreen(
                                     shape = RoundedCornerShape(10.dp)
                                 ) {
                                     Icon(Icons.Default.HealthAndSafety, contentDescription = null, tint = TelegramEmerald, modifier = Modifier.size(16.dp))
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text("Diagnostics", style = MaterialTheme.typography.labelMedium)
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Health", style = MaterialTheme.typography.labelMedium, maxLines = 1)
                                 }
 
                                 FilledTonalButton(
@@ -582,8 +910,8 @@ fun BackupSettingsScreen(
                                     shape = RoundedCornerShape(10.dp)
                                 ) {
                                     Icon(Icons.Default.CloudSync, contentDescription = null, modifier = Modifier.size(16.dp))
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text("Sync Now", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Sync", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold), maxLines = 1)
                                 }
                             }
                         }
@@ -613,10 +941,18 @@ fun BackupSettingsScreen(
 
                     val q = searchQuery.trim().lowercase()
 
+                    fun matchSearch(vararg terms: String): Boolean {
+                        if (q.isEmpty()) return true
+                        return terms.any { term ->
+                            val lower = term.lowercase()
+                            lower.contains(q) || q.contains(lower)
+                        }
+                    }
+
                     // ==========================================
                     // 1. CLOUD & BACKUP
                     // ==========================================
-                    if (q.isEmpty() || "cloud".contains(q) || "backup".contains(q) || "telegram".contains(q) || "token".contains(q) || "chat".contains(q) || "wifi".contains(q) || "speed".contains(q)) {
+                    if (matchSearch("cloud", "sync", "backup", "telegram", "token", "chat", "credentials", "fleet", "bot", "channel", "smart", "mode", "schedule", "wifi", "network", "speed", "threads")) {
                         Text(
                             "CLOUD & SYNC",
                             style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, letterSpacing = 0.8.sp)
@@ -627,7 +963,104 @@ fun BackupSettingsScreen(
                             color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.40f)
                         ) {
                             Column {
-                                if (q.isEmpty() || "telegram".contains(q) || "token".contains(q) || "chat".contains(q) || "credentials".contains(q)) {
+                                // Global Master Switch (Controls All Backups & Drive)
+                                if (matchSearch("global", "master", "stop", "pause", "resume", "all", "backup", "drive")) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 16.dp, vertical = 14.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(40.dp)
+                                                .clip(RoundedCornerShape(10.dp))
+                                                .background(if (!stopAllBackup) TelegramEmerald.copy(alpha = 0.12f) else Color(0xFFEF4444).copy(alpha = 0.12f)),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(
+                                                if (!stopAllBackup) Icons.Default.CloudDone else Icons.Default.CloudOff,
+                                                contentDescription = null,
+                                                tint = if (!stopAllBackup) TelegramEmerald else Color(0xFFEF4444),
+                                                modifier = Modifier.size(22.dp)
+                                            )
+                                        }
+                                        Spacer(modifier = Modifier.width(14.dp))
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text("Global Cloud Sync Engine", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+                                            Text(
+                                                if (!stopAllBackup) "Master switch active (All cloud services enabled)" else "All cloud sync operations paused",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.outline
+                                            )
+                                        }
+                                        Switch(
+                                            checked = !stopAllBackup,
+                                            onCheckedChange = { isEnabled ->
+                                                triggerHapticFeedback(context, haptic)
+                                                stopAllBackup = !isEnabled
+                                                prefs.masterCloudSyncEnabled = isEnabled
+                                                if (isEnabled) {
+                                                    BackupWorker.enqueue(context)
+                                                    Toast.makeText(context, "✅ Global Cloud Sync Resumed", Toast.LENGTH_SHORT).show()
+                                                } else {
+                                                    Toast.makeText(context, "⏸️ All Cloud Operations Paused", Toast.LENGTH_SHORT).show()
+                                                }
+                                            },
+                                            colors = SwitchDefaults.colors(
+                                                checkedThumbColor = Color.White,
+                                                checkedTrackColor = TelegramEmerald
+                                            )
+                                        )
+                                    }
+                                    HorizontalDivider(modifier = Modifier.padding(start = 68.dp, end = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
+                                }
+
+                                // Separate Cloud Drive Sync Toggle
+                                if (matchSearch("drive", "sync", "manual", "folder", "tree", "direct", "upload")) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 16.dp, vertical = 14.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(40.dp)
+                                                .clip(RoundedCornerShape(10.dp))
+                                                .background(Color(0xFF8B5CF6).copy(alpha = 0.12f)),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(
+                                                Icons.Default.CloudUpload,
+                                                contentDescription = null,
+                                                tint = Color(0xFF8B5CF6),
+                                                modifier = Modifier.size(22.dp)
+                                            )
+                                        }
+                                        Spacer(modifier = Modifier.width(14.dp))
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text("Cloud Drive Direct Uploads", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+                                            Text("Dedicated 3-4 bot fleet for Drive file drops", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+                                        }
+                                        Switch(
+                                            checked = driveSyncEnabledState,
+                                            onCheckedChange = { isEnabled ->
+                                                triggerHapticFeedback(context, haptic)
+                                                driveSyncEnabledState = isEnabled
+                                                prefs.driveSyncEnabled = isEnabled
+                                                Toast.makeText(context, if (isEnabled) "Cloud Drive sync enabled" else "Cloud Drive sync paused", Toast.LENGTH_SHORT).show()
+                                            },
+                                            colors = SwitchDefaults.colors(
+                                                checkedThumbColor = Color.White,
+                                                checkedTrackColor = Color(0xFF8B5CF6)
+                                            )
+                                        )
+                                    }
+                                    HorizontalDivider(modifier = Modifier.padding(start = 68.dp, end = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
+                                }
+
+                                if (matchSearch("telegram", "credentials", "token", "chat", "key", "bot", "id")) {
                                     MinimalSettingRow(
                                         icon = Icons.Default.Key,
                                         title = "Telegram Credentials",
@@ -641,7 +1074,22 @@ fun BackupSettingsScreen(
                                     }
                                 }
 
-                                if (q.isEmpty() || "smart".contains(q) || "backup".contains(q) || "mode".contains(q) || "schedule".contains(q) || "folder".contains(q) || "filter".contains(q)) {
+                                if (matchSearch("fleet", "multi", "multi-bot", "bot", "channel", "routing", "speed", "pool", "turbo", "load balancer")) {
+                                    HorizontalDivider(modifier = Modifier.padding(start = 68.dp, end = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
+                                    MinimalSettingRow(
+                                        icon = Icons.Default.Speed,
+                                        title = "Bot Fleet & Channel Routing",
+                                        subtitle = "Multi-bot pool (300% faster) & category channels",
+                                        value = "Manage Fleet",
+                                        valueColor = TelegramBlue,
+                                        iconColor = Color(0xFF6366F1)
+                                    ) {
+                                        triggerHapticFeedback(context, haptic)
+                                        currentCategory = StreamlinedCategory.BOT_FLEET
+                                    }
+                                }
+
+                                if (matchSearch("smart", "backup", "engine", "mode", "schedule", "folder", "filter", "continuous", "nightly", "interval", "camera", "downloads", "documents", "videos", "apks", "limit", "size")) {
                                     HorizontalDivider(modifier = Modifier.padding(start = 68.dp, end = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
                                     val modeName = when (smartBackupMode) {
                                         0 -> "Continuous"
@@ -661,7 +1109,7 @@ fun BackupSettingsScreen(
                                     }
                                 }
 
-                                if (q.isEmpty() || "network".contains(q) || "wifi".contains(q) || "speed".contains(q) || "threads".contains(q) || "performance".contains(q)) {
+                                if (matchSearch("network", "wifi", "cellular", "data", "speed", "threads", "compression", "limit", "performance")) {
                                     HorizontalDivider(modifier = Modifier.padding(start = 68.dp, end = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
                                     MinimalSettingRow(
                                         icon = Icons.Default.Wifi,
@@ -681,7 +1129,7 @@ fun BackupSettingsScreen(
                     // ==========================================
                     // 2. SECURITY & PRIVACY
                     // ==========================================
-                    if (q.isEmpty() || "security".contains(q) || "key".contains(q) || "encryption".contains(q) || "biometric".contains(q) || "master".contains(q) || "aes".contains(q)) {
+                    if (matchSearch("security", "privacy", "key", "encryption", "biometric", "fingerprint", "pin", "master", "aes", "diagnostics", "health", "ping", "test")) {
                         Text(
                             "SECURITY & PRIVACY",
                             style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, letterSpacing = 0.8.sp)
@@ -692,31 +1140,34 @@ fun BackupSettingsScreen(
                             color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.40f)
                         ) {
                             Column {
-                                MinimalSettingRow(
-                                    icon = Icons.Default.Lock,
-                                    title = "Encryption & Master Key",
-                                    subtitle = "256-bit AES encryption & biometrics",
-                                    value = if (biometricLock) "Biometrics Active" else "AES-256",
-                                    valueColor = Color(0xFF8B5CF6),
-                                    iconColor = Color(0xFF8B5CF6)
-                                ) {
-                                    triggerHapticFeedback(context, haptic)
-                                    currentCategory = StreamlinedCategory.SECURITY_PRIVACY_RESTORE
+                                if (matchSearch("encryption", "master", "key", "aes", "256", "biometric", "fingerprint", "pin", "security")) {
+                                    MinimalSettingRow(
+                                        icon = Icons.Default.Lock,
+                                        title = "Encryption & Master Key",
+                                        subtitle = "256-bit AES encryption & biometrics",
+                                        value = if (biometricLock) "Biometrics Active" else "AES-256",
+                                        valueColor = Color(0xFF8B5CF6),
+                                        iconColor = Color(0xFF8B5CF6)
+                                    ) {
+                                        triggerHapticFeedback(context, haptic)
+                                        currentCategory = StreamlinedCategory.SECURITY_PRIVACY_RESTORE
+                                    }
                                 }
 
-                                HorizontalDivider(modifier = Modifier.padding(start = 68.dp, end = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
-
-                                MinimalSettingRow(
-                                    icon = Icons.Default.HealthAndSafety,
-                                    title = "System Health & Diagnostics",
-                                    subtitle = "Server ping & bot verification test",
-                                    value = "Run Test",
-                                    valueColor = Color(0xFF14B8A6),
-                                    iconColor = Color(0xFF14B8A6),
-                                    hasSubSettings = false
-                                ) {
-                                    triggerHapticFeedback(context, haptic)
-                                    showDiagnosticModal = true
+                                if (matchSearch("diagnostics", "health", "test", "ping", "verify", "server", "bot")) {
+                                    HorizontalDivider(modifier = Modifier.padding(start = 68.dp, end = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
+                                    MinimalSettingRow(
+                                        icon = Icons.Default.HealthAndSafety,
+                                        title = "System Health & Diagnostics",
+                                        subtitle = "Server ping & bot verification test",
+                                        value = "Run Test",
+                                        valueColor = Color(0xFF14B8A6),
+                                        iconColor = Color(0xFF14B8A6),
+                                        hasSubSettings = false
+                                    ) {
+                                        triggerHapticFeedback(context, haptic)
+                                        showDiagnosticModal = true
+                                    }
                                 }
                             }
                         }
@@ -725,7 +1176,7 @@ fun BackupSettingsScreen(
                     // ==========================================
                     // 3. PREFERENCES
                     // ==========================================
-                    if (q.isEmpty() || "profile".contains(q) || "email".contains(q) || "recovery".contains(q) || "theme".contains(q) || "appearance".contains(q) || "dark".contains(q)) {
+                    if (matchSearch("profile", "account", "email", "recovery", "display name", "name", "theme", "appearance", "dark", "light", "mode", "color")) {
                         Text(
                             "PREFERENCES",
                             style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, letterSpacing = 0.8.sp)
@@ -736,33 +1187,61 @@ fun BackupSettingsScreen(
                             color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.40f)
                         ) {
                             Column {
-                                MinimalSettingRow(
-                                    icon = Icons.Default.Person,
-                                    title = "Profile & Recovery Email",
-                                    subtitle = "Display name & recovery inbox",
-                                    value = if (prefs.recoveryEmail.isNotEmpty()) "Configured" else "",
-                                    iconColor = Color(0xFFEC4899)
-                                ) {
-                                    triggerHapticFeedback(context, haptic)
-                                    currentCategory = StreamlinedCategory.PROFILE_ACCOUNT
+                                if (matchSearch("profile", "account", "email", "recovery", "inbox", "name", "display name")) {
+                                    MinimalSettingRow(
+                                        icon = Icons.Default.Person,
+                                        title = "Profile & Recovery Email",
+                                        subtitle = "Display name & recovery inbox",
+                                        value = if (prefs.recoveryEmail.isNotEmpty()) "Configured" else "",
+                                        iconColor = Color(0xFFEC4899)
+                                    ) {
+                                        triggerHapticFeedback(context, haptic)
+                                        currentCategory = StreamlinedCategory.PROFILE_ACCOUNT
+                                    }
                                 }
 
-                                HorizontalDivider(modifier = Modifier.padding(start = 68.dp, end = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
-
-                                val themeLabel = when (selectedTheme) {
-                                    1 -> "Light"
-                                    2 -> "Dark"
-                                    else -> "System"
+                                if (matchSearch("appearance", "theme", "dark", "light", "system", "mode", "color", "look")) {
+                                    HorizontalDivider(modifier = Modifier.padding(start = 68.dp, end = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
+                                    val themeLabel = when (selectedTheme) {
+                                        1 -> "Light"
+                                        2 -> "Dark"
+                                        else -> "System"
+                                    }
+                                    MinimalSettingRow(
+                                        icon = Icons.Default.Palette,
+                                        title = "Appearance",
+                                        subtitle = "Theme & dark mode preferences",
+                                        value = themeLabel,
+                                        iconColor = Color(0xFFF59E0B)
+                                    ) {
+                                        triggerHapticFeedback(context, haptic)
+                                        currentCategory = StreamlinedCategory.APPEARANCE_REGION
+                                    }
                                 }
-                                MinimalSettingRow(
-                                    icon = Icons.Default.Palette,
-                                    title = "Appearance",
-                                    subtitle = "Theme & dark mode preferences",
-                                    value = themeLabel,
-                                    iconColor = Color(0xFFF59E0B)
-                                ) {
-                                    triggerHapticFeedback(context, haptic)
-                                    currentCategory = StreamlinedCategory.APPEARANCE_REGION
+
+                                if (matchSearch("notification", "controller", "status", "bar", "start", "stop", "alert", "download", "minimal")) {
+                                    HorizontalDivider(modifier = Modifier.padding(start = 68.dp, end = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
+                                    var persistentNotifActive by remember { mutableStateOf(prefs.persistentNotificationEnabled) }
+                                    MinimalSettingRow(
+                                        icon = Icons.Default.NotificationsActive,
+                                        title = "Quick Controller & Notifications",
+                                        subtitle = "Status bar 1-tap Start/Stop & separate channels",
+                                        value = if (persistentNotifActive) "Enabled" else "Disabled",
+                                        valueColor = if (persistentNotifActive) TelegramEmerald else Color.Gray,
+                                        iconColor = TelegramBlue,
+                                        hasSubSettings = false
+                                    ) {
+                                        triggerHapticFeedback(context, haptic)
+                                        persistentNotifActive = !persistentNotifActive
+                                        prefs.persistentNotificationEnabled = persistentNotifActive
+                                        if (persistentNotifActive) {
+                                            com.example.telegrambackup.utils.AppNotificationHelper.showPersistentControlNotification(context, isRunning = false)
+                                            Toast.makeText(context, "✓ Quick Controller Notification Activated", Toast.LENGTH_SHORT).show()
+                                        } else {
+                                            com.example.telegrambackup.utils.AppNotificationHelper.cancelPersistentControlNotification(context)
+                                            Toast.makeText(context, "Quick Controller Disabled", Toast.LENGTH_SHORT).show()
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -771,7 +1250,7 @@ fun BackupSettingsScreen(
                     // ==========================================
                     // 4. SYSTEM & MAINTENANCE
                     // ==========================================
-                    if (q.isEmpty() || "update".contains(q) || "version".contains(q) || "danger".contains(q) || "logout".contains(q) || "delete".contains(q) || "trash".contains(q) || "clean".contains(q)) {
+                    if (matchSearch("update", "version", "about", "changelog", "danger", "reset", "wipe", "delete", "trash", "clean", "logout", "log out")) {
                         Text(
                             "SYSTEM & MAINTENANCE",
                             style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, letterSpacing = 0.8.sp)
@@ -782,31 +1261,51 @@ fun BackupSettingsScreen(
                             color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.40f)
                         ) {
                             Column {
-                                val currentVersion = remember { try { context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "2.1.39" } catch (_: Exception) { "2.1.39" } }
-                                MinimalSettingRow(
-                                    icon = Icons.Default.SystemUpdate,
-                                    title = "About & Updates",
-                                    subtitle = "Software specs & changelog",
-                                    value = "v$currentVersion",
-                                    valueColor = Color(0xFF6366F1),
-                                    iconColor = Color(0xFF6366F1),
-                                    hasSubSettings = false
-                                ) {
-                                    triggerHapticFeedback(context, haptic)
-                                    showAppInfoModal = true
+                                if (matchSearch("about", "update", "version", "specs", "changelog", "release")) {
+                                    val currentVersion = remember { try { context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "2.1.81" } catch (_: Exception) { "2.1.81" } }
+                                    MinimalSettingRow(
+                                        icon = Icons.Default.SystemUpdate,
+                                        title = "About & Updates",
+                                        subtitle = "Software specs & changelog",
+                                        value = "v$currentVersion",
+                                        valueColor = Color(0xFF6366F1),
+                                        iconColor = Color(0xFF6366F1),
+                                        hasSubSettings = false
+                                    ) {
+                                        triggerHapticFeedback(context, haptic)
+                                        showAppInfoModal = true
+                                    }
                                 }
 
-                                HorizontalDivider(modifier = Modifier.padding(start = 68.dp, end = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
+                                if (matchSearch("data", "reset", "wipe", "delete", "trash", "auto-clean", "danger", "maintenance")) {
+                                    HorizontalDivider(modifier = Modifier.padding(start = 68.dp, end = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
+                                    MinimalSettingRow(
+                                        icon = Icons.Default.DeleteForever,
+                                        title = "Data Management & Reset",
+                                        subtitle = "Trash auto-clean & data wipe",
+                                        value = "",
+                                        iconColor = Color(0xFFEF4444)
+                                    ) {
+                                        triggerHapticFeedback(context, haptic)
+                                        currentCategory = StreamlinedCategory.DANGER_ZONE
+                                    }
+                                }
 
-                                MinimalSettingRow(
-                                    icon = Icons.Default.DeleteForever,
-                                    title = "Data Management & Reset",
-                                    subtitle = "Trash auto-clean & data wipe",
-                                    value = "",
-                                    iconColor = Color(0xFFEF4444)
-                                ) {
-                                    triggerHapticFeedback(context, haptic)
-                                    currentCategory = StreamlinedCategory.DANGER_ZONE
+                                if (matchSearch("cache", "storage", "clean", "size", "clear", "optimize", "memory", "budget")) {
+                                    HorizontalDivider(modifier = Modifier.padding(start = 68.dp, end = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
+                                    MinimalSettingRow(
+                                        icon = Icons.Default.CleaningServices,
+                                        title = "Cache & Storage Optimization",
+                                        subtitle = "Auto-pruning budget & instant cleaner",
+                                        value = "${AppCacheManager.formatBytes(cacheStats.totalBytes)} / ${maxCacheBudgetMB}MB",
+                                        valueColor = if (cacheStats.usagePercentage > 0.85f) Color(0xFFEF4444) else TelegramEmerald,
+                                        iconColor = Color(0xFF10B981),
+                                        hasSubSettings = false
+                                    ) {
+                                        triggerHapticFeedback(context, haptic)
+                                        cacheStats = AppCacheManager.getCacheStats(context)
+                                        showCacheOptimizerModal = true
+                                    }
                                 }
                             }
                         }
@@ -922,7 +1421,7 @@ fun BackupSettingsScreen(
                                         triggerHapticFeedback(context, haptic)
                                         if (!recoveryEmailInput.contains("@")) { Toast.makeText(context, "Enter a valid email!", Toast.LENGTH_SHORT).show() }
                                         else {
-                                            generatedRecoveryOtp = String.format("%06d", Random.nextInt(100000, 999999))
+                                            generatedRecoveryOtp = String.format(java.util.Locale.ROOT, "%06d", Random.nextInt(100000, 999999))
                                             isRecoveryOtpSent = true
                                             scope.launch { authRepo.requestOtp(recoveryEmailInput.trim(), "recovery_email"); Toast.makeText(context, "✉️ OTP sent to $recoveryEmailInput", Toast.LENGTH_SHORT).show() }
                                         }
@@ -946,6 +1445,144 @@ fun BackupSettingsScreen(
                                     shape = RoundedCornerShape(12.dp),
                                     modifier = Modifier.fillMaxWidth().height(48.dp)
                                 ) { Text("Verify & Save Email") }
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    // Cloud Profile & Settings Zero-Loss Sync Card
+                    Surface(
+                        shape = RoundedCornerShape(18.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                        tonalElevation = 1.dp,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Box(
+                                    modifier = Modifier.size(36.dp).clip(CircleShape).background(TelegramBlue.copy(alpha = 0.15f)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(Icons.Default.CloudSync, contentDescription = null, tint = TelegramBlue, modifier = Modifier.size(20.dp))
+                                }
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Column {
+                                    Text("Cloud Profile & Settings Sync", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold))
+                                    Text("Protects full bot fleet, channel routes, encryption keys & sub-settings across app uninstalls.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+                                }
+                            }
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Button(
+                                    onClick = {
+                                        triggerHapticFeedback(context, haptic)
+                                        scope.launch {
+                                            CloudProfileSyncManager.syncLocalConfigToCloud(context, showToast = true)
+                                        }
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = TelegramBlue),
+                                    shape = RoundedCornerShape(12.dp),
+                                    modifier = Modifier.weight(1f).height(44.dp)
+                                ) {
+                                    Icon(Icons.Default.CloudUpload, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Sync to Cloud", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold))
+                                }
+
+                                OutlinedButton(
+                                    onClick = {
+                                        triggerHapticFeedback(context, haptic)
+                                        scope.launch {
+                                            val restored = CloudProfileSyncManager.autoRestoreConfigFromCloud(context)
+                                            val filesRestored = SettingsDbManager.restoreCloudFileIndexToRoom(context)
+                                            if (restored || filesRestored > 0) {
+                                                Toast.makeText(context, "✓ Cloud Profile, Bots & $filesRestored File(s) Restored!", Toast.LENGTH_LONG).show()
+                                            } else {
+                                                Toast.makeText(context, "No remote cloud config found to restore", Toast.LENGTH_SHORT).show()
+                                            }
+                                        }
+                                    },
+                                    shape = RoundedCornerShape(12.dp),
+                                    modifier = Modifier.weight(1f).height(44.dp)
+                                ) {
+                                    Icon(Icons.Default.CloudDownload, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Restore Config", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold))
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(10.dp))
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Button(
+                                    onClick = {
+                                        triggerHapticFeedback(context, haptic)
+                                        showDeepReindexModal = true
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6366F1)),
+                                    shape = RoundedCornerShape(12.dp),
+                                    modifier = Modifier.weight(1f).height(42.dp)
+                                ) {
+                                    Icon(Icons.Default.CloudSync, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Deep Re-Index", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold))
+                                }
+
+                                Button(
+                                    onClick = {
+                                        triggerHapticFeedback(context, haptic)
+                                        showFreeUpSpaceModal = true
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = TelegramEmerald),
+                                    shape = RoundedCornerShape(12.dp),
+                                    modifier = Modifier.weight(1f).height(42.dp)
+                                ) {
+                                    Icon(Icons.Default.CleaningServices, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Free Up Space", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold))
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(10.dp))
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                OutlinedButton(
+                                    onClick = {
+                                        triggerHapticFeedback(context, haptic)
+                                        importExportInitialMode = 1 // Import
+                                        showImportExportBotsDialog = true
+                                    },
+                                    shape = RoundedCornerShape(12.dp),
+                                    modifier = Modifier.weight(1f).height(40.dp)
+                                ) {
+                                    Icon(Icons.Default.CloudDownload, contentDescription = null, modifier = Modifier.size(16.dp), tint = TelegramEmerald)
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("📥 Import Bots", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold))
+                                }
+
+                                OutlinedButton(
+                                    onClick = {
+                                        triggerHapticFeedback(context, haptic)
+                                        importExportInitialMode = 0 // Export
+                                        showImportExportBotsDialog = true
+                                    },
+                                    shape = RoundedCornerShape(12.dp),
+                                    modifier = Modifier.weight(1f).height(40.dp)
+                                ) {
+                                    Icon(Icons.Default.CloudUpload, contentDescription = null, modifier = Modifier.size(16.dp), tint = TelegramBlue)
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("📤 Export Bots", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold))
+                                }
                             }
                         }
                     }
@@ -1087,6 +1724,15 @@ fun BackupSettingsScreen(
 
                     Spacer(modifier = Modifier.height(24.dp))
                 }
+            }
+
+            // =========================================================================
+            // 🚀 TELEGRAM BOT FLEET & CHANNELS SCREEN
+            // =========================================================================
+            StreamlinedCategory.BOT_FLEET -> {
+                BotFleetSettingsScreen(
+                    onBack = { currentCategory = StreamlinedCategory.MAIN }
+                )
             }
 
             // =========================================================================
@@ -1250,6 +1896,10 @@ fun BackupSettingsScreen(
                                 uploadSpeedLimit = when (uploadSpeedLimit) { "Unlimited" -> "2 MB/s"; "2 MB/s" -> "5 MB/s"; else -> "Unlimited" }
                             }, { featureInfoTitle = "Speed Limit"; featureInfoDesc = "Caps upload speed." })
                             HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
+                            OptionValueRowWithInfo("Daily Data Limit", if (dailyDataLimitMBState <= 0) "Unlimited" else "$dailyDataLimitMBState MB", {
+                                showCustomDailyLimitDialog = true
+                            }, { featureInfoTitle = "Daily Data Limit"; featureInfoDesc = "Caps maximum data uploaded per day across cellular and Wi-Fi." })
+                            HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
                             Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
                                 Text("Concurrent Upload Streams", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium))
                                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -1258,6 +1908,55 @@ fun BackupSettingsScreen(
                                     }
                                 }
                             }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Text(
+                        "AI NETWORK BENCHMARK & SELF-ANALYSIS",
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, letterSpacing = 0.8.sp)
+                    )
+
+                    Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.40f), modifier = Modifier.fillMaxWidth()) {
+                        Column {
+                            OptionValueRowWithInfo(
+                                "7-Day Speed & Health Benchmark",
+                                if (prefs.isSelfAnalysisEnabled) "Active (30m)" else "Paused",
+                                {
+                                    triggerHapticFeedback(context, haptic)
+                                    showNetworkSelfAnalysisModal = true
+                                },
+                                {
+                                    featureInfoTitle = "7-Day Self-Analysis"
+                                    featureInfoDesc = "Runs periodic background network benchmarks every 30 mins to discover peak upload hours, calculate latency, and advise optimal backup settings."
+                                }
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Text(
+                        "POWER & BATTERY SAFEGUARDS",
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, letterSpacing = 0.8.sp)
+                    )
+
+                    Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.40f), modifier = Modifier.fillMaxWidth()) {
+                        Column {
+                            SwitchRowWithInfo(
+                                "Backup Only While Charging",
+                                chargingOnlyState,
+                                { chargingOnlyState = it; prefs.chargingOnly = it },
+                                { featureInfoTitle = "Charging Only"; featureInfoDesc = "Pauses automatic background sync when device is running on battery." }
+                            )
+                            HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
+                            SwitchRowWithInfo(
+                                "Low Battery Guard (< 20%)",
+                                lowBatteryProtectionState,
+                                { lowBatteryProtectionState = it; prefs.lowBatteryProtection = it },
+                                { featureInfoTitle = "Low Battery Guard"; featureInfoDesc = "Automatically halts large uploads if phone battery drops below 20% to preserve battery life." }
+                            )
                         }
                     }
 
@@ -1294,6 +1993,16 @@ fun BackupSettingsScreen(
                     Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.40f), modifier = Modifier.fillMaxWidth()) {
                         Column {
                             SwitchRowWithInfo("Biometric App Lock", biometricLock, { biometricLock = it; prefs.biometricLock = it }, { featureInfoTitle = "Biometrics"; featureInfoDesc = "Requires Fingerprint / Face Unlock when opening app." })
+                            HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
+                            SwitchRowWithInfo(
+                                "Screen Privacy (Anti-Spyware)",
+                                prefs.screenPrivacyEnabled,
+                                {
+                                    prefs.screenPrivacyEnabled = it
+                                    (context as? com.example.telegrambackup.MainActivity)?.updateScreenPrivacy(it)
+                                },
+                                { featureInfoTitle = "Screen Privacy"; featureInfoDesc = "Blocks screenshots, screen recordings, and hides sensitive app contents in Android recent apps." }
+                            )
                             HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
                             SettingCategoryRow(Icons.Default.Security, "System Permissions Status", "Storage, Notifications & Battery Optimization", TelegramBlue) {
                                 triggerHapticFeedback(context, haptic)
@@ -1497,6 +2206,20 @@ fun BackupSettingsScreen(
             },
             dismissButton = {
                 TextButton(onClick = { showCustomMaxLimitDialog = false }) { Text("Cancel") }
+            }
+        )
+    }
+
+    if (showImportExportBotsDialog) {
+        BotFleetImportExportDialog(
+            initialMode = importExportInitialMode,
+            onDismiss = { showImportExportBotsDialog = false },
+            onImportSuccess = {
+                showImportExportBotsDialog = false
+                scope.launch {
+                    refreshDbStats()
+                    CloudProfileSyncManager.autoRestoreConfigFromCloud(context)
+                }
             }
         )
     }

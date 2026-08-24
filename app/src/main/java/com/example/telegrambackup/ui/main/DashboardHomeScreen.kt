@@ -1,7 +1,14 @@
 package com.example.telegrambackup.ui.main
 
+import android.Manifest
+import android.content.Intent
+import android.net.Uri
+import android.os.Build
+import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -77,15 +84,32 @@ fun DashboardHomeScreen(
     val totalBytes = remember(recentFiles) { recentFiles.sumOf { it.size } }
 
     val storageGranted = remember { com.example.telegrambackup.ui.auth.isStoragePermissionGranted(context) }
-    var showPermissionSetupWizard by remember { mutableStateOf(false) }
 
-    if (showPermissionSetupWizard) {
-        com.example.telegrambackup.ui.auth.PermissionSetupDialog(
-            onDismiss = { showPermissionSetupWizard = false }
-        )
+    val storageLegacyLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { _ -> }
+
+    val manageStorageLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { _ -> }
+
+    fun requestStorageDirectly() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            try {
+                manageStorageLauncher.launch(
+                    Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply {
+                        data = Uri.parse("package:${context.packageName}")
+                    }
+                )
+            } catch (_: Exception) {
+                try {
+                    manageStorageLauncher.launch(Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION))
+                } catch (_: Exception) {}
+            }
+        } else {
+            storageLegacyLauncher.launch(Manifest.permission.READ_EXTERNAL_STORAGE)
+        }
     }
-
-
 
     LazyColumn(
         modifier = Modifier
@@ -101,7 +125,7 @@ fun DashboardHomeScreen(
                     colors = CardDefaults.cardColors(containerColor = Color(0xFFF59E0B).copy(alpha = 0.15f)),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable { showPermissionSetupWizard = true }
+                        .clickable { requestStorageDirectly() }
                 ) {
                     Row(
                         modifier = Modifier.padding(16.dp),
@@ -116,7 +140,7 @@ fun DashboardHomeScreen(
                         }
                         Spacer(modifier = Modifier.width(8.dp))
                         Button(
-                            onClick = { showPermissionSetupWizard = true },
+                            onClick = { requestStorageDirectly() },
                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD97706)),
                             contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
                             modifier = Modifier.height(32.dp)
@@ -210,42 +234,122 @@ fun DashboardHomeScreen(
         }
 
         item {
+            var showFreeUpSpaceDialog by remember { mutableStateOf(false) }
+
+            if (showFreeUpSpaceDialog) {
+                com.example.telegrambackup.ui.settings.FreeUpSpaceDialog(
+                    onDismiss = {
+                        showFreeUpSpaceDialog = false
+                        onRefresh()
+                    }
+                )
+            }
+
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(18.dp))
+                    .clickable { showFreeUpSpaceDialog = true },
+                shape = RoundedCornerShape(18.dp),
+                color = TelegramEmerald.copy(alpha = 0.12f),
+                border = androidx.compose.foundation.BorderStroke(1.dp, TelegramEmerald.copy(alpha = 0.25f))
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .background(TelegramEmerald.copy(alpha = 0.2f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.CleaningServices,
+                                contentDescription = null,
+                                tint = TelegramEmerald,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                        Column {
+                            Text(
+                                text = "Free Up Device Space",
+                                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = "Delete local copies of backed up media safely",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                    Icon(
+                        imageVector = Icons.Default.ChevronRight,
+                        contentDescription = null,
+                        tint = TelegramEmerald,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            }
+        }
+
+        item {
             Text(
                 "Categories",
                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
             )
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                quickActions.chunked(3).forEach { rowItems ->
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                quickActions.chunked(2).forEach { rowItems ->
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         rowItems.forEach { item ->
                             Surface(
-                                shape = RoundedCornerShape(16.dp),
-                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                                shape = RoundedCornerShape(20.dp),
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.40f),
+                                tonalElevation = 1.dp,
                                 modifier = Modifier
                                     .weight(1f)
                                     .clickable { onQuickActionClick(item.categoryIndex) }
                             ) {
-                                Column(
+                                Row(
                                     modifier = Modifier.padding(14.dp),
-                                    horizontalAlignment = Alignment.CenterHorizontally
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Box(
                                         modifier = Modifier
-                                            .size(38.dp)
-                                            .clip(RoundedCornerShape(10.dp))
-                                            .background(item.iconTint.copy(alpha = 0.12f)),
+                                            .size(48.dp)
+                                            .clip(RoundedCornerShape(14.dp))
+                                            .background(item.iconTint.copy(alpha = 0.15f)),
                                         contentAlignment = Alignment.Center
                                     ) {
-                                        Icon(imageVector = item.icon, contentDescription = null, tint = item.iconTint, modifier = Modifier.size(20.dp))
+                                        Icon(imageVector = item.icon, contentDescription = null, tint = item.iconTint, modifier = Modifier.size(26.dp))
                                     }
-                                    Spacer(modifier = Modifier.height(8.dp))
-                                    Text(item.title, style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold), maxLines = 1)
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = item.title,
+                                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                                            maxLines = 1
+                                        )
+                                        Spacer(modifier = Modifier.height(2.dp))
+                                        Text(
+                                            text = "View Cloud Files",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.outline
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -285,7 +389,18 @@ fun DashboardHomeScreen(
                             // Download
                             Button(
                                 onClick = {
-                                    Toast.makeText(context, "Downloading ${selectedPaths.size} files...", Toast.LENGTH_SHORT).show()
+                                    val count = selectedPaths.size
+                                    val filesToDownload = recentFiles.filter { selectedPaths.contains(it.path) }
+                                    if (filesToDownload.isNotEmpty()) {
+                                        Toast.makeText(context, "Starting download of $count files...", Toast.LENGTH_SHORT).show()
+                                        scope.launch(Dispatchers.IO) {
+                                            com.example.telegrambackup.utils.ZipBackupDownloader.downloadFilesAsZip(
+                                                context = context,
+                                                filesToDownload = filesToDownload,
+                                                archiveTitle = "Recent_Downloads"
+                                            )
+                                        }
+                                    }
                                     selectedPaths = emptySet()
                                     isSelectionMode = false
                                 },
@@ -366,11 +481,12 @@ fun DashboardHomeScreen(
                 }
             }
         } else {
-            items(recentFiles.take(5), key = { "${it.path}_${it.timestamp}" }) { file ->
+            items(recentFiles.take(6), key = { "${it.path}_${it.timestamp}" }) { file ->
                 val isSelected = selectedPaths.contains(file.path)
                 Surface(
-                    shape = RoundedCornerShape(14.dp),
+                    shape = RoundedCornerShape(16.dp),
                     color = if (isSelected) TelegramBlue.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surface,
+                    tonalElevation = 1.dp,
                     modifier = Modifier
                         .fillMaxWidth()
                         .combinedClickable(
@@ -405,18 +521,26 @@ fun DashboardHomeScreen(
                         }
 
                         Box(
-                            modifier = Modifier
-                                .size(40.dp)
-                                .clip(CircleShape)
-                                .background(TelegramBlue.copy(alpha = 0.12f)),
+                            modifier = Modifier.size(46.dp),
                             contentAlignment = Alignment.Center
                         ) {
-                            Icon(Icons.Default.InsertDriveFile, contentDescription = null, tint = TelegramBlue, modifier = Modifier.size(20.dp))
+                            com.example.telegrambackup.ui.common.FileThumbnailView(
+                                fileName = file.fileName,
+                                filePath = file.path,
+                                telegramFileId = file.telegramFileId,
+                                iconSize = 38.dp,
+                                modifier = Modifier.size(44.dp)
+                            )
                         }
                         Spacer(modifier = Modifier.width(12.dp))
                         Column(modifier = Modifier.weight(1f)) {
                             Text(file.fileName, style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold), maxLines = 1)
-                            Text(dateFormat.format(Date(file.timestamp)), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = "${com.example.telegrambackup.ui.explorer.formatFileSize(file.size)} • ${dateFormat.format(Date(file.timestamp))}",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.outline
+                            )
                         }
                     }
                 }

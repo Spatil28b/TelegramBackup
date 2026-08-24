@@ -184,6 +184,7 @@ object TelegramFileVerifier {
      * @return true if file exists, false if deleted/invalid
      */
     fun verifyFileExists(botToken: String, fileId: String): Boolean {
+        if (botToken.isBlank() || fileId.isBlank()) return false
         return try {
             val url = "https://api.telegram.org/bot$botToken/getFile?file_id=$fileId"
             val request = Request.Builder().url(url).get().build()
@@ -192,9 +193,33 @@ object TelegramFileVerifier {
             val body = response.body?.string() ?: ""
 
             val json = JSONObject(body)
-            json.optBoolean("ok", false)
+            val isOk = json.optBoolean("ok", false)
+            if (isOk) return true
+
+            val desc = json.optString("description", "").lowercase()
+            val errorCode = json.optInt("error_code", 0)
+
+            // Telegram Bot API getFile returns 400 with "file is too big" for files >20MB.
+            // These files ARE 100% VALID and safely stored on Telegram Cloud!
+            if (desc.contains("file is too big") || desc.contains("too big") || desc.contains("file_id is valid")) {
+                return true
+            }
+
+            // If Telegram is rate limiting (429) or experiencing temporary errors (500/502/503), do not purge!
+            if (errorCode == 429 || errorCode >= 500 || desc.contains("too many requests") || desc.contains("retry after")) {
+                return true
+            }
+
+            // Only mark as missing if Telegram explicitly confirms the file_id is invalid/deleted
+            if (desc.contains("wrong file identifier") || desc.contains("invalid file_id") || desc.contains("file not found")) {
+                return false
+            }
+
+            // Default safe fallback: retain record to avoid accidental duplicate uploads
+            true
         } catch (e: Exception) {
-            false
+            // Network timeout / connection drop: retain record
+            true
         }
     }
 

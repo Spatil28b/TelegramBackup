@@ -40,6 +40,7 @@ import com.example.telegrambackup.utils.ZipBackupDownloader
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -71,6 +72,26 @@ fun MonthlyArchiveScreen() {
 
     // Expanded months
     var expandedMonths by remember { mutableStateOf<Set<String>>(emptySet()) }
+    val itemDateFormat = remember { SimpleDateFormat("dd MMM, hh:mm a", Locale.getDefault()) }
+
+    var activeAudioPlayerItem by remember { mutableStateOf<Pair<String, String>?>(null) }
+    var activeVideoPlayerItem by remember { mutableStateOf<Pair<String, String>?>(null) }
+
+    if (activeAudioPlayerItem != null) {
+        com.example.telegrambackup.ui.player.ModernAudioPlayerSheet(
+            filePathOrUrl = activeAudioPlayerItem!!.first,
+            fileName = activeAudioPlayerItem!!.second,
+            onDismiss = { activeAudioPlayerItem = null }
+        )
+    }
+
+    if (activeVideoPlayerItem != null) {
+        com.example.telegrambackup.ui.player.ModernVideoPlayerDialog(
+            filePathOrUrl = activeVideoPlayerItem!!.first,
+            fileName = activeVideoPlayerItem!!.second,
+            onDismiss = { activeVideoPlayerItem = null }
+        )
+    }
 
     fun loadFiles() {
         scope.launch(Dispatchers.IO) {
@@ -380,7 +401,6 @@ fun MonthlyArchiveScreen() {
 
                                         group.files.forEachIndexed { fIdx, file ->
                                             val isSelected = selectedPaths.contains(file.path)
-                                            val dateFormat = remember { SimpleDateFormat("dd MMM, hh:mm a", Locale.getDefault()) }
 
                                             Surface(
                                                 shape = RoundedCornerShape(12.dp),
@@ -393,7 +413,14 @@ fun MonthlyArchiveScreen() {
                                                                 selectedPaths = if (isSelected) selectedPaths - file.path else selectedPaths + file.path
                                                                 if (selectedPaths.isEmpty()) isSelectionMode = false
                                                             } else {
-                                                                if (file.path.isNotEmpty()) {
+                                                                val localFile = File(file.path)
+                                                                val hasLocal = localFile.exists() && localFile.length() > 0
+
+                                                                if (FileViewerHelper.isAudioFile(file.fileName)) {
+                                                                    activeAudioPlayerItem = Pair(file.path, file.fileName)
+                                                                } else if (FileViewerHelper.isVideoFile(file.fileName) && hasLocal) {
+                                                                    activeVideoPlayerItem = Pair(file.path, file.fileName)
+                                                                } else if (hasLocal) {
                                                                     FileViewerHelper.openFile(context, file.path, file.fileName)
                                                                 } else {
                                                                     Toast.makeText(context, "Opening ${file.fileName}...", Toast.LENGTH_SHORT).show()
@@ -434,7 +461,7 @@ fun MonthlyArchiveScreen() {
                                                             overflow = TextOverflow.Ellipsis
                                                         )
                                                         Text(
-                                                            "${formatFileSize(file.size)} • ${dateFormat.format(Date(file.timestamp))}",
+                                                            "${formatFileSize(file.size)} • ${itemDateFormat.format(Date(file.timestamp))}",
                                                             style = MaterialTheme.typography.labelSmall,
                                                             color = MaterialTheme.colorScheme.outline
                                                         )

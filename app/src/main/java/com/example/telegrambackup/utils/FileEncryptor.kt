@@ -26,6 +26,8 @@ import javax.crypto.spec.SecretKeySpec
  */
 object FileEncryptor {
     private const val ALGORITHM = "AES/CBC/PKCS5Padding"
+    // 8-byte magic header identifying AES-256 encrypted payload
+    val MAGIC_HEADER = byteArrayOf(0x45, 0x4E, 0x43, 0x32, 0x35, 0x36, 0x01, 0x00) // "ENC256\x01\x00"
 
     /** Derives a 256-bit AES secret key spec from user's Master Key string */
     private fun deriveKey(secret: String): SecretKeySpec {
@@ -42,7 +44,24 @@ object FileEncryptor {
     }
 
     /**
-     * Encrypts a plain file into an AES-256 encrypted file output.
+     * Checks if a file was encrypted by checking its 8-byte magic header.
+     */
+    fun isEncryptedFile(file: File): Boolean {
+        if (!file.exists() || file.length() < 8) return false
+        try {
+            FileInputStream(file).use { fis ->
+                val header = ByteArray(8)
+                val read = fis.read(header)
+                if (read == 8) {
+                    return header.contentEquals(MAGIC_HEADER)
+                }
+            }
+        } catch (_: Exception) {}
+        return false
+    }
+
+    /**
+     * Encrypts a plain file into an AES-256 encrypted file output with magic header.
      * @param inputFile Source plain file
      * @param outputFile Encrypted output file destination
      * @param secretKey Master AES-256 encryption key
@@ -55,6 +74,8 @@ object FileEncryptor {
 
         FileInputStream(inputFile).use { fis ->
             FileOutputStream(outputFile).use { fos ->
+                // Write 8-byte Magic Header first
+                fos.write(MAGIC_HEADER)
                 CipherOutputStream(fos, cipher).use { cos ->
                     val buffer = ByteArray(8192)
                     var bytesRead: Int
@@ -80,6 +101,12 @@ object FileEncryptor {
         cipher.init(Cipher.DECRYPT_MODE, keySpec, ivSpec)
 
         FileInputStream(inputFile).use { fis ->
+            val hasMagic = isEncryptedFile(inputFile)
+            if (hasMagic) {
+                // Skip the 8-byte magic header
+                fis.skip(8)
+            }
+
             CipherInputStream(fis, cipher).use { cis ->
                 FileOutputStream(outputFile).use { fos ->
                     val buffer = ByteArray(8192)
@@ -121,9 +148,11 @@ object FileEncryptor {
         }
     }
 
-    /** Decrypts an encrypted file in place using a temporary file wrapper */
+    /** Decrypts an encrypted file in place ONLY IF IT IS ACTUALLY ENCRYPTED */
     fun decryptFileInPlace(file: File, secretKey: String) {
         if (!file.exists() || secretKey.isEmpty()) return
+        if (!isEncryptedFile(file)) return
+
         val tempDecrypted = File(file.parentFile, "${file.name}.dec_tmp")
         try {
             decryptFile(file, tempDecrypted, secretKey)

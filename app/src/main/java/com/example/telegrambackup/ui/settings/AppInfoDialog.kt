@@ -25,6 +25,7 @@ import com.example.telegrambackup.theme.TelegramBlue
 import com.example.telegrambackup.theme.TelegramEmerald
 import com.example.telegrambackup.ui.update.AppUpdaterDialog
 import com.example.telegrambackup.ui.update.AppVersionInfo
+import com.example.telegrambackup.ui.update.WhatsNewDialog
 import com.example.telegrambackup.utils.AppPrefs
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -42,13 +43,21 @@ fun AppInfoDialog(
     var isCheckingUpdate by remember { mutableStateOf(false) }
     var updateInfoAvailable by remember { mutableStateOf<AppVersionInfo?>(null) }
     var upToDateText by remember { mutableStateOf("") }
+    var showWhatsNewModal by remember { mutableStateOf(false) }
 
     val currentAppInfo = remember {
         try {
             val pkg = context.packageManager.getPackageInfo(context.packageName, 0)
             val code = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) pkg.longVersionCode.toInt() else @Suppress("DEPRECATION") pkg.versionCode
-            Pair(pkg.versionName ?: "2.1.39", if (code > 0) code else 42)
-        } catch (_: Exception) { Pair("2.1.39", 42) }
+            Pair(pkg.versionName ?: "2.1.81", if (code > 0) code else 84)
+        } catch (_: Exception) { Pair("2.1.81", 84) }
+    }
+
+    if (showWhatsNewModal) {
+        WhatsNewDialog(
+            versionName = currentAppInfo.first,
+            onDismiss = { showWhatsNewModal = false }
+        )
     }
 
     if (updateInfoAvailable != null) {
@@ -126,35 +135,46 @@ fun AppInfoDialog(
             }
         },
         confirmButton = {
-            Button(
-                onClick = {
-                    if (isCheckingUpdate) return@Button
-                    isCheckingUpdate = true
-                    upToDateText = "Checking online server for updates..."
-                    scope.launch(Dispatchers.IO) {
-                        val serverUrl = prefs.serverUrl.ifEmpty { "https://telegram-backup-backend.vercel.app" }
-                        val versionInfo = ServerApi().getLatestAppVersion(serverUrl)
-                        withContext(Dispatchers.Main) {
-                            isCheckingUpdate = false
-                            val isNewerVersionCode = versionInfo.versionCode > currentAppInfo.second
-                            val isNewerSemVer = com.example.telegrambackup.utils.SemVerUtils.isServerVersionNewer(versionInfo.versionName, currentAppInfo.first)
-                            if (versionInfo.success && (isNewerVersionCode || isNewerSemVer) && versionInfo.downloadUrl.isNotEmpty()) {
-                                updateInfoAvailable = versionInfo
-                                upToDateText = ""
-                            } else {
-                                upToDateText = "✅ Your app is fully up to date! (v${currentAppInfo.first})"
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(
+                    onClick = { showWhatsNewModal = true },
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White)
+                ) {
+                    Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = TelegramEmerald, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("What's New", fontWeight = FontWeight.Bold)
+                }
+
+                Button(
+                    onClick = {
+                        if (isCheckingUpdate) return@Button
+                        isCheckingUpdate = true
+                        upToDateText = "Checking online server for updates..."
+                        scope.launch(Dispatchers.IO) {
+                            val serverUrl = prefs.serverUrl.ifEmpty { "https://telegram-backup-backend.vercel.app" }
+                            val versionInfo = ServerApi().getLatestAppVersion(serverUrl)
+                            withContext(Dispatchers.Main) {
+                                isCheckingUpdate = false
+                                val isNewerVersionCode = versionInfo.versionCode > currentAppInfo.second
+                                val isNewerSemVer = com.example.telegrambackup.utils.SemVerUtils.isServerVersionNewer(versionInfo.versionName, currentAppInfo.first)
+                                if (versionInfo.success && (isNewerVersionCode || isNewerSemVer) && versionInfo.downloadUrl.isNotEmpty()) {
+                                    updateInfoAvailable = versionInfo
+                                    upToDateText = ""
+                                } else {
+                                    upToDateText = "✅ Your app is fully up to date! (v${currentAppInfo.first})"
+                                }
                             }
                         }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = TelegramBlue)
+                ) {
+                    if (isCheckingUpdate) {
+                        CircularProgressIndicator(modifier = Modifier.size(18.dp), color = Color.White, strokeWidth = 2.dp)
+                    } else {
+                        Icon(Icons.Default.SystemUpdate, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Update", fontWeight = FontWeight.Bold)
                     }
-                },
-                colors = ButtonDefaults.buttonColors(containerColor = TelegramBlue)
-            ) {
-                if (isCheckingUpdate) {
-                    CircularProgressIndicator(modifier = Modifier.size(18.dp), color = Color.White, strokeWidth = 2.dp)
-                } else {
-                    Icon(Icons.Default.SystemUpdate, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("Check for Updates", fontWeight = FontWeight.Bold)
                 }
             }
         },

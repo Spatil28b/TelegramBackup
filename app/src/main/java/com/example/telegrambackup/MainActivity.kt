@@ -1,11 +1,18 @@
 package com.example.telegrambackup
 
+import android.Manifest
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.os.Vibrator
+import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -29,7 +36,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.fragment.app.FragmentActivity
+import com.example.telegrambackup.utils.AppNotificationHelper
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import androidx.work.Constraints
@@ -61,8 +70,6 @@ import com.example.telegrambackup.utils.BiometricHelper
 import com.example.telegrambackup.utils.FileViewerHelper
 import com.example.telegrambackup.utils.SettingsDbManager
 import com.example.telegrambackup.worker.BackupWorker
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import kotlinx.coroutines.launch
 
 private fun triggerHapticFeedback(context: Context, haptic: androidx.compose.ui.hapticfeedback.HapticFeedback) {
@@ -91,12 +98,33 @@ enum class MainTab {
 class MainActivity : FragmentActivity() {
     private val authRepository by lazy { AuthRepository(this) }
 
+    fun updateScreenPrivacy(enabled: Boolean) {
+        runOnUiThread {
+            try {
+                if (enabled) {
+                    window.setFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE, android.view.WindowManager.LayoutParams.FLAG_SECURE)
+                } else {
+                    window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
+                }
+            } catch (_: Exception) {}
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        val prefsInit = AppPrefs(this)
+        if (prefsInit.screenPrivacyEnabled) {
+            updateScreenPrivacy(true)
+        }
+
         setContent {
             val context = LocalContext.current
             val prefs = remember { AppPrefs(context) }
             var currentThemeMode by remember { mutableIntStateOf(prefs.appTheme) }
+
+            LaunchedEffect(prefs.screenPrivacyEnabled) {
+                updateScreenPrivacy(prefs.screenPrivacyEnabled)
+            }
 
             val systemDark = isSystemInDarkTheme()
             val isDark = when (currentThemeMode) {
@@ -149,13 +177,24 @@ fun MainApp(
     var isAuthenticated by remember(isBiometricActive) { mutableStateOf(!isBiometricActive) }
 
     var backPressedTime by remember { mutableLongStateOf(0L) }
-    var liveUploadedFiles by remember { mutableStateOf<List<UploadedFile>>(emptyList()) }
+    val database = remember { AppDatabase.getDatabase(context) }
+    val liveUploadedFiles by database.uploadedFileDao().getAllFilesFlow().collectAsState(initial = emptyList())
     var displayUserName by remember(prefs.displayName) { mutableStateOf(prefs.displayName) }
     val userEmail = session.email.ifEmpty { "user@mybackup.cloud" }
 
     var appUpdateInfo by remember { mutableStateOf<com.example.telegrambackup.ui.update.AppVersionInfo?>(null) }
+    var showWhatsNewDialog by remember { mutableStateOf(false) }
+    val currentInstalledVersionName = remember {
+        try { context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "2.1.81" } catch (_: Exception) { "2.1.81" }
+    }
 
     LaunchedEffect(Unit) {
+        if (prefs.lastSeenWhatsNewVersion.isNotEmpty() && prefs.lastSeenWhatsNewVersion != currentInstalledVersionName) {
+            showWhatsNewDialog = true
+        } else if (prefs.lastSeenWhatsNewVersion.isEmpty()) {
+            prefs.lastSeenWhatsNewVersion = currentInstalledVersionName
+        }
+
         scope.launch(Dispatchers.IO) {
             try {
                 val serverUrl = prefs.serverUrl.ifEmpty { "https://telegram-backup-backend.vercel.app" }
@@ -207,18 +246,16 @@ fun MainApp(
 
     // Instant High-Speed Parallel Auto Re-Sync on App Open & Background Worker Kickstart
     LaunchedEffect(Unit) {
+        AppNotificationHelper.initNotificationChannels(context)
+        AppNotificationHelper.showPersistentControlNotification(context, isRunning = false)
         kotlinx.coroutines.withContext(Dispatchers.IO) {
             // STEP 1: Restore cloud file index into Room DB FIRST before starting worker!
             try { SettingsDbManager.restoreCloudFileIndexToRoom(context) } catch (_: Exception) {}
             try { SettingsDbManager.fetchAndSyncSettingsOnAppOpen(context) } catch (_: Exception) {}
             try { BackupProgressTracker.hydrateRecentCompleted(context) } catch (_: Exception) {}
-
-            // Hydrate live files state for Home Screen
-            try {
-                val db = AppDatabase.getDatabase(context)
-                val files = db.uploadedFileDao().getAllFiles()
-                withContext(Dispatchers.Main) { liveUploadedFiles = files }
-            } catch (_: Exception) {}
+            try { com.example.telegrambackup.utils.AppCacheManager.autoPruneCache(context) } catch (_: Exception) {}
+            try { com.example.telegrambackup.utils.NetworkAnalysisManager.syncSelfAnalysisWorker(context) } catch (_: Exception) {}
+            try { com.example.telegrambackup.service.LiveCameraObserverService.start(context) } catch (_: Exception) {}
 
             // STEP 2: Kickstart background backup scan AFTER Room DB is fully restored!
             if (prefs.autoBackupEnabled && !prefs.stopAllBackups) {
@@ -270,36 +307,91 @@ fun MainApp(
     LaunchedEffect(selectedTab) {
         scope.launch(Dispatchers.IO) {
             try {
-                val db = AppDatabase.getDatabase(context)
-                val files = db.uploadedFileDao().getAllFiles()
-                liveUploadedFiles = files
-            } catch (e: Exception) {
-                liveUploadedFiles = emptyList()
+                SettingsDbManager.restoreCloudFileIndexToRoom(context)
+            } catch (_: Exception) {}
+        }
+    }
+
+    LaunchedEffect(activity.intent) {
+        val navTab = activity.intent?.getStringExtra(com.example.telegrambackup.utils.AppNotificationHelper.EXTRA_NAVIGATE_TAB)
+        if (!navTab.isNullOrBlank()) {
+            when (navTab) {
+                "PROGRESS" -> selectedTab = MainTab.PROGRESS
+                "DRIVE" -> selectedTab = MainTab.DRIVE
+                "SETTINGS" -> selectedTab = MainTab.SETTINGS
+                "FILES" -> selectedTab = MainTab.FILES
             }
         }
     }
 
-    var showPermissionSetupWizard by remember { mutableStateOf(false) }
+    // Direct system permission launchers
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { _ -> }
 
-    LaunchedEffect(session.isLoggedIn) {
-        if (session.isLoggedIn && !com.example.telegrambackup.ui.auth.areAllRequiredPermissionsGranted(context)) {
-            showPermissionSetupWizard = true
+    val storageLegacyLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { _ -> }
+
+    val manageStorageLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { _ -> }
+
+    fun requestPermissionsDirectly() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !com.example.telegrambackup.ui.auth.isNotificationPermissionGranted(context)) {
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+        if (!com.example.telegrambackup.ui.auth.isStoragePermissionGranted(context)) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                try {
+                    manageStorageLauncher.launch(
+                        Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply {
+                            data = Uri.parse("package:${context.packageName}")
+                        }
+                    )
+                } catch (_: Exception) {
+                    try {
+                        manageStorageLauncher.launch(Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION))
+                    } catch (_: Exception) {}
+                }
+            } else {
+                storageLegacyLauncher.launch(Manifest.permission.READ_EXTERNAL_STORAGE)
+            }
         }
     }
 
-    if (showPermissionSetupWizard) {
-        com.example.telegrambackup.ui.auth.PermissionSetupDialog(
-            onDismiss = { showPermissionSetupWizard = false }
-        )
+    LaunchedEffect(session.isLoggedIn) {
+        if (session.isLoggedIn) {
+            if (!com.example.telegrambackup.ui.auth.areAllRequiredPermissionsGranted(context)) {
+                requestPermissionsDirectly()
+            }
+            displayUserName = prefs.displayName
+            scope.launch(Dispatchers.IO) {
+                try { com.example.telegrambackup.utils.CloudProfileSyncManager.autoRestoreConfigFromCloud(context) } catch (_: Exception) {}
+                try { SettingsDbManager.restoreCloudFileIndexToRoom(context) } catch (_: Exception) {}
+                try { SettingsDbManager.fetchAndSyncSettingsOnAppOpen(context) } catch (_: Exception) {}
+                try { com.example.telegrambackup.network.BotFleetManager.ensureInitialized(context, force = true) } catch (_: Exception) {}
+                try { BackupProgressTracker.hydrateRecentCompleted(context) } catch (_: Exception) {}
+                withContext(Dispatchers.Main) {
+                    displayUserName = prefs.displayName
+                }
+                if (prefs.autoBackupEnabled && !prefs.stopAllBackups) {
+                    try {
+                        val workRequest = OneTimeWorkRequestBuilder<BackupWorker>()
+                            .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
+                            .build()
+                        WorkManager.getInstance(context).enqueueUniqueWork("ManualSyncWork", ExistingWorkPolicy.KEEP, workRequest)
+                    } catch (_: Exception) { }
+                }
+            }
+        }
     }
 
     if (!session.isLoggedIn) {
         AuthScreen(
             authRepository = authRepository,
             onAuthSuccess = {
-                if (!com.example.telegrambackup.ui.auth.areAllRequiredPermissionsGranted(context)) {
-                    showPermissionSetupWizard = true
-                }
+                requestPermissionsDirectly()
             }
         )
     } else if (!isAuthenticated) {
@@ -396,7 +488,7 @@ fun MainApp(
                         }
                         Spacer(modifier = Modifier.width(14.dp))
                         Column {
-                            val drawerVersion = remember { try { context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "2.1.39" } catch (_: Exception) { "2.1.39" } }
+                            val drawerVersion = remember { try { context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "2.1.64" } catch (_: Exception) { "2.1.64" } }
                             Text("Cloud Sync Engine v$drawerVersion", style = MaterialTheme.typography.labelSmall.copy(color = TelegramBlue))
                         }
                     }
@@ -584,14 +676,61 @@ fun MainApp(
                     CenterAlignedTopAppBar(
                         title = {
                             if (isSearchActive) {
-                                OutlinedTextField(
-                                    value = topSearchQuery,
-                                    onValueChange = { topSearchQuery = it },
-                                    placeholder = { Text("Search backed up files...", style = MaterialTheme.typography.bodySmall) },
-                                    singleLine = true,
-                                    shape = RoundedCornerShape(20.dp),
-                                    modifier = Modifier.fillMaxWidth().height(48.dp).padding(horizontal = 4.dp, vertical = 2.dp)
-                                )
+                                Surface(
+                                    shape = RoundedCornerShape(24.dp),
+                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.85f),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(42.dp)
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .padding(horizontal = 12.dp)
+                                    ) {
+                                        Icon(
+                                            Icons.Default.Search,
+                                            contentDescription = null,
+                                            tint = TelegramBlue,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        androidx.compose.foundation.text.BasicTextField(
+                                            value = topSearchQuery,
+                                            onValueChange = { topSearchQuery = it },
+                                            singleLine = true,
+                                            textStyle = MaterialTheme.typography.bodyMedium.copy(
+                                                color = MaterialTheme.colorScheme.onSurface,
+                                                fontSize = 14.sp
+                                            ),
+                                            cursorBrush = androidx.compose.ui.graphics.SolidColor(TelegramBlue),
+                                            modifier = Modifier.weight(1f),
+                                            decorationBox = { innerTextField ->
+                                                Box(contentAlignment = Alignment.CenterStart) {
+                                                    if (topSearchQuery.isEmpty()) {
+                                                        Text(
+                                                            "Search files by name, size, type...",
+                                                            style = MaterialTheme.typography.bodyMedium.copy(
+                                                                color = MaterialTheme.colorScheme.outline,
+                                                                fontSize = 14.sp
+                                                            )
+                                                        )
+                                                    }
+                                                    innerTextField()
+                                                }
+                                            }
+                                        )
+                                        if (topSearchQuery.isNotEmpty()) {
+                                            IconButton(
+                                                onClick = { topSearchQuery = "" },
+                                                modifier = Modifier.size(28.dp)
+                                            ) {
+                                                Icon(Icons.Default.Close, contentDescription = "Clear", modifier = Modifier.size(16.dp))
+                                            }
+                                        }
+                                    }
+                                }
                             } else {
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
@@ -657,6 +796,15 @@ fun MainApp(
                             }
                         },
                         actions = {
+                            if (!isSearchActive) {
+                                com.example.telegrambackup.ui.common.SyncStatusPill(
+                                    modifier = Modifier.padding(end = 4.dp),
+                                    onClick = {
+                                        triggerHapticFeedback(context, haptic)
+                                        selectedTab = MainTab.PROGRESS
+                                    }
+                                )
+                            }
                             IconButton(onClick = {
                                 triggerHapticFeedback(context, haptic)
                                 if (isSearchActive) {
@@ -752,6 +900,7 @@ fun MainApp(
                             userName = displayUserName,
                             recentFiles = liveUploadedFiles,
                             onQuickActionClick = { catIndex ->
+                                explorerInitialTab = 2
                                 targetCategoryTitle = when (catIndex) {
                                     0 -> "Camera & Photos"
                                     1 -> "Videos"
@@ -761,18 +910,15 @@ fun MainApp(
                                     5 -> "Music"
                                     else -> "Camera & Photos"
                                 }
-                                selectedTab = MainTab.DRIVE
+                                selectedTab = MainTab.FILES
                             },
                             onViewAllClick = {
+                                explorerInitialTab = 0
                                 targetCategoryTitle = null
-                                selectedTab = MainTab.DRIVE
+                                selectedTab = MainTab.FILES
                             },
                             onFileClick = { file ->
-                                if (file.path.isNotEmpty()) {
-                                    FileViewerHelper.openFile(context, file.path, file.fileName)
-                                } else {
-                                    Toast.makeText(context, "Opening ${file.fileName}...", Toast.LENGTH_SHORT).show()
-                                }
+                                FileViewerHelper.openFile(context, file.path, file.fileName, file.telegramFileId)
                             }
                         )
                         MainTab.DRIVE -> DriveExplorerScreen(
@@ -817,6 +963,16 @@ fun MainApp(
             versionInfo = appUpdateInfo!!,
             onDismiss = {
                 appUpdateInfo = null
+            }
+        )
+    }
+
+    if (showWhatsNewDialog) {
+        com.example.telegrambackup.ui.update.WhatsNewDialog(
+            versionName = currentInstalledVersionName,
+            onDismiss = {
+                prefs.lastSeenWhatsNewVersion = currentInstalledVersionName
+                showWhatsNewDialog = false
             }
         )
     }

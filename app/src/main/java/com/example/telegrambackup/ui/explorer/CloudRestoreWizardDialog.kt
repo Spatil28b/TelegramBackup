@@ -19,6 +19,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.telegrambackup.data.UploadedFile
+import com.example.telegrambackup.network.BotFleetManager
 import com.example.telegrambackup.network.HttpClientProvider
 import com.example.telegrambackup.theme.TelegramBlue
 import com.example.telegrambackup.theme.TelegramEmerald
@@ -26,7 +27,10 @@ import com.example.telegrambackup.utils.AppPrefs
 import com.example.telegrambackup.utils.DynamicProcessTracker
 import com.example.telegrambackup.utils.FileEncryptor
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import okhttp3.Request
 import java.io.File
@@ -41,15 +45,19 @@ fun CloudRestoreWizardDialog(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val prefs = remember { AppPrefs(context) }
+    val botToken = remember { prefs.botToken }
 
     var isRestoring by remember { mutableStateOf(false) }
     var currentFileIndex by remember { mutableIntStateOf(0) }
     var currentFileName by remember { mutableStateOf("") }
     var progressFraction by remember { mutableFloatStateOf(0f) }
-    var statusMessage by remember { mutableStateOf("") }
+    var statusMessage by remember { mutableStateOf("Ready to restore") }
 
     val restoreFolder = remember {
-        File(Environment.getExternalStorageDirectory(), "Restored_Backups").apply { if (!exists()) mkdirs() }
+        val dlDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+        val target = File(dlDir, "TelegramRestored")
+        if (!target.exists()) target.mkdirs()
+        target
     }
 
     if (DynamicProcessTracker.isMinimized) {
@@ -58,80 +66,108 @@ fun CloudRestoreWizardDialog(
 
     AlertDialog(
         onDismissRequest = { if (!isRestoring) onDismiss() },
-        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)),
-        containerColor = Color(0xFF0F172A),
         title = {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.CloudDownload, contentDescription = null, tint = TelegramEmerald, modifier = Modifier.size(28.dp))
-                    Spacer(modifier = Modifier.width(10.dp))
-                    Text(
-                        "Cloud Restore Wizard",
-                        style = MaterialTheme.typography.titleMedium.copy(color = Color.White, fontWeight = FontWeight.Bold)
-                    )
-                }
-                if (isRestoring) {
-                    IconButton(onClick = { DynamicProcessTracker.minimize() }) {
-                        Icon(Icons.Default.Remove, contentDescription = "Minimize", tint = TelegramBlue)
-                    }
-                }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    Icons.Default.CloudDownload,
+                    contentDescription = null,
+                    tint = TelegramBlue,
+                    modifier = Modifier.size(24.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    "Cloud Restore Wizard",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp
+                )
             }
         },
         text = {
-            Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
                 Text(
-                    "Restoring ${filesToRestore.size} file(s) to internal storage folder:",
-                    style = MaterialTheme.typography.bodySmall.copy(color = Color.White.copy(alpha = 0.7f))
+                    "Restore selected files from your Telegram Cloud back to your device storage.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
 
-                Card(
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
-                    shape = RoundedCornerShape(10.dp),
+                // Info Box
+                Surface(
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                    shape = RoundedCornerShape(12.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Row(modifier = Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.Folder, contentDescription = null, tint = TelegramBlue, modifier = Modifier.size(20.dp))
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            restoreFolder.absolutePath,
-                            style = MaterialTheme.typography.labelSmall.copy(color = Color.White, fontWeight = FontWeight.Bold)
-                        )
+                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text("Files to Restore:", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+                            Text("${filesToRestore.size} items", style = MaterialTheme.typography.bodySmall)
+                        }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text("Target Folder:", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+                            Text("Downloads/TelegramRestored", style = MaterialTheme.typography.bodySmall, maxLines = 1)
+                        }
+                        if (prefs.encryptionKey.isNotEmpty()) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text("Decryption:", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+                                Text("🔒 Auto (AES-256)", style = MaterialTheme.typography.bodySmall, color = TelegramEmerald)
+                            }
+                        }
                     }
                 }
 
                 if (isRestoring) {
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Text(
-                        "File ${currentFileIndex + 1} of ${filesToRestore.size}: $currentFileName",
-                        style = MaterialTheme.typography.bodySmall.copy(color = Color.White, fontWeight = FontWeight.Bold)
-                    )
-                    LinearProgressIndicator(
-                        progress = { progressFraction },
-                        modifier = Modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(4.dp)),
-                        color = TelegramEmerald,
-                        trackColor = Color.White.copy(alpha = 0.2f)
-                    )
-                    Text(
-                        statusMessage,
-                        style = MaterialTheme.typography.labelSmall.copy(color = TelegramBlue)
-                    )
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                "Restoring ${currentFileIndex + 1}/${filesToRestore.size}",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                "${(progressFraction * 100).toInt()}%",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = TelegramBlue,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        LinearProgressIndicator(
+                            progress = { progressFraction },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(8.dp)
+                                .clip(RoundedCornerShape(4.dp)),
+                            color = TelegramBlue
+                        )
+                        Text(
+                            currentFileName.ifEmpty { statusMessage },
+                            style = MaterialTheme.typography.bodySmall,
+                            maxLines = 1,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
             }
         },
         confirmButton = {
             Button(
                 onClick = {
-                    if (isRestoring) return@Button
-                    if (filesToRestore.isEmpty()) {
-                        Toast.makeText(context, "No files selected to restore.", Toast.LENGTH_SHORT).show()
-                        return@Button
-                    }
-
-                    val botToken = prefs.botToken.trim()
                     if (botToken.isEmpty()) {
                         Toast.makeText(context, "Telegram Bot Token required to download files!", Toast.LENGTH_LONG).show()
                         return@Button
@@ -145,63 +181,77 @@ fun CloudRestoreWizardDialog(
                     )
 
                     scope.launch(Dispatchers.IO) {
-                        var restoredSuccess = 0
                         val client = HttpClientProvider.client
+                        val activeBots = try { BotFleetManager.getBotPoolForParallelChunks(context, 10) } catch (_: Exception) { emptyList() }
+                        val botPool = if (activeBots.isNotEmpty()) activeBots.map { it.botToken } else listOf(botToken)
+                        val concurrency = (prefs.uploadThreads).coerceIn(2, 6)
+                        val restoreSemaphore = Semaphore(concurrency)
+                        val successCounter = java.util.concurrent.atomic.AtomicInteger(0)
+                        val processedCounter = java.util.concurrent.atomic.AtomicInteger(0)
 
-                        filesToRestore.forEachIndexed { idx, item ->
-                            val currentFrac = idx.toFloat() / filesToRestore.size.toFloat()
-                            withContext(Dispatchers.Main) {
-                                currentFileIndex = idx
-                                currentFileName = item.fileName
-                                progressFraction = currentFrac
-                                statusMessage = "Downloading ${item.fileName}..."
-                                com.example.telegrambackup.utils.DynamicProcessTracker.updateProgress(
-                                    progress = currentFrac,
-                                    subtitle = "Restoring ${idx + 1}/${filesToRestore.size}: ${item.fileName}"
-                                )
-                            }
+                        kotlinx.coroutines.coroutineScope {
+                            val jobs = filesToRestore.mapIndexed { idx, item ->
+                                launch {
+                                    restoreSemaphore.withPermit {
+                                        val assignedBotToken = botPool[idx % botPool.size]
+                                        try {
+                                            val targetFile = File(restoreFolder, item.fileName)
+                                            if (item.telegramFileId.isNotEmpty() && item.telegramFileId != "DIR_MARKER") {
+                                                // 1. Get File Path from Telegram Bot API
+                                                val getFileUrl = "https://api.telegram.org/bot$assignedBotToken/getFile?file_id=${item.telegramFileId}"
+                                                val req = Request.Builder().url(getFileUrl).build()
+                                                val res = client.newCall(req).execute()
+                                                val body = res.body?.string() ?: ""
 
-                            try {
-                                val targetFile = File(restoreFolder, item.fileName)
-                                if (item.telegramFileId.isNotEmpty() && item.telegramFileId != "DIR_MARKER") {
-                                    // 1. Get File Path from Telegram Bot API
-                                    val getFileUrl = "https://api.telegram.org/bot$botToken/getFile?file_id=${item.telegramFileId}"
-                                    val req = Request.Builder().url(getFileUrl).build()
-                                    val res = client.newCall(req).execute()
-                                    val body = res.body?.string() ?: ""
+                                                if (res.isSuccessful && body.contains("\"ok\":true")) {
+                                                    val filePath = org.json.JSONObject(body).optJSONObject("result")?.optString("file_path", "") ?: ""
+                                                    if (filePath.isNotEmpty()) {
+                                                        val downloadUrl = "https://api.telegram.org/file/bot$assignedBotToken/$filePath"
+                                                        val dlReq = Request.Builder().url(downloadUrl).build()
+                                                        val dlRes = client.newCall(dlReq).execute()
 
-                                    if (res.isSuccessful && body.contains("\"ok\":true")) {
-                                        val filePath = org.json.JSONObject(body).optJSONObject("result")?.optString("file_path", "") ?: ""
-                                        if (filePath.isNotEmpty()) {
-                                            val downloadUrl = "https://api.telegram.org/file/bot$botToken/$filePath"
-                                            val dlReq = Request.Builder().url(downloadUrl).build()
-                                            val dlRes = client.newCall(dlReq).execute()
+                                                        dlRes.body?.byteStream()?.use { input ->
+                                                            FileOutputStream(targetFile).use { output ->
+                                                                input.copyTo(output)
+                                                            }
+                                                        }
 
-                                            dlRes.body?.byteStream()?.use { input ->
-                                                FileOutputStream(targetFile).use { output ->
-                                                    input.copyTo(output)
+                                                        // Decrypt file only if it is actually encrypted
+                                                        if (prefs.encryptionKey.isNotEmpty() && FileEncryptor.isEncryptedFile(targetFile)) {
+                                                            FileEncryptor.decryptFileInPlace(targetFile, prefs.encryptionKey)
+                                                        }
+
+                                                        successCounter.incrementAndGet()
+                                                    }
                                                 }
                                             }
-
-                                            // Decrypt file if encrypted
-                                            if (prefs.encryptionKey.isNotEmpty()) {
-                                                withContext(Dispatchers.Main) { statusMessage = "Decrypting file..." }
-                                                FileEncryptor.decryptFileInPlace(targetFile, prefs.encryptionKey)
+                                        } catch (e: Exception) {
+                                            android.util.Log.e("CloudRestore", "Failed to restore ${item.fileName}", e)
+                                        } finally {
+                                            val count = processedCounter.incrementAndGet()
+                                            val frac = count.toFloat() / filesToRestore.size.toFloat()
+                                            withContext(Dispatchers.Main) {
+                                                currentFileIndex = count - 1
+                                                currentFileName = item.fileName
+                                                progressFraction = frac
+                                                statusMessage = "Restored $count of ${filesToRestore.size} files"
+                                                com.example.telegrambackup.utils.DynamicProcessTracker.updateProgress(
+                                                    progress = frac,
+                                                    subtitle = "Restoring $count/${filesToRestore.size}: ${item.fileName}"
+                                                )
                                             }
-
-                                            restoredSuccess++
                                         }
                                     }
                                 }
-                            } catch (e: Exception) {
-                                android.util.Log.e("CloudRestore", "Failed to restore ${item.fileName}", e)
                             }
+                            jobs.joinAll()
                         }
 
+                        val totalRestored = successCounter.get()
                         withContext(Dispatchers.Main) {
                             isRestoring = false
                             com.example.telegrambackup.utils.DynamicProcessTracker.finishProcess()
-                            Toast.makeText(context, "✅ Successfully restored $restoredSuccess of ${filesToRestore.size} files to ${restoreFolder.name}", Toast.LENGTH_LONG).show()
+                            Toast.makeText(context, "✅ Successfully restored $totalRestored of ${filesToRestore.size} files to ${restoreFolder.name}", Toast.LENGTH_LONG).show()
                             onDismiss()
                         }
                     }

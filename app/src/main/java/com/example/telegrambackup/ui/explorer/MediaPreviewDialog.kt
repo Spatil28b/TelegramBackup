@@ -20,6 +20,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import com.example.telegrambackup.data.UploadedFile
 import com.example.telegrambackup.theme.TelegramBlue
+import com.example.telegrambackup.ui.common.FileThumbnailView
+import com.example.telegrambackup.utils.FileViewerHelper
 
 @Composable
 fun MediaPreviewDialog(
@@ -29,8 +31,8 @@ fun MediaPreviewDialog(
 ) {
     val context = LocalContext.current
     val fileName = file.fileName.ifEmpty { "Media Preview" }
-    val isImage = fileName.endsWith(".jpg", true) || fileName.endsWith(".png", true) || fileName.endsWith(".jpeg", true)
-    val isVideo = fileName.endsWith(".mp4", true) || fileName.endsWith(".mkv", true) || fileName.endsWith(".avi", true)
+    val isImage = fileName.endsWith(".jpg", true) || fileName.endsWith(".png", true) || fileName.endsWith(".jpeg", true) || fileName.endsWith(".webp", true) || fileName.endsWith(".heic", true)
+    val isVideo = fileName.endsWith(".mp4", true) || fileName.endsWith(".mkv", true) || fileName.endsWith(".avi", true) || fileName.endsWith(".mov", true)
 
     Dialog(onDismissRequest = onDismiss) {
         Surface(
@@ -66,11 +68,20 @@ fun MediaPreviewDialog(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(220.dp)
+                        .height(240.dp)
                         .background(Color.Black.copy(alpha = 0.8f), shape = RoundedCornerShape(14.dp)),
                     contentAlignment = Alignment.Center
                 ) {
-                    if (downloadUrl != null) {
+                    if (isImage) {
+                        FileThumbnailView(
+                            fileName = fileName,
+                            filePath = file.path,
+                            telegramFileId = file.telegramFileId,
+                            iconSize = 64.dp,
+                            shape = RoundedCornerShape(14.dp),
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    } else if (downloadUrl != null) {
                         if (isVideo) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 IconButton(onClick = {
@@ -102,19 +113,16 @@ fun MediaPreviewDialog(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                if (downloadUrl != null) {
-                    Button(
-                        onClick = {
-                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(downloadUrl))
-                            context.startActivity(Intent.createChooser(intent, "Open Media"))
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Icon(Icons.Default.OpenInNew, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Open Stream in System Viewer")
-                    }
+                Button(
+                    onClick = {
+                        FileViewerHelper.openFile(context, file.path, file.fileName, file.telegramFileId)
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Icon(Icons.Default.OpenInNew, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Open with System App")
                 }
             }
         }

@@ -25,6 +25,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.telegrambackup.theme.TelegramBlue
 import com.example.telegrambackup.theme.TelegramEmerald
+import com.example.telegrambackup.utils.TelegramMediaResolver
 import kotlinx.coroutines.delay
 import java.io.File
 import java.util.Locale
@@ -76,50 +77,66 @@ fun ModernAudioPlayerSheet(
     }
 
     // Initialize MediaPlayer safely
-    DisposableEffect(filePathOrUrl) {
+    LaunchedEffect(filePathOrUrl) {
         try {
             isBuffering = true
             mediaPlayer.reset()
 
+            var activeSource: String? = null
             if (filePathOrUrl.startsWith("http://") || filePathOrUrl.startsWith("https://")) {
-                mediaPlayer.setDataSource(context, Uri.parse(filePathOrUrl))
+                activeSource = filePathOrUrl
+            } else if (File(filePathOrUrl).exists()) {
+                activeSource = File(filePathOrUrl).absolutePath
             } else {
-                val file = File(filePathOrUrl)
-                if (file.exists()) {
-                    mediaPlayer.setDataSource(file.absolutePath)
+                val directUrl = TelegramMediaResolver.resolveDirectUrl(context, filePathOrUrl)
+                if (directUrl != null) {
+                    activeSource = directUrl
                 } else {
-                    Toast.makeText(context, "Audio file not found: $fileName", Toast.LENGTH_SHORT).show()
+                    val cached = TelegramMediaResolver.fetchToTempCache(context, filePathOrUrl, fileName)
+                    activeSource = cached?.absolutePath
                 }
             }
 
-            mediaPlayer.setOnPreparedListener { mp ->
-                isBuffering = false
-                totalDuration = mp.duration.toFloat().coerceAtLeast(1f)
-                mp.isLooping = isLooping
-                mp.start()
-                isPlaying = true
-            }
-
-            mediaPlayer.setOnCompletionListener {
-                if (!isLooping) {
-                    isPlaying = false
-                    currentPosition = totalDuration
+            if (activeSource != null) {
+                if (activeSource.startsWith("http://") || activeSource.startsWith("https://")) {
+                    mediaPlayer.setDataSource(context, Uri.parse(activeSource))
+                } else {
+                    mediaPlayer.setDataSource(activeSource)
                 }
-            }
 
-            mediaPlayer.setOnErrorListener { _, _, _ ->
+                mediaPlayer.setOnPreparedListener { mp ->
+                    isBuffering = false
+                    totalDuration = mp.duration.toFloat().coerceAtLeast(1f)
+                    mp.isLooping = isLooping
+                    mp.start()
+                    isPlaying = true
+                }
+
+                mediaPlayer.setOnCompletionListener {
+                    if (!isLooping) {
+                        isPlaying = false
+                        currentPosition = totalDuration
+                    }
+                }
+
+                mediaPlayer.setOnErrorListener { _, _, _ ->
+                    isBuffering = false
+                    Toast.makeText(context, "Error playing audio file", Toast.LENGTH_SHORT).show()
+                    true
+                }
+
+                mediaPlayer.prepareAsync()
+            } else {
                 isBuffering = false
-                Toast.makeText(context, "Error playing audio file", Toast.LENGTH_SHORT).show()
-                true
+                Toast.makeText(context, "Audio file not available", Toast.LENGTH_SHORT).show()
             }
-
-            mediaPlayer.prepareAsync()
-
         } catch (e: Exception) {
             isBuffering = false
             Toast.makeText(context, "Failed to load audio: ${e.message}", Toast.LENGTH_SHORT).show()
         }
+    }
 
+    DisposableEffect(Unit) {
         onDispose {
             try {
                 if (mediaPlayer.isPlaying) mediaPlayer.stop()

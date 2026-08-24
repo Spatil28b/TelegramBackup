@@ -60,11 +60,11 @@ fun BotSetupGuideDialog(
                 // Step 3
                 GuideStepCard(
                     stepNumber = "3",
-                    title = "Get Channel Chat ID via Forward",
-                    description = "1. Post any message in your channel.\n2. Forward that message to @raw_data_bot or @userinfobot.\n3. The bot will reply with your exact Chat ID (e.g. -1001234567890).",
-                    buttonLabel = "Open @raw_data_bot",
+                    title = "Get Chat ID in 5 Seconds via Forward",
+                    description = "1. Post any message in your channel.\n2. Forward that message to @userinfobot or @getmyid_bot.\n3. The bot will instantly reply with your Channel ID starting with '-100' (e.g. -1001234567890).\n4. Or for direct personal backups, simply send /start to @userinfobot.",
+                    buttonLabel = "Open @userinfobot",
                     onButtonClick = {
-                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me/raw_data_bot"))
+                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me/userinfobot"))
                         context.startActivity(intent)
                     }
                 )

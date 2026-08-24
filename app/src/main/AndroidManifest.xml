@@ -14,6 +14,7 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <uses-permission android:name="android.permission.VIBRATE" />
 
     <queries>
         <intent>
@@ -58,6 +59,30 @@
                 <action android:name="android.intent.action.QUICKBOOT_POWERON" />
             </intent-filter>
         </receiver>
+
+        <receiver
+            android:name=".receiver.StopBackupReceiver"
+            android:enabled="true"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.example.telegrambackup.ACTION_STOP_BACKUP" />
+            </intent-filter>
+        </receiver>
+
+        <receiver
+            android:name=".receiver.BackupControlReceiver"
+            android:enabled="true"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.example.telegrambackup.ACTION_START_BACKUP" />
+                <action android:name="com.example.telegrambackup.ACTION_STOP_BACKUP" />
+            </intent-filter>
+        </receiver>
+
+        <service
+            android:name=".service.LiveCameraObserverService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
 
         <provider
             android:name="androidx.core.content.FileProvider"

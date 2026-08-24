@@ -18,6 +18,8 @@ data class ChunkProgressEntity(
     val messageId: Long,
     val chunkSize: Long,
     val status: String = "COMPLETED",
+    val botTokenUsed: String = "",
+    val channelId: String = "",
     val uploadedAt: Long = System.currentTimeMillis()
 )
 
@@ -43,6 +45,12 @@ interface ChunkProgressDao {
 
     @Query("SELECT MAX(messageId) FROM chunk_upload_progress")
     fun getMaxMessageId(): Long?
+
+    @Query("SELECT * FROM chunk_upload_progress")
+    fun getAllChunks(): List<ChunkProgressEntity>
+
+    @Query("DELETE FROM chunk_upload_progress WHERE sourcePath NOT IN (SELECT path FROM uploaded_files)")
+    fun pruneOrphanedChunks()
 
     @Query("DELETE FROM chunk_upload_progress")
     fun deleteAll()

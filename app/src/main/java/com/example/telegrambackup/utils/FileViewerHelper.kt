@@ -5,6 +5,10 @@ import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
 import androidx.core.content.FileProvider
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 
 object FileViewerHelper {
@@ -18,50 +22,140 @@ object FileViewerHelper {
     }
 
     /**
-     * Opens a file using the system's default viewer for its MIME type.
-     * Supports local files (via FileProvider) and URL-based files (direct Intent).
+     * Checks if a file is a video format (MP4, MKV, AVI, MOV, WEBM, etc.)
      */
-    fun openFile(context: Context, filePath: String, fileName: String) {
+    fun isVideoFile(fileName: String): Boolean {
+        val ext = fileName.substringAfterLast('.', "").lowercase()
+        return ext in setOf("mp4", "mkv", "avi", "mov", "wmv", "webm", "3gp", "flv", "m4v", "ts")
+    }
+
+    /**
+     * Checks if a file is an image format (JPG, PNG, GIF, WEBP, etc.)
+     */
+    fun isImageFile(fileName: String): Boolean {
+        val ext = fileName.substringAfterLast('.', "").lowercase()
+        return ext in setOf("jpg", "jpeg", "png", "gif", "webp", "bmp", "svg", "ico", "heic", "heif")
+    }
+
+    /**
+     * Checks if a file is a PDF document
+     */
+    fun isPdfFile(fileName: String): Boolean {
+        val ext = fileName.substringAfterLast('.', "").lowercase()
+        return ext == "pdf"
+    }
+
+    /**
+     * Checks if a file is a text or document format
+     */
+    fun isDocumentFile(fileName: String): Boolean {
+        val ext = fileName.substringAfterLast('.', "").lowercase()
+        return ext in setOf("pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt", "csv", "json", "xml", "html", "htm", "rtf", "odt", "ods", "epub", "md", "log", "kt", "java", "py", "sh")
+    }
+
+    /**
+     * Opens a file using the system's default viewer for its MIME type.
+     * Supports local files (via FileProvider), content URIs, cloud cache, and URL-based files.
+     */
+    fun openFile(context: Context, filePath: String, fileName: String, telegramFileId: String = "") {
         try {
-            val file = File(filePath)
-            if (!file.exists()) {
-                Toast.makeText(context, "File not found: $fileName", Toast.LENGTH_SHORT).show()
-                return
-            }
-
-            val uri = FileProvider.getUriForFile(
-                context,
-                "${context.packageName}.fileprovider",
-                file
-            )
-
-            val mimeType = getMimeType(fileName)
-            val intent = Intent(Intent.ACTION_VIEW).apply {
-                setDataAndType(uri, mimeType)
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            }
-
-            val chooser = Intent.createChooser(intent, "Open ${getFileTypeLabel(fileName)}")
-            chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            chooser.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-
-            try {
-                context.startActivity(chooser)
-            } catch (anfe: Exception) {
-                // Fallback to generic */* MIME type
-                val fallbackIntent = Intent(Intent.ACTION_VIEW).apply {
-                    setDataAndType(uri, "*/*")
+            // 1. Content URIs (SAF)
+            if (filePath.startsWith("content://")) {
+                val uri = Uri.parse(filePath)
+                val mimeType = getMimeType(fileName)
+                val intent = Intent(Intent.ACTION_VIEW).apply {
+                    setDataAndType(uri, mimeType)
                     addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 }
-                context.startActivity(Intent.createChooser(fallbackIntent, "Open with...").apply {
+                val chooser = Intent.createChooser(intent, "Open ${getFileTypeLabel(fileName)}").apply {
                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                })
+                }
+                context.startActivity(chooser)
+                return
             }
+
+            // 2. HTTP/HTTPS URLs
+            if (filePath.startsWith("http://") || filePath.startsWith("https://")) {
+                openFileFromUrl(context, filePath, fileName)
+                return
+            }
+
+            // 3. Local Filesystem
+            val localFile = File(filePath)
+            if (localFile.exists() && localFile.length() > 0) {
+                launchFileProviderIntent(context, localFile, fileName)
+                return
+            }
+
+            // 4. Search in Cloud Preview Cache
+            val cacheDir = File(context.cacheDir, "cloud_preview_cache")
+            if (cacheDir.exists()) {
+                val safeName = fileName.replace(Regex("[^a-zA-Z0-9._-]"), "_").ifBlank { "file" }
+                val cachedMatches = cacheDir.listFiles { f ->
+                    f.name.endsWith(safeName) || (telegramFileId.isNotBlank() && f.name.startsWith("${telegramFileId.hashCode()}"))
+                }
+                val found = cachedMatches?.firstOrNull { it.exists() && it.length() > 0 }
+                if (found != null) {
+                    launchFileProviderIntent(context, found, fileName)
+                    return
+                }
+            }
+
+            // 5. On-Demand Cloud Fetch & Open if telegramFileId is provided
+            if (telegramFileId.isNotBlank() && telegramFileId != "DIR_MARKER") {
+                Toast.makeText(context, "Preparing $fileName for viewing...", Toast.LENGTH_SHORT).show()
+                CoroutineScope(Dispatchers.IO).launch {
+                    val downloaded = TelegramMediaResolver.fetchToTempCache(context, telegramFileId, fileName)
+                    withContext(Dispatchers.Main) {
+                        if (downloaded != null && downloaded.exists()) {
+                            launchFileProviderIntent(context, downloaded, fileName)
+                        } else {
+                            Toast.makeText(context, "Could not load $fileName from cloud", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                }
+                return
+            }
+
+            Toast.makeText(context, "File unavailable: $fileName", Toast.LENGTH_SHORT).show()
         } catch (e: Exception) {
             Toast.makeText(context, "Cannot open file: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun launchFileProviderIntent(context: Context, file: File, fileName: String) {
+        val uri = FileProvider.getUriForFile(
+            context,
+            "${context.packageName}.fileprovider",
+            file
+        )
+
+        val mimeType = getMimeType(fileName)
+        val intent = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(uri, mimeType)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+
+        val chooser = Intent.createChooser(intent, "Open ${getFileTypeLabel(fileName)}").apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+
+        try {
+            context.startActivity(chooser)
+        } catch (_: Exception) {
+            val fallbackIntent = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(uri, "*/*")
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(Intent.createChooser(fallbackIntent, "Open with...").apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            })
         }
     }
 
@@ -75,8 +169,9 @@ object FileViewerHelper {
                 setDataAndType(Uri.parse(url), mimeType)
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
-            val chooser = Intent.createChooser(intent, "Open ${getFileTypeLabel(fileName)}")
-            chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            val chooser = Intent.createChooser(intent, "Open ${getFileTypeLabel(fileName)}").apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
             context.startActivity(chooser)
         } catch (e: Exception) {
             try {
@@ -141,6 +236,8 @@ object FileViewerHelper {
             "html", "htm" -> "text/html"
             "json" -> "application/json"
             "xml" -> "application/xml"
+            "md" -> "text/markdown"
+            "log" -> "text/plain"
 
             // Archives
             "zip" -> "application/zip"

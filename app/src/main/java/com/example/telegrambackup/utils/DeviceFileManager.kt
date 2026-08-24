@@ -35,11 +35,23 @@ class DeviceFileManager(private val context: Context) {
                 return@withContext defaultCategories()
             }
 
-            val uploadedPaths = try {
+            val (uploadedPaths, uploadedNameSizes) = try {
                 val database = AppDatabase.getDatabase(context)
-                database.uploadedFileDao().getAllFiles().map { it.path }.toSet()
+                val files = database.uploadedFileDao().getAllFiles()
+                val paths = HashSet<String>()
+                val nameSizes = HashSet<String>()
+                for (f in files) {
+                    if (f.path.isNotEmpty()) {
+                        paths.add(f.path)
+                        paths.add(f.path.lowercase())
+                    }
+                    if (f.fileName.isNotEmpty()) {
+                        nameSizes.add("${f.fileName.lowercase()}_${f.size}")
+                    }
+                }
+                Pair(paths, nameSizes)
             } catch (e: Exception) {
-                emptySet()
+                Pair(emptySet<String>(), emptySet<String>())
             }
 
             val rootStorage = Environment.getExternalStorageDirectory()
@@ -73,7 +85,15 @@ class DeviceFileManager(private val context: Context) {
                                 } catch (e: Exception) { false }
                             }
                             .filter { f -> 
-                                try { f.isFile && !f.name.startsWith(".") && !uploadedPaths.contains(f.absolutePath) } catch (e: Exception) { false }
+                                try {
+                                    if (!f.isFile || f.name.startsWith(".")) return@filter false
+                                    val pathExact = f.absolutePath
+                                    val pathLower = f.absolutePath.lowercase()
+                                    val nameSize = "${f.name.lowercase()}_${f.length()}"
+                                    !uploadedPaths.contains(pathExact) &&
+                                    !uploadedPaths.contains(pathLower) &&
+                                    !uploadedNameSizes.contains(nameSize)
+                                } catch (e: Exception) { false }
                             }
                             .forEach { file ->
                                 try {

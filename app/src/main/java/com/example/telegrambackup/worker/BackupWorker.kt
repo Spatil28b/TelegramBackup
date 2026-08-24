@@ -13,8 +13,12 @@ import com.example.telegrambackup.R
 import com.example.telegrambackup.data.AppDatabase
 import com.example.telegrambackup.data.ChunkProgressEntity
 import com.example.telegrambackup.data.UploadedFile
+import com.example.telegrambackup.network.BotFleetManager
 import com.example.telegrambackup.network.HttpClientProvider
+import com.example.telegrambackup.network.ProgressCountingRequestBody
 import com.example.telegrambackup.network.ServerApi
+import com.example.telegrambackup.utils.AppCacheManager
+import com.example.telegrambackup.utils.AppNotificationHelper
 import com.example.telegrambackup.utils.AppPrefs
 import com.example.telegrambackup.utils.BackupProgressTracker
 import com.example.telegrambackup.utils.FileChunker
@@ -65,6 +69,17 @@ class BackupWorker(
     companion object {
         private const val TAG = "BackupWorker"
         private val isWorkerRunning = AtomicBoolean(false)
+
+        fun enqueue(context: Context) {
+            val workRequest = androidx.work.OneTimeWorkRequestBuilder<BackupWorker>()
+                .setExpedited(androidx.work.OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
+                .build()
+            androidx.work.WorkManager.getInstance(context).enqueueUniqueWork(
+                "ManualBackupWork",
+                androidx.work.ExistingWorkPolicy.REPLACE,
+                workRequest
+            )
+        }
     }
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
@@ -116,8 +131,30 @@ class BackupWorker(
             val uploadedDao = db.uploadedFileDao()
             val chunkDao = db.chunkProgressDao()
 
-            // Step 3: PRE-BACKUP VERIFICATION — Purge ghost records before scanning
-            BackupProgressTracker.startBackupSession(0, "Verifying existing backups on Telegram Cloud...")
+            // Step 3: PRE-BACKUP CLOUD CATALOG SYNCHRONIZATION
+            // Hydrate local Room DB from cloud PostgreSQL catalog FIRST to ensure zero-duplicate deduplication
+            BackupProgressTracker.startBackupSession(0, "Synchronizing cloud file catalog...")
+            try {
+                SettingsDbManager.restoreCloudFileIndexToRoom(applicationContext)
+            } catch (e: Exception) {
+                Log.w(TAG, "Cloud file index sync encountered an issue (proceeding with local catalog)", e)
+            }
+
+            // Safety Guard: If local DB has 0 files but user has account configured, verify we did not experience an empty race condition
+            val currentLocalFiles = try { uploadedDao.getAllFiles() } catch (_: Exception) { emptyList() }
+            if (currentLocalFiles.isEmpty() && prefs.userEmail.isNotBlank()) {
+                Log.d(TAG, "Local catalog is currently blank for logged-in user. Retrying sync to safeguard against duplication...")
+                try {
+                    val restoredCount = SettingsDbManager.restoreCloudFileIndexToRoom(applicationContext)
+                    Log.d(TAG, "Synchronized $restoredCount files from cloud.")
+                } catch (e: Exception) {
+                    Log.w(TAG, "Could not reach cloud catalog. Postponing backup cycle to prevent duplicate uploads.", e)
+                    BackupProgressTracker.finishBackupSession("Sync Pending")
+                    return@withContext Result.retry()
+                }
+            }
+
+            // Step 4: PRE-BACKUP VERIFICATION — Purge ghost records before scanning
             try {
                 val verifyResult = TelegramFileVerifier.verifyAllFiles(botToken, uploadedDao)
                 if (verifyResult.fakePurged > 0 || verifyResult.deletedFromTelegram > 0) {
@@ -130,7 +167,7 @@ class BackupWorker(
 
             BackupProgressTracker.updateStatus("Scanning device storage for unbacked files...")
 
-            // Step 4: Identify storage directories to scan
+            // Step 5: Identify storage directories to scan
             val dirsToScan = mutableListOf<File>()
             val rootStorage = Environment.getExternalStorageDirectory()
 
@@ -143,7 +180,7 @@ class BackupWorker(
                 dirsToScan.add(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS))
             }
 
-            // Step 5: Calculate file size boundaries (in bytes) based on preferences (0 = Unlimited)
+            // Step 6: Calculate file size boundaries (in bytes) based on preferences (0 = Unlimited)
             val minBytes = (prefs.minFileSizeMB * 1024.0 * 1024.0).toLong()
             val maxBytes = if (prefs.maxFileSizeMB <= 0) Long.MAX_VALUE else (prefs.maxFileSizeMB * 1024.0 * 1024.0).toLong()
 
@@ -218,13 +255,6 @@ class BackupWorker(
                 return@withContext Result.success()
             }
 
-            // Step 5b: Synchronize Cloud DB to local Room DB FIRST before checking candidate files
-            try {
-                SettingsDbManager.restoreCloudFileIndexToRoom(applicationContext)
-            } catch (e: Exception) {
-                Log.w(TAG, "Cloud file index restore failed prior to deduplication scan", e)
-            }
-
             // Step 6: Multi-Criteria Deduplication Engine (Path & Name+Size matching)
             val existingFiles = try { uploadedDao.getAllFiles() } catch (e: Exception) { emptyList() }
             val existingPaths = HashSet<String>()
@@ -257,6 +287,29 @@ class BackupWorker(
                 return@withContext Result.success()
             }
 
+            // Step 6b: Check Power & Battery Protection Guards
+            val batteryIntent = applicationContext.registerReceiver(null, android.content.IntentFilter(android.content.Intent.ACTION_BATTERY_CHANGED))
+            val batteryStatus = batteryIntent?.getIntExtra(android.os.BatteryManager.EXTRA_STATUS, -1) ?: -1
+            val isCharging = batteryStatus == android.os.BatteryManager.BATTERY_STATUS_CHARGING || batteryStatus == android.os.BatteryManager.BATTERY_STATUS_FULL
+            val level = batteryIntent?.getIntExtra(android.os.BatteryManager.EXTRA_LEVEL, -1) ?: -1
+            val scale = batteryIntent?.getIntExtra(android.os.BatteryManager.EXTRA_SCALE, -1) ?: -1
+            val batteryPct = if (level >= 0 && scale > 0) (level * 100 / scale) else 100
+
+            if (prefs.chargingOnly && !isCharging) {
+                Log.d(TAG, "Charging-only rule active and phone is on battery. Skipping auto-backup.")
+                BackupProgressTracker.finishBackupSession("Paused (Waiting for charger)")
+                return@withContext Result.success()
+            }
+
+            if (prefs.lowBatteryProtection && batteryPct < 20 && !isCharging) {
+                Log.d(TAG, "Low battery guard active ($batteryPct% < 20%). Skipping auto-backup to preserve phone battery.")
+                BackupProgressTracker.finishBackupSession("Paused (Low battery < 20%)")
+                return@withContext Result.success()
+            }
+
+            // Auto prune cache before starting new batch
+            AppCacheManager.autoPruneCache(applicationContext)
+
             // Step 7: Queue unbacked files and start backup session
             val queueList = unbackedFiles.map { f ->
                 UploadItemProgress(fileName = f.name, filePath = f.absolutePath, fileSize = f.length())
@@ -268,220 +321,243 @@ class BackupWorker(
             val tempDir = File(applicationContext.cacheDir, "backup_temp")
             if (!tempDir.exists()) tempDir.mkdirs()
 
-            var successCount = 0
-            var failCount = 0
+            val concurrency = prefs.uploadThreads.coerceIn(1, 6)
+            val parallelSemaphore = Semaphore(concurrency)
+            val successCount = AtomicInteger(0)
+            val failCount = AtomicInteger(0)
 
-            for ((index, file) in unbackedFiles.withIndex()) {
-                // Check if user paused backups mid-session
-                if (prefs.stopAllBackups) {
-                    BackupProgressTracker.finishBackupSession("Backup Stopped by User after $successCount files")
-                    break
-                }
+            AppNotificationHelper.showPersistentControlNotification(
+                context = applicationContext,
+                isRunning = true,
+                statusText = "Syncing ${unbackedFiles.size} files to Telegram Cloud"
+            )
+            AppNotificationHelper.showBackupActiveNotification(
+                context = applicationContext,
+                fileName = unbackedFiles.firstOrNull()?.name ?: "Files",
+                completedFiles = 0,
+                totalFiles = unbackedFiles.size,
+                progressPercent = 0,
+                speedStr = "0 KB/s"
+            )
 
-                try {
-                    BackupProgressTracker.setCurrentUploadingFile(file.name, file.absolutePath, 0.05f)
+            coroutineScope {
+                val jobs = unbackedFiles.map { file ->
+                    launch(Dispatchers.IO) {
+                        if (prefs.stopAllBackups) return@launch
+                        if (!checkDailyDataAllowed(prefs, file.length())) {
+                            Log.d(TAG, "Daily data limit reached (${prefs.dailyDataLimitMB} MB). Skipping ${file.name}")
+                            return@launch
+                        }
 
-                    // Step 8a: Optionally encrypt file before splitting into chunks
-                    val fileToUpload: File
-                    val isEncrypted = prefs.encryptionEnabled
-                    if (isEncrypted) {
-                        BackupProgressTracker.updateStatus("Encrypting ${file.name}...")
-                        val encryptedFile = File(tempDir, "${file.name}.enc")
-                        FileEncryptor.encryptFile(file, encryptedFile, prefs.encryptionKey)
-                        fileToUpload = encryptedFile
-                    } else {
-                        fileToUpload = file
-                    }
+                        parallelSemaphore.withPermit {
+                            if (prefs.stopAllBackups) return@withPermit
+                            if (!checkDailyDataAllowed(prefs, file.length())) return@withPermit
 
-                    // Step 8b: Calculate total 4 MB chunks required
-                    val totalChunks = FileChunker.getChunkCount(fileToUpload)
-                    val isChunked = totalChunks > 1
+                            try {
+                                BackupProgressTracker.setCurrentUploadingFile(file.name, file.absolutePath, 0.05f)
 
-                    // Step 8c: Check for completed uploaded chunks (Resumable Upload)
-                    val uploadedChunksMap = mutableMapOf<Int, ChunkProgressEntity>()
-                    val savedChunks = chunkDao.getUploadedChunksForFile(file.absolutePath)
-                    val completedSavedChunks = savedChunks.filter { it.status == "COMPLETED" }
+                                // Determine Category & Destination Channel from Fleet
+                                val ext = file.extension.lowercase()
+                                val fileCategory = when {
+                                    ext in setOf("jpg", "jpeg", "png", "webp", "gif", "bmp", "heic", "raw", "svg") -> "PHOTOS"
+                                    ext in setOf("mp4", "mkv", "avi", "mov", "webm", "3gp", "flv", "wmv") -> "VIDEOS"
+                                    ext in setOf("pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt", "csv") -> "DOCUMENTS"
+                                    else -> "ALL"
+                                }
+                                val targetChannel = BotFleetManager.resolveDestinationChannel(applicationContext, fileCategory)
+                                val destinationChatId = targetChannel.chatId.ifBlank { chatId }
 
-                    if (completedSavedChunks.isNotEmpty()) {
-                        // Cross-verify the last completed chunk on Telegram Cloud to ensure valid resume
-                        val lastChunk = completedSavedChunks.maxByOrNull { it.chunkIndex }
-                        if (lastChunk != null) {
-                            val isLastChunkValid = TelegramFileVerifier.verifyFileExists(botToken, lastChunk.telegramFileId)
-                            if (isLastChunkValid) {
-                                completedSavedChunks.forEach { uploadedChunksMap[it.chunkIndex] = it }
-                                Log.d(TAG, "⚡ Resuming ${file.name}: ${uploadedChunksMap.size}/$totalChunks chunks already on Telegram Cloud")
-                                BackupProgressTracker.updateStatus("Resuming ${file.name} (${uploadedChunksMap.size}/$totalChunks chunks ready)...")
-                            } else {
-                                Log.w(TAG, "Last chunk verification failed for ${file.name}, restarting chunk upload session")
+                                // Step 8a: Optionally encrypt file before splitting into chunks
+                                val fileToUpload: File
+                                val isEncrypted = prefs.encryptionEnabled
+                                if (isEncrypted) {
+                                    val safeId = System.currentTimeMillis() + (file.hashCode().toLong() and 0x7FFFFFFF)
+                                    val encryptedFile = File(tempDir, "${safeId}_${file.name}.enc")
+                                    FileEncryptor.encryptFile(file, encryptedFile, prefs.encryptionKey)
+                                    fileToUpload = encryptedFile
+                                } else {
+                                    fileToUpload = file
+                                }
+
+                                // Step 8b: Calculate total 4 MB chunks required
+                                val totalChunks = FileChunker.getChunkCount(fileToUpload)
+                                val isChunked = totalChunks > 1
+
+                                // Acquire size-tiered rotating bot pool for parallel chunk distribution
+                                val botPool = BotFleetManager.getAutoBackupBotPool(applicationContext, file.length(), totalChunks)
+
+                                // Step 8c: Check for completed uploaded chunks (Resumable Upload)
+                                val uploadedChunksMap = java.util.concurrent.ConcurrentHashMap<Int, ChunkProgressEntity>()
+                                val savedChunks = chunkDao.getUploadedChunksForFile(file.absolutePath)
+                                val completedSavedChunks = savedChunks.filter { it.status == "COMPLETED" && it.telegramFileId.isNotBlank() }
+
+                                if (completedSavedChunks.isNotEmpty()) {
+                                    completedSavedChunks.forEach { uploadedChunksMap[it.chunkIndex] = it }
+                                    val initialFraction = (uploadedChunksMap.size.toFloat() / totalChunks.toFloat()).coerceIn(0.05f, 0.99f)
+                                    BackupProgressTracker.setCurrentUploadingFile(file.name, file.absolutePath, initialFraction)
+                                    BackupProgressTracker.updateActiveUpload(file.absolutePath, file.name, file.length(), uploadedChunksMap.size, totalChunks, initialFraction)
+                                    Log.d(TAG, "⚡ Resuming ${file.name}: ${uploadedChunksMap.size}/$totalChunks chunks (${(initialFraction * 100).toInt()}%) already uploaded")
+                                } else {
+                                    BackupProgressTracker.setCurrentUploadingFile(file.name, file.absolutePath, 0.05f)
+                                    BackupProgressTracker.updateActiveUpload(file.absolutePath, file.name, file.length(), 0, totalChunks, 0.05f)
+                                }
+
+                                val chunkConcurrency = minOf(botPool.size, 6).coerceAtLeast(1)
+                                val chunkSemaphore = Semaphore(chunkConcurrency)
+                                val allBotsCount = db.telegramBotDao().getActiveBots().size.coerceAtLeast(1)
+                                BackupProgressTracker.updateBotUtilization(working = minOf(chunkConcurrency, botPool.size), total = allBotsCount)
+
+                                // Step 8d: Process all 4 MB chunks SIMULTANEOUSLY in parallel across Bot Fleet
+                                coroutineScope {
+                                    val chunkJobs = (1..totalChunks).map { chunkIdx ->
+                                        launch(Dispatchers.IO) {
+                                            if (prefs.stopAllBackups) return@launch
+                                            if (uploadedChunksMap.containsKey(chunkIdx)) return@launch
+
+                                            chunkSemaphore.withPermit {
+                                                if (prefs.stopAllBackups) return@withPermit
+
+                                                val assignedBot = botPool.getOrNull((chunkIdx - 1) % botPool.size) ?: BotFleetManager.getNextAvailableBot(applicationContext)
+                                                val botTokenToUse: String = if (!assignedBot?.botToken.isNullOrBlank()) assignedBot!!.botToken else botToken
+
+                                                val claimEntity = ChunkProgressEntity(
+                                                    sourcePath = file.absolutePath,
+                                                    chunkIndex = chunkIdx,
+                                                    totalChunks = totalChunks,
+                                                    telegramFileId = "",
+                                                    messageId = 0L,
+                                                    chunkSize = 0L,
+                                                    status = "UPLOADING",
+                                                    botTokenUsed = botTokenToUse,
+                                                    channelId = destinationChatId,
+                                                    uploadedAt = System.currentTimeMillis()
+                                                )
+                                                chunkDao.insert(claimEntity)
+
+                                                val safeChunkId = System.currentTimeMillis() + ((file.hashCode() + chunkIdx).toLong() and 0x7FFFFFFF)
+                                                val chunkTempFile = File(tempDir, "${safeChunkId}_part%03d".format(chunkIdx))
+                                                try {
+                                                    FileChunker.extractSingleChunk(fileToUpload, chunkIdx, chunkTempFile)
+
+                                                    val caption = if (isChunked) {
+                                                        "📦 ${file.name} [Part $chunkIdx/$totalChunks]"
+                                                    } else {
+                                                        "📤 ${file.name} (${formatFileSize(file.length())})"
+                                                    }
+
+                                                    val uploadResult = uploadToTelegramWithRetry(
+                                                        botToken = botTokenToUse,
+                                                        chatId = destinationChatId,
+                                                        file = chunkTempFile,
+                                                        caption = caption,
+                                                        chunkIdx = chunkIdx,
+                                                        totalChunks = totalChunks,
+                                                        sourceFilePath = file.absolutePath,
+                                                        sourceFileName = file.name,
+                                                        sourceFileSize = file.length(),
+                                                        completedFiles = successCount.get(),
+                                                        totalFiles = unbackedFiles.size,
+                                                        secretKey = prefs.encryptionKey
+                                                    )
+
+                                                    if (uploadResult != null) {
+                                                        val fileId = uploadResult.first
+                                                        val messageId = uploadResult.second
+
+                                                        val completedEntity = ChunkProgressEntity(
+                                                            sourcePath = file.absolutePath,
+                                                            chunkIndex = chunkIdx,
+                                                            totalChunks = totalChunks,
+                                                            telegramFileId = fileId,
+                                                            messageId = messageId,
+                                                            chunkSize = chunkTempFile.length(),
+                                                            status = "COMPLETED",
+                                                            botTokenUsed = botTokenToUse,
+                                                            channelId = destinationChatId,
+                                                            uploadedAt = System.currentTimeMillis()
+                                                        )
+                                                        chunkDao.insert(completedEntity)
+                                                        uploadedChunksMap[chunkIdx] = completedEntity
+                                                        val currentProg = (uploadedChunksMap.size.toFloat() / totalChunks.toFloat()).coerceIn(0.05f, 1f)
+                                                        BackupProgressTracker.updateActiveUpload(file.absolutePath, file.name, file.length(), uploadedChunksMap.size, totalChunks, currentProg)
+                                                        BotFleetManager.recordSuccess(applicationContext, botTokenToUse, chunkTempFile.length())
+                                                        BackupProgressTracker.reportBytesUploaded(chunkTempFile.length())
+                                                    } else {
+                                                        chunkDao.deleteChunk(file.absolutePath, chunkIdx)
+                                                        BotFleetManager.recordFailure(applicationContext, botTokenToUse)
+                                                        Log.e(TAG, "Failed to upload chunk $chunkIdx/$totalChunks for ${file.name}")
+                                                    }
+                                                } finally {
+                                                    if (chunkTempFile.exists()) chunkTempFile.delete()
+                                                }
+                                            }
+                                        }
+                                    }
+                                    chunkJobs.joinAll()
+                                }
+
+                                BackupProgressTracker.removeActiveUpload(file.absolutePath)
+                                if (isEncrypted && fileToUpload.exists() && fileToUpload.parentFile == tempDir) {
+                                    fileToUpload.delete()
+                                }
+
+                                if (uploadedChunksMap.size < totalChunks) {
+                                    failCount.incrementAndGet()
+                                    Log.w(TAG, "File ${file.name} upload incomplete (${uploadedChunksMap.size}/$totalChunks chunks completed).")
+                                    return@withPermit
+                                }
+
+                                val firstChunk = uploadedChunksMap[1]
+                                val firstChunkFileId = firstChunk?.telegramFileId ?: ""
+                                val firstChunkMessageId = firstChunk?.messageId ?: 0L
+                                val primaryBotTokenUsed = firstChunk?.botTokenUsed ?: botToken
+
+                                val entity = UploadedFile(
+                                    file.absolutePath,
+                                    file.name,
+                                    firstChunkFileId,
+                                    System.currentTimeMillis(),
+                                    file.length(),
+                                    firstChunkMessageId
+                                ).apply {
+                                    this.channelId = destinationChatId
+                                    this.botTokenUsed = primaryBotTokenUsed
+                                }
+                                if (isChunked) {
+                                    entity.totalChunks = totalChunks
+                                }
+                                uploadedDao.insert(entity)
                                 chunkDao.deleteChunksForFile(file.absolutePath)
+
+                                if (userEmail.isNotEmpty()) {
+                                    try {
+                                        serverApi.indexFile(
+                                            prefs.serverUrl,
+                                            userEmail,
+                                            file.name,
+                                            firstChunkFileId,
+                                            file.length(),
+                                            file.absolutePath,
+                                            firstChunkMessageId
+                                        )
+                                    } catch (e: Exception) {
+                                        Log.w(TAG, "Cloud index sync failed for ${file.name}, local record intact", e)
+                                    }
+                                }
+
+                                recordDailyDataUsage(prefs, file.length())
+                                val curSuccess = successCount.incrementAndGet()
+                                BackupProgressTracker.markFileCompleted(file.name, file.absolutePath, file.length())
+                                Log.d(TAG, "✅ Fully Backed Up ($curSuccess): ${file.name} to channel $destinationChatId ($totalChunks chunks)")
+
+                            } catch (e: Exception) {
+                                failCount.incrementAndGet()
+                                Log.e(TAG, "Error backing up ${file.name}", e)
                             }
                         }
                     }
-
-                    var firstChunkFileId = ""
-                    var firstChunkMessageId = 0L
-                    var allChunksUploadedSuccessfully = true
-
-                    // Step 8d: Process each 4 MB chunk safely with 5-Attempt Retry Engine
-                    for (chunkIdx in 1..totalChunks) {
-                        if (prefs.stopAllBackups) break
-
-                        // Update live progress display
-                        val overallFileProgress = (chunkIdx.toFloat() / totalChunks.toFloat()).coerceIn(0.1f, 0.95f)
-                        BackupProgressTracker.updateCurrentProgress(overallFileProgress)
-
-                        if (uploadedChunksMap.containsKey(chunkIdx)) {
-                            // Chunk already completed!
-                            val existingChunk = uploadedChunksMap[chunkIdx]!!
-                            if (chunkIdx == 1) {
-                                firstChunkFileId = existingChunk.telegramFileId
-                                firstChunkMessageId = existingChunk.messageId
-                            }
-                            Log.d(TAG, "Skipping chunk $chunkIdx/$totalChunks for ${file.name} (Already completed)")
-                            continue
-                        }
-
-                        // Check if chunk is claimed as UPLOADING by active worker (< 3 min old)
-                        val existingClaim = chunkDao.getChunk(file.absolutePath, chunkIdx)
-                        if (existingClaim != null && existingClaim.status == "UPLOADING") {
-                            val claimAge = System.currentTimeMillis() - existingClaim.uploadedAt
-                            if (claimAge < 3 * 60 * 1000L) {
-                                Log.d(TAG, "Chunk $chunkIdx/$totalChunks for ${file.name} is currently claimed by active upload session ($claimAge ms old). Skipping duplicate.")
-                                continue
-                            }
-                        }
-
-                        // Atomic Claim: Mark chunk as UPLOADING in DB before firing HTTP request
-                        val claimEntity = ChunkProgressEntity(
-                            sourcePath = file.absolutePath,
-                            chunkIndex = chunkIdx,
-                            totalChunks = totalChunks,
-                            telegramFileId = "",
-                            messageId = 0L,
-                            chunkSize = 0L,
-                            status = "UPLOADING",
-                            uploadedAt = System.currentTimeMillis()
-                        )
-                        chunkDao.insert(claimEntity)
-
-                        // Extract single 4 MB chunk
-                        val chunkTempFile = File(tempDir, "${file.name}.part%03d".format(chunkIdx))
-                        FileChunker.extractSingleChunk(fileToUpload, chunkIdx, chunkTempFile)
-
-                        val caption = if (isChunked) {
-                            "\uD83D\uDCE6 ${file.name} [Part $chunkIdx/$totalChunks]"
-                        } else {
-                            "\uD83D\uDCE4 ${file.name} (${formatFileSize(file.length())})"
-                        }
-
-                        // Execute 5-attempt retry engine for low network resilience
-                        val uploadResult = uploadToTelegramWithRetry(
-                            botToken = botToken,
-                            chatId = chatId,
-                            file = chunkTempFile,
-                            caption = caption,
-                            chunkIdx = chunkIdx,
-                            totalChunks = totalChunks,
-                            fileName = file.name,
-                            secretKey = prefs.encryptionKey
-                        )
-
-                        // Clean temp chunk file immediately
-                        if (chunkTempFile.exists()) chunkTempFile.delete()
-
-                        if (uploadResult != null) {
-                            val fileId = uploadResult.first
-                            val messageId = uploadResult.second
-
-                            if (chunkIdx == 1) {
-                                firstChunkFileId = fileId
-                                firstChunkMessageId = messageId
-                            }
-
-                            // Update chunk record to COMPLETED in Room DB
-                            val completedEntity = ChunkProgressEntity(
-                                sourcePath = file.absolutePath,
-                                chunkIndex = chunkIdx,
-                                totalChunks = totalChunks,
-                                telegramFileId = fileId,
-                                messageId = messageId,
-                                chunkSize = chunkTempFile.length(),
-                                status = "COMPLETED",
-                                uploadedAt = System.currentTimeMillis()
-                            )
-                            chunkDao.insert(completedEntity)
-                            uploadedChunksMap[chunkIdx] = completedEntity
-                        } else {
-                            // HTTP failed after 5 retries — release claim so it can be retried on next pass
-                            chunkDao.deleteChunk(file.absolutePath, chunkIdx)
-                            allChunksUploadedSuccessfully = false
-                            Log.e(TAG, "Failed to upload chunk $chunkIdx/$totalChunks for ${file.name} after 5 retries")
-                            break
-                        }
-                    }
-
-                    // Cleanup encrypted temp file
-                    if (isEncrypted && fileToUpload.exists() && fileToUpload.parentFile == tempDir) {
-                        fileToUpload.delete()
-                    }
-
-                    // Check if all chunks completed
-                    if (!allChunksUploadedSuccessfully || uploadedChunksMap.size < totalChunks) {
-                        failCount++
-                        Log.w(TAG, "File ${file.name} upload incomplete (${uploadedChunksMap.size}/$totalChunks chunks completed). Will resume next run.")
-                        continue
-                    }
-
-                    // Step 8e: Retrieve first chunk info
-                    if (firstChunkFileId.isEmpty()) {
-                        firstChunkFileId = uploadedChunksMap[1]?.telegramFileId ?: ""
-                        firstChunkMessageId = uploadedChunksMap[1]?.messageId ?: 0L
-                    }
-
-                    BackupProgressTracker.updateCurrentProgress(0.98f)
-
-                    // Step 8f: Record fully uploaded file entry into Room DB
-                    val entity = UploadedFile(
-                        file.absolutePath,
-                        file.name,
-                        firstChunkFileId,
-                        System.currentTimeMillis(),
-                        file.length(),
-                        firstChunkMessageId
-                    )
-                    if (isChunked) {
-                        entity.totalChunks = totalChunks
-                    }
-                    uploadedDao.insert(entity)
-
-                    // Clean up intermediate chunk progress records from DB
-                    chunkDao.deleteChunksForFile(file.absolutePath)
-
-                    // Step 8g: Sync file index to cloud PostgreSQL (non-blocking, best-effort)
-                    if (userEmail.isNotEmpty()) {
-                        try {
-                            serverApi.indexFile(
-                                prefs.serverUrl,
-                                userEmail,
-                                file.name,
-                                firstChunkFileId,
-                                file.length(),
-                                file.absolutePath,
-                                firstChunkMessageId
-                            )
-                        } catch (e: Exception) {
-                            Log.w(TAG, "Cloud index sync failed for ${file.name}, local record intact", e)
-                        }
-                    }
-
-                    successCount++
-                    BackupProgressTracker.markFileCompleted(file.name, file.absolutePath, file.length())
-                    Log.d(TAG, "✅ Fully Backed Up: ${file.name} ($totalChunks chunks, fileId=$firstChunkFileId)")
-
-                } catch (e: Exception) {
-                    failCount++
-                    Log.e(TAG, "Error backing up ${file.name}", e)
                 }
+                jobs.joinAll()
             }
 
             // Cleanup temp directory
@@ -489,16 +565,21 @@ class BackupWorker(
                 tempDir.listFiles()?.forEach { it.delete() }
             } catch (e: Exception) { }
 
+            val sCount = successCount.get()
+            val fCount = failCount.get()
             val summary = buildString {
-                append("Backed up $successCount files to Telegram Cloud!")
-                if (failCount > 0) append(" ($failCount partial/failed)")
+                append("Backed up $sCount files to Telegram Cloud!")
+                if (fCount > 0) append(" ($fCount partial/failed)")
             }
             Log.d(TAG, summary)
             BackupProgressTracker.finishBackupSession(summary)
+            AppNotificationHelper.cancelBackupNotification(applicationContext)
+            AppNotificationHelper.showPersistentControlNotification(applicationContext, isRunning = false)
 
-            // Send Android system status notification on background completion
-            if (successCount > 0) {
-                showCompletionNotification(summary)
+            if (prefs.stopAllBackups) {
+                AppNotificationHelper.showBackupPausedNotification(applicationContext)
+            } else {
+                AppNotificationHelper.showBackupFinishedNotification(applicationContext, sCount, summary)
             }
 
             Result.success()
@@ -506,7 +587,38 @@ class BackupWorker(
         } finally {
             // Release Process-Wide Atomic Lock upon completion or error
             isWorkerRunning.set(false)
+            try {
+                val workerPrefs = AppPrefs(applicationContext)
+                AppCacheManager.autoPruneCache(applicationContext)
+                val db = AppDatabase.getDatabase(applicationContext)
+                if (workerPrefs.trashAutoCleanDays > 0) {
+                    val cutoff = System.currentTimeMillis() - (workerPrefs.trashAutoCleanDays.toLong() * 86400000L)
+                    db.uploadedFileDao().deleteExpiredTrash(cutoff)
+                }
+                db.chunkProgressDao().pruneOrphanedChunks()
+            } catch (_: Exception) {}
         }
+    }
+
+    private fun checkDailyDataAllowed(prefs: AppPrefs, bytesToUpload: Long): Boolean {
+        val limitMB = prefs.dailyDataLimitMB
+        if (limitMB <= 0L) return true
+        val today = java.text.SimpleDateFormat("yyyyMMdd", java.util.Locale.US).format(java.util.Date())
+        if (prefs.dailyDataDate != today) {
+            prefs.dailyDataDate = today
+            prefs.dailyDataTransferredBytes = 0L
+        }
+        val maxBytes = limitMB * 1024L * 1024L
+        return (prefs.dailyDataTransferredBytes + bytesToUpload) <= maxBytes
+    }
+
+    private fun recordDailyDataUsage(prefs: AppPrefs, bytesUploaded: Long) {
+        val today = java.text.SimpleDateFormat("yyyyMMdd", java.util.Locale.US).format(java.util.Date())
+        if (prefs.dailyDataDate != today) {
+            prefs.dailyDataDate = today
+            prefs.dailyDataTransferredBytes = 0L
+        }
+        prefs.dailyDataTransferredBytes += bytesUploaded
     }
 
     /**
@@ -552,7 +664,11 @@ class BackupWorker(
         caption: String,
         chunkIdx: Int,
         totalChunks: Int,
-        fileName: String,
+        sourceFilePath: String,
+        sourceFileName: String,
+        sourceFileSize: Long,
+        completedFiles: Int,
+        totalFiles: Int,
         secretKey: String = ""
     ): Pair<String, Long>? {
         var attempt = 1
@@ -560,20 +676,33 @@ class BackupWorker(
 
         while (attempt <= maxAttempts) {
             val statusText = if (attempt > 1) {
-                "⚡ Weak Network: Retrying $fileName [Part $chunkIdx/$totalChunks] (Attempt $attempt/$maxAttempts)..."
+                "⚡ Weak Network: Retrying $sourceFileName [Part $chunkIdx/$totalChunks] (Attempt $attempt/$maxAttempts)..."
             } else {
-                "Uploading $fileName [Part $chunkIdx/$totalChunks]..."
+                "Uploading $sourceFileName [Part $chunkIdx/$totalChunks]..."
             }
             BackupProgressTracker.updateStatus(statusText)
 
-            val result = uploadToTelegramSingleAttempt(botToken, chatId, file, caption, secretKey)
+            val result = uploadToTelegramSingleAttempt(
+                botToken = botToken,
+                chatId = chatId,
+                file = file,
+                caption = caption,
+                chunkIdx = chunkIdx,
+                totalChunks = totalChunks,
+                sourceFilePath = sourceFilePath,
+                sourceFileName = sourceFileName,
+                sourceFileSize = sourceFileSize,
+                completedFiles = completedFiles,
+                totalFiles = totalFiles,
+                secretKey = secretKey
+            )
             if (result != null) {
                 return result
             }
 
             if (attempt < maxAttempts) {
-                val backoffMs = attempt * 3000L // 3s, 6s, 9s, 12s
-                Log.w(TAG, "Chunk $chunkIdx/$totalChunks for $fileName upload attempt $attempt/$maxAttempts failed on low network. Retrying in ${backoffMs}ms...")
+                val backoffMs = attempt * 2000L // 2s, 4s, 6s, 8s
+                Log.w(TAG, "Chunk $chunkIdx/$totalChunks for $sourceFileName upload attempt $attempt/$maxAttempts failed on low network. Retrying in ${backoffMs}ms...")
                 delay(backoffMs)
             }
             attempt++
@@ -583,13 +712,64 @@ class BackupWorker(
 
     /**
      * Uploads a single file/chunk to Telegram via Bot API `sendDocument` endpoint with full AES-256 encryption.
+     * Uses ProgressCountingRequestBody for silky-smooth real-time speed calculation and progress updates.
      */
-    private fun uploadToTelegramSingleAttempt(botToken: String, chatId: String, file: File, caption: String, secretKey: String = ""): Pair<String, Long>? {
+    private fun uploadToTelegramSingleAttempt(
+        botToken: String,
+        chatId: String,
+        file: File,
+        caption: String,
+        chunkIdx: Int,
+        totalChunks: Int,
+        sourceFilePath: String,
+        sourceFileName: String,
+        sourceFileSize: Long,
+        completedFiles: Int,
+        totalFiles: Int,
+        secretKey: String = ""
+    ): Pair<String, Long>? {
         return try {
             val url = "https://api.telegram.org/bot$botToken/sendDocument"
 
-            val obfuscatedName = if (secretKey.isNotEmpty()) FileEncryptor.obfuscateFileName(file.name, secretKey) else "ENC_${Math.abs(file.name.hashCode())}.bin"
+            val obfuscatedName = if (secretKey.isNotEmpty()) FileEncryptor.obfuscateFileName(file.name, secretKey) else "ENC_${file.name.hashCode() and 0x7FFFFFFF}.bin"
             val encryptedCaption = if (secretKey.isNotEmpty()) "🔒 ENC:" + FileEncryptor.encryptText(caption, secretKey) else caption
+
+            val rawBody = file.asRequestBody("application/octet-stream".toMediaTypeOrNull())
+            var lastNotifTime = 0L
+
+            val countingBody = ProgressCountingRequestBody(rawBody) { writtenDelta, totalBytes, writtenSoFar ->
+                BackupProgressTracker.reportBytesUploaded(writtenDelta)
+
+                val chunkFraction = if (totalBytes > 0) (writtenSoFar.toFloat() / totalBytes.toFloat()).coerceIn(0f, 1f) else 0f
+                val overallProgress = (((chunkIdx - 1).toFloat() + chunkFraction) / totalChunks.toFloat()).coerceIn(0f, 1f)
+
+                BackupProgressTracker.updateActiveUpload(
+                    filePath = sourceFilePath,
+                    fileName = sourceFileName,
+                    fileSize = sourceFileSize,
+                    currentChunk = chunkIdx,
+                    totalChunks = totalChunks,
+                    progress = overallProgress
+                )
+
+                val now = System.currentTimeMillis()
+                if (now - lastNotifTime >= 500) {
+                    lastNotifTime = now
+                    val totalPct = if (totalFiles > 0) {
+                        (((completedFiles.toFloat() + overallProgress) / totalFiles.toFloat()) * 100).toInt()
+                    } else {
+                        (overallProgress * 100).toInt()
+                    }
+                    AppNotificationHelper.showBackupActiveNotification(
+                        context = applicationContext,
+                        fileName = sourceFileName,
+                        completedFiles = completedFiles,
+                        totalFiles = totalFiles,
+                        progressPercent = totalPct.coerceIn(0, 100),
+                        speedStr = BackupProgressTracker.formattedUploadSpeed.value
+                    )
+                }
+            }
 
             val requestBody = MultipartBody.Builder()
                 .setType(MultipartBody.FORM)
@@ -598,7 +778,7 @@ class BackupWorker(
                 .addFormDataPart(
                     "document",
                     obfuscatedName,
-                    file.asRequestBody("application/octet-stream".toMediaTypeOrNull())
+                    countingBody
                 )
                 .build()
 

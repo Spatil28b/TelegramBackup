@@ -36,18 +36,36 @@ class AppPrefs(private val context: Context) {
         get() {
             var key = prefs.getString("encryption_key", "") ?: ""
             if (key.isEmpty() || key == "default_aes_key") {
-                // Generate a unique 32-byte (256-bit) master key per user instance
-                key = "AES256-" + UUID.randomUUID().toString().replace("-", "").take(24)
-                prefs.edit().putString("encryption_key", key).apply()
+                // Try retrieving from hardware-backed KeystoreVault
+                val vaultKey = KeystoreVault.retrieveMasterKey(context)
+                if (!vaultKey.isNullOrBlank()) {
+                    key = vaultKey
+                    prefs.edit().putString("encryption_key", key).apply()
+                } else {
+                    // Generate a unique 32-byte (256-bit) master key per user instance
+                    key = "AES256-" + UUID.randomUUID().toString().replace("-", "").take(24)
+                    prefs.edit().putString("encryption_key", key).apply()
+                    KeystoreVault.storeMasterKey(context, key)
+                }
+            } else {
+                // Ensure key is backed up in hardware vault
+                KeystoreVault.storeMasterKey(context, key)
             }
             return key
         }
         set(value) {
-            // Master Key is locked once created to prevent breaking existing encrypted files
-            if (!prefs.contains("encryption_key")) {
+            if (value.isNotBlank() && value != "default_aes_key") {
                 prefs.edit().putString("encryption_key", value).apply()
+                KeystoreVault.storeMasterKey(context, value)
             }
         }
+
+    fun forceSetEncryptionKey(key: String) {
+        if (key.isNotBlank()) {
+            prefs.edit().putString("encryption_key", key).apply()
+            KeystoreVault.storeMasterKey(context, key)
+        }
+    }
 
     var recoveryEmail: String
         get() = prefs.getString("recovery_email", "") ?: ""
@@ -186,6 +204,20 @@ class AppPrefs(private val context: Context) {
         get() = prefs.getBoolean("is_biometric_enabled", false)
         set(value) = prefs.edit().putBoolean("is_biometric_enabled", value).apply()
 
+    var screenPrivacyEnabled: Boolean
+        get() = prefs.getBoolean("screen_privacy_enabled", false)
+        set(value) = prefs.edit().putBoolean("screen_privacy_enabled", value).apply()
+
+    var masterCloudSyncEnabled: Boolean
+        get() = !prefs.getBoolean("stop_all_backups", false)
+        set(value) {
+            stopAllBackups = !value
+        }
+
+    var driveSyncEnabled: Boolean
+        get() = prefs.getBoolean("drive_sync_enabled", true)
+        set(value) = prefs.edit().putBoolean("drive_sync_enabled", value).apply()
+
     var stopAllBackups: Boolean
         get() = prefs.getBoolean("stop_all_backups", false)
         set(value) {
@@ -208,17 +240,37 @@ class AppPrefs(private val context: Context) {
         get() = prefs.getString("custom_download_dir", "Internal Storage/Downloads") ?: "Internal Storage/Downloads"
         set(value) = prefs.edit().putString("custom_download_dir", value).apply()
 
+    var isSelfAnalysisEnabled: Boolean
+        get() = prefs.getBoolean("is_self_analysis_enabled", true)
+        set(value) = prefs.edit().putBoolean("is_self_analysis_enabled", value).apply()
+
+    var liveCameraObserverEnabled: Boolean
+        get() = prefs.getBoolean("live_camera_observer_enabled", true)
+        set(value) = prefs.edit().putBoolean("live_camera_observer_enabled", value).apply()
+
+    var lastAnalysisTimestamp: Long
+        get() = prefs.getLong("last_analysis_timestamp", 0L)
+        set(value) = prefs.edit().putLong("last_analysis_timestamp", value).apply()
+
     var autoLockDuration: String
         get() = prefs.getString("auto_lock_duration", "5 Minutes") ?: "5 Minutes"
         set(value) = prefs.edit().putString("auto_lock_duration", value).apply()
+
+    var persistentNotificationEnabled: Boolean
+        get() = prefs.getBoolean("persistent_notification_enabled", true)
+        set(value) = prefs.edit().putBoolean("persistent_notification_enabled", value).apply()
 
     var backupScheduleTime: String
         get() = prefs.getString("backup_schedule_time", "Daily at 10:00 PM") ?: "Daily at 10:00 PM"
         set(value) = prefs.edit().putString("backup_schedule_time", value).apply()
 
     var appVersionStr: String
-        get() = prefs.getString("app_version_str", "2.1.39") ?: "2.1.39"
+        get() = prefs.getString("app_version_str", "2.1.81") ?: "2.1.81"
         set(value) = prefs.edit().putString("app_version_str", value).apply()
+
+    var lastSeenWhatsNewVersion: String
+        get() = prefs.getString("last_seen_whats_new_version", "") ?: ""
+        set(value) = prefs.edit().putString("last_seen_whats_new_version", value).apply()
 
     // Smart Backup Mode: 0 = Continuous, 1 = Custom Schedule, 2 = Night Express
     var smartBackupMode: Int
@@ -245,6 +297,40 @@ class AppPrefs(private val context: Context) {
         get() = prefs.getString("dismissed_update_version", "") ?: ""
         set(value) = prefs.edit().putString("dismissed_update_version", value).apply()
 
+    // Fleet Strategy Mode: "BOOST", "DEDICATED", "BALANCED", "MAX"
+    var fleetMode: String
+        get() = prefs.getString("fleet_mode", "BOOST") ?: "BOOST"
+        set(value) = prefs.edit().putString("fleet_mode", value).apply()
+
+    // Boost Target Task: "ALL", "AUTO_BACKUP", "DRIVE"
+    var boostTarget: String
+        get() = prefs.getString("boost_target", "ALL") ?: "ALL"
+        set(value) = prefs.edit().putString("boost_target", value).apply()
+
+    // Minimum / Dedicated bots for Auto-Backup
+    var autoBackupMinBots: Int
+        get() = prefs.getInt("auto_backup_min_bots", 2)
+        set(value) = prefs.edit().putInt("auto_backup_min_bots", value).apply()
+
+    // Minimum / Dedicated bots for Cloud Drive
+    var driveMinBots: Int
+        get() = prefs.getInt("drive_min_bots", 3)
+        set(value) = prefs.edit().putInt("drive_min_bots", value).apply()
+
+    // Maximum App Cache Budget in MB (default 512 MB)
+    var maxCacheSizeMB: Long
+        get() = prefs.getLong("max_cache_size_mb", 512L)
+        set(value) = prefs.edit().putLong("max_cache_size_mb", value).apply()
+
+    // Smart Battery & Power Guards
+    var chargingOnly: Boolean
+        get() = prefs.getBoolean("charging_only", false)
+        set(value) = prefs.edit().putBoolean("charging_only", value).apply()
+
+    var lowBatteryProtection: Boolean
+        get() = prefs.getBoolean("low_battery_protection", true)
+        set(value) = prefs.edit().putBoolean("low_battery_protection", value).apply()
+
     var uploadSpeedLimit: String
         get() = prefs.getString("upload_speed_limit", "Unlimited") ?: "Unlimited"
         set(value) = prefs.edit().putString("upload_speed_limit", value).apply()
@@ -252,6 +338,19 @@ class AppPrefs(private val context: Context) {
     var uploadThreads: Int
         get() = prefs.getInt("upload_threads", 4)
         set(value) = prefs.edit().putInt("upload_threads", value).apply()
+
+    // Daily Data Limit: 0 = Unlimited, or limit in MB (e.g. 500, 1024, 2048, 5120)
+    var dailyDataLimitMB: Long
+        get() = prefs.getLong("daily_data_limit_mb", 0L)
+        set(value) = prefs.edit().putLong("daily_data_limit_mb", value).apply()
+
+    var dailyDataTransferredBytes: Long
+        get() = prefs.getLong("daily_data_transferred_bytes", 0L)
+        set(value) = prefs.edit().putLong("daily_data_transferred_bytes", value).apply()
+
+    var dailyDataDate: String
+        get() = prefs.getString("daily_data_date", "") ?: ""
+        set(value) = prefs.edit().putString("daily_data_date", value).apply()
 
     var autoBackup: Boolean
         get() = autoBackupEnabled

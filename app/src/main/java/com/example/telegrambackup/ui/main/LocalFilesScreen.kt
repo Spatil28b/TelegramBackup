@@ -69,8 +69,8 @@ data class FolderNode(
 private fun formatFileSize(bytes: Long): String {
     if (bytes <= 0) return "0 B"
     val units = arrayOf("B", "KB", "MB", "GB", "TB")
-    val digitGroups = (Math.log10(bytes.toDouble()) / Math.log10(1024.0)).toInt()
-    return String.format(Locale.getDefault(), "%.1f %s", bytes / Math.pow(1024.0, digitGroups.toDouble()), units[digitGroups])
+    val digitGroups = (Math.log10(bytes.toDouble()) / Math.log10(1024.0)).toInt().coerceIn(0, units.size - 1)
+    return String.format(Locale.US, "%.1f %s", bytes / Math.pow(1024.0, digitGroups.toDouble()), units[digitGroups])
 }
 
 private fun getCategoryForFile(file: File): String {
@@ -102,6 +102,7 @@ fun LocalFilesScreen() {
     val selectedPaths = remember { mutableStateListOf<String>() }
 
     var activeAudioPlayerItem by remember { mutableStateOf<Pair<String, String>?>(null) }
+    var activeVideoPlayerItem by remember { mutableStateOf<Pair<String, String>?>(null) }
 
     if (activeAudioPlayerItem != null) {
         com.example.telegrambackup.ui.player.ModernAudioPlayerSheet(
@@ -111,13 +112,24 @@ fun LocalFilesScreen() {
         )
     }
 
+    if (activeVideoPlayerItem != null) {
+        com.example.telegrambackup.ui.player.ModernVideoPlayerDialog(
+            filePathOrUrl = activeVideoPlayerItem!!.first,
+            fileName = activeVideoPlayerItem!!.second,
+            onDismiss = { activeVideoPlayerItem = null }
+        )
+    }
+
     val handleFileClick: (LocalFileItem) -> Unit = { item ->
         if (isSelectionMode) {
             if (selectedPaths.contains(item.path)) selectedPaths.remove(item.path)
             else selectedPaths.add(item.path)
+            if (selectedPaths.isEmpty()) isSelectionMode = false
         } else {
             if (FileViewerHelper.isAudioFile(item.name)) {
                 activeAudioPlayerItem = Pair(item.path, item.name)
+            } else if (FileViewerHelper.isVideoFile(item.name)) {
+                activeVideoPlayerItem = Pair(item.path, item.name)
             } else {
                 FileViewerHelper.openFile(context, item.path, item.name)
             }
@@ -383,7 +395,13 @@ fun LocalFilesScreen() {
                         selectedPaths = selectedPaths,
                         isSelectionMode = isSelectionMode,
                         onFileClick = { item ->
-                            handleFileClick(item)
+                            if (isSelectionMode) {
+                                if (selectedPaths.contains(item.path)) selectedPaths.remove(item.path)
+                                else selectedPaths.add(item.path)
+                                if (selectedPaths.isEmpty()) isSelectionMode = false
+                            } else {
+                                handleFileClick(item)
+                            }
                         },
                         onFileLongClick = { item ->
                             if (!isSelectionMode) {
@@ -416,7 +434,7 @@ fun LocalFilesScreen() {
                                 else selectedPaths.add(item.path)
                                 if (selectedPaths.isEmpty()) isSelectionMode = false
                             } else {
-                                FileViewerHelper.openFile(context, item.path, item.name)
+                                handleFileClick(item)
                             }
                         },
                         onFileLongClick = { item ->

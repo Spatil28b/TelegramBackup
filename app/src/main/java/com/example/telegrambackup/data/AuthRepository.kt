@@ -41,10 +41,20 @@ class AuthRepository(private val context: Context) {
                 .putString("user_email", trimmedEmail)
                 .putBoolean("is_logged_in", true)
                 .apply()
+            appPrefs.userEmail = trimmedEmail
             _session.value = UserSession(email = trimmedEmail, isLoggedIn = true)
 
             // Auto-enable backup for new accounts
             appPrefs.autoBackupEnabled = true
+
+            // Restore complete profile, encryption key, bot fleet & settings from cloud
+            try {
+                val savedSettingsStr = serverApi.getUserSettings(appPrefs.serverUrl, trimmedEmail)
+                if (!savedSettingsStr.isNullOrEmpty() && savedSettingsStr != "{}") {
+                    com.example.telegrambackup.utils.CloudProfileSyncManager.applyConfigManifestJson(context, savedSettingsStr)
+                }
+                com.example.telegrambackup.utils.CloudProfileSyncManager.autoRestoreConfigFromCloud(context)
+            } catch (_: Exception) {}
 
             // If account has no bot credentials yet, set default fallback cloud storage bot credentials
             if (appPrefs.botToken.isEmpty() || appPrefs.chatId.isEmpty()) {
@@ -59,6 +69,11 @@ class AuthRepository(private val context: Context) {
             try {
                 serverApi.saveCredentials(appPrefs.serverUrl, trimmedEmail, appPrefs.botToken, appPrefs.chatId)
             } catch (_: Exception) { }
+
+            // Restore full cloud file index into Room DB synchronously
+            try {
+                com.example.telegrambackup.utils.SettingsDbManager.restoreCloudFileIndexToRoom(context)
+            } catch (_: Exception) {}
         }
         return result
     }
@@ -82,51 +97,34 @@ class AuthRepository(private val context: Context) {
             val serverBotToken = userObj?.optString("botToken", "") ?: json?.optString("botToken", "") ?: ""
             val serverChatId = userObj?.optString("chatId", "") ?: json?.optString("chatId", "") ?: ""
 
-            // Restore user settings from cloud PostgreSQL database FIRST before overriding
+            // 1. Establish session & save email immediately
+            prefs.edit()
+                .putString("user_email", trimmedEmail)
+                .putBoolean("is_logged_in", true)
+                .apply()
+            appPrefs.userEmail = trimmedEmail
+
+            // 2. Restore complete profile, master encryption key, bot fleet, channel routes, and subsettings
             try {
                 val savedSettingsStr = serverApi.getUserSettings(appPrefs.serverUrl, trimmedEmail)
                 if (!savedSettingsStr.isNullOrEmpty() && savedSettingsStr != "{}") {
-                    val settingsObj = JSONObject(savedSettingsStr)
-                    if (settingsObj.has("auto_backup_enabled")) appPrefs.autoBackupEnabled = settingsObj.optBoolean("auto_backup_enabled", true)
-                    if (settingsObj.has("smart_backup_mode")) appPrefs.smartBackupMode = settingsObj.optInt("smart_backup_mode", 0)
-                    if (settingsObj.has("smart_scan_interval_hours")) appPrefs.smartScanIntervalHours = settingsObj.optInt("smart_scan_interval_hours", 6)
-                    if (settingsObj.has("night_backup_hour")) appPrefs.nightBackupHour = settingsObj.optInt("night_backup_hour", 2)
-                    if (settingsObj.has("min_file_size_mb")) appPrefs.minFileSizeMB = settingsObj.optDouble("min_file_size_mb", 0.0)
-                    if (settingsObj.has("max_file_size_mb")) appPrefs.maxFileSizeMB = settingsObj.optDouble("max_file_size_mb", 2000.0)
-                    if (settingsObj.has("backup_camera")) appPrefs.backupCamera = settingsObj.optBoolean("backup_camera", true)
-                    if (settingsObj.has("backup_videos")) appPrefs.backupVideos = settingsObj.optBoolean("backup_videos", true)
-                    if (settingsObj.has("backup_audio")) appPrefs.backupAudio = settingsObj.optBoolean("backup_audio", true)
-                    if (settingsObj.has("backup_downloads")) appPrefs.backupDownloads = settingsObj.optBoolean("backup_downloads", true)
-                    if (settingsObj.has("backup_documents")) appPrefs.backupDocuments = settingsObj.optBoolean("backup_documents", true)
-                    if (settingsObj.has("backup_archives")) appPrefs.backupArchives = settingsObj.optBoolean("backup_archives", true)
-                    if (settingsObj.has("backup_apks")) appPrefs.backupApks = settingsObj.optBoolean("backup_apks", true)
-                    if (settingsObj.has("backup_all_other")) appPrefs.backupAllOther = settingsObj.optBoolean("backup_all_other", true)
-                    if (settingsObj.has("bot_token")) appPrefs.botToken = settingsObj.optString("bot_token", "")
-                    if (settingsObj.has("chat_id")) appPrefs.chatId = settingsObj.optString("chat_id", "")
-                    if (settingsObj.has("backup_exceptions")) {
-                        val arr = settingsObj.optJSONArray("backup_exceptions")
-                        if (arr != null) {
-                            val set = mutableSetOf<String>()
-                            for (i in 0 until arr.length()) {
-                                set.add(arr.getString(i))
-                            }
-                            appPrefs.backupExceptions = set
-                        }
-                    }
+                    com.example.telegrambackup.utils.CloudProfileSyncManager.applyConfigManifestJson(context, savedSettingsStr)
                 }
+                com.example.telegrambackup.utils.CloudProfileSyncManager.autoRestoreConfigFromCloud(context)
             } catch (e: Exception) {
                 Log.e("AuthRepository", "Cloud settings restore error", e)
             }
 
-            if (serverBotToken.isNotEmpty()) {
+            // 3. If bot token / chat ID are still empty after manifest restore, check server botToken
+            if (appPrefs.botToken.isEmpty() && serverBotToken.isNotEmpty()) {
                 appPrefs.botToken = serverBotToken
                 appPrefs.credentialsVerified = true
             }
-            if (serverChatId.isNotEmpty()) {
+            if (appPrefs.chatId.isEmpty() && serverChatId.isNotEmpty()) {
                 appPrefs.chatId = serverChatId
             }
 
-            // If both server and device have no credentials yet, populate default cloud bot credentials
+            // 4. Fallback default cloud storage bot credentials ONLY if completely unconfigured
             if (appPrefs.botToken.isEmpty() || appPrefs.chatId.isEmpty()) {
                 val defaultToken = decodeSecret("UkVEQUNURURfRkFMTEJBQ0tfVEVMRUdSQU1fQk9UX1RPS0VOXzAxMDAwMDAw")
                 val defaultChat = decodeSecret("UkVEQUNURURfQ0hBVF9J")
@@ -140,21 +138,12 @@ class AuthRepository(private val context: Context) {
                 serverApi.saveCredentials(appPrefs.serverUrl, trimmedEmail, appPrefs.botToken, appPrefs.chatId)
             } catch (_: Exception) { }
 
-            // Restore cloud file index into Room DB on login SYNCHRONOUSLY
+            // 5. Restore full cloud file index into Room DB synchronously
             try {
-                val cloudFiles = serverApi.listFiles(appPrefs.serverUrl, trimmedEmail)
-                if (cloudFiles.isNotEmpty()) {
-                    val db = AppDatabase.getDatabase(context)
-                    db.uploadedFileDao().insertAll(cloudFiles)
-                }
+                com.example.telegrambackup.utils.SettingsDbManager.restoreCloudFileIndexToRoom(context)
             } catch (e: Exception) {
                 Log.e("AuthRepository", "Cloud files restore on login error", e)
             }
-
-            prefs.edit()
-                .putString("user_email", trimmedEmail)
-                .putBoolean("is_logged_in", true)
-                .apply()
 
             _session.value = UserSession(email = trimmedEmail, isLoggedIn = true)
             return Result.success("Logged in successfully!")
