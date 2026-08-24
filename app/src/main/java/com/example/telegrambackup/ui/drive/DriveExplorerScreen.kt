@@ -5,30 +5,13 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Vibrator
 import android.widget.Toast
-import com.example.telegrambackup.network.ServerApi
-import com.example.telegrambackup.utils.AppPrefs
-import com.example.telegrambackup.utils.BiometricHelper
-import com.example.telegrambackup.utils.DriveUploadManager
-import com.example.telegrambackup.utils.SettingsDbManager
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import com.example.telegrambackup.ui.common.OsFolderIcon
-import com.example.telegrambackup.ui.common.OsFileIcon
-import com.example.telegrambackup.ui.common.FileThumbnailView
-import com.example.telegrambackup.ui.common.FolderType
-import com.example.telegrambackup.ui.common.SmartFilterBar
-import com.example.telegrambackup.ui.common.GridViewMode
-import com.example.telegrambackup.ui.common.SizeFilter
-import com.example.telegrambackup.ui.common.FloatingBulkActionBar
-import com.example.telegrambackup.ui.common.TimelineHeader
-import com.example.telegrambackup.ui.drive.StorageStatsCard
-import com.example.telegrambackup.ui.settings.FreeUpSpaceDialog
 import androidx.compose.animation.*
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
@@ -43,8 +26,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.InsertDriveFile
-import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.automirrored.filled.NoteAdd
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -53,43 +34,34 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.documentfile.provider.DocumentFile
-import androidx.work.Constraints
-import androidx.work.ExistingWorkPolicy
-import androidx.work.NetworkType
-import androidx.work.OneTimeWorkRequestBuilder
-import androidx.work.WorkManager
-import coil.compose.AsyncImage
 import com.example.telegrambackup.data.AppDatabase
 import com.example.telegrambackup.data.UploadedFile
+import com.example.telegrambackup.network.ServerApi
 import com.example.telegrambackup.theme.TelegramBlue
 import com.example.telegrambackup.theme.TelegramEmerald
+import com.example.telegrambackup.ui.common.*
 import com.example.telegrambackup.ui.explorer.AdvancedMediaViewerDialog
 import com.example.telegrambackup.ui.explorer.ShareLinkModal
-import com.example.telegrambackup.utils.FileViewerHelper
-import com.example.telegrambackup.utils.ZipBackupDownloader
-import com.example.telegrambackup.worker.BackupWorker
+import com.example.telegrambackup.ui.settings.FreeUpSpaceDialog
+import com.example.telegrambackup.utils.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
-import java.io.FileOutputStream
-import java.util.*
+import java.util.Locale
 
 /**
  * =====================================================================================
- * GOOGLE DRIVE ARCHITECTURE CLOUD EXPLORER
+ * TIER-1 HIGH PERFORMANCE CLOUD DRIVE EXPLORER
  * =====================================================================================
- * Personal Cloud Storage with rich document previews, 2-line visible titles, multi-file
- * and recursive folder uploads, closed-app background backup sync, and ZIP archiving.
+ * Smooth, glitch-free personal cloud storage with instant local DB Flow rendering,
+ * unified multi-format media streaming, recursive folder navigation, and cloud sync.
  * =====================================================================================
  */
 
@@ -104,7 +76,7 @@ private fun triggerHapticFeedback(context: Context, haptic: androidx.compose.ui.
     try {
         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
         val vibrator = context.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
-        vibrator?.vibrate(35L)
+        vibrator?.vibrate(25L)
     } catch (_: Exception) { }
 }
 
@@ -123,6 +95,30 @@ private fun matchesDriveCategory(file: UploadedFile, cat: String): Boolean {
 
 enum class DriveSortOption { NAME, SIZE, DATE }
 
+data class DriveStorageBreakdown(
+    val count: Int = 0,
+    val totalBytes: Long = 0L,
+    val photosBytes: Long = 0L,
+    val videosBytes: Long = 0L,
+    val audioBytes: Long = 0L,
+    val docsBytes: Long = 0L
+)
+
+private fun normalizeDrivePath(path: String): String {
+    var clean = path.replace("\\", "/").trim()
+    if (clean.contains("storage/emulated/0")) {
+        clean = clean.substringAfter("storage/emulated/0").removePrefix("/")
+    } else if (clean.matches(Regex("^[A-Za-z]:[/\\\\].*"))) {
+        clean = clean.substring(2).removePrefix("/")
+    } else if (clean.startsWith("primary:")) {
+        clean = clean.removePrefix("primary:").removePrefix("/")
+    } else if (clean.startsWith("raw:")) {
+        clean = clean.removePrefix("raw:").removePrefix("/")
+    }
+    clean = clean.trimEnd('/')
+    return if (clean.isEmpty()) "Internal Storage" else if (clean.startsWith("Internal Storage")) clean else "Internal Storage/$clean"
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DriveExplorerScreen(
@@ -133,6 +129,7 @@ fun DriveExplorerScreen(
     val prefs = remember { AppPrefs(context) }
     val haptic = LocalHapticFeedback.current
 
+    // Directory navigation state
     var currentDriveDirectoryPath by remember { mutableStateOf("Internal Storage") }
     val driveFolderPathHistory = remember { mutableStateListOf("Internal Storage") }
 
@@ -141,9 +138,6 @@ fun DriveExplorerScreen(
     var selectedSizeFilter by remember { mutableStateOf(SizeFilter.ANY) }
     var gridViewMode by remember { mutableStateOf(GridViewMode.COMFORTABLE) }
     var showFreeUpSpaceDialog by remember { mutableStateOf(false) }
-
-    var allDriveUploadedFiles by remember { mutableStateOf<List<UploadedFile>>(emptyList()) }
-    var isDriveDataLoading by remember { mutableStateOf(true) }
 
     val selectedDriveItems = remember { mutableStateListOf<UploadedFile>() }
     var isDriveSelectionActive by remember { mutableStateOf(false) }
@@ -164,34 +158,33 @@ fun DriveExplorerScreen(
     var showFabSpeedDial by remember { mutableStateOf(false) }
     var activeAudioPlayerItem by remember { mutableStateOf<Pair<String, String>?>(null) }
     var activeVideoPlayerItem by remember { mutableStateOf<Pair<String, String>?>(null) }
-    var activeDriveMediaIndex by remember { mutableIntStateOf(-1) }
+    var activeDriveMediaFile by remember { mutableStateOf<UploadedFile?>(null) }
     var shareModalFile by remember { mutableStateOf<UploadedFile?>(null) }
 
-    fun loadDriveFiles() {
-        scope.launch {
-            isDriveDataLoading = true
-            val files = withContext(Dispatchers.IO) {
-                try {
-                    SettingsDbManager.restoreCloudFileIndexToRoom(context)
-                    AppDatabase.getDatabase(context).uploadedFileDao().getDriveFiles()
-                } catch (e: Exception) {
-                    emptyList()
-                }
-            }
-            allDriveUploadedFiles = files
-            isDriveDataLoading = false
+    // 1. Reactive DB Flow: 0ms Instant Local UI Rendering
+    val db = remember { AppDatabase.getDatabase(context) }
+    val driveFilesFlow = remember(db) { db.uploadedFileDao().getDriveFilesFlow() }
+    val allDriveUploadedFiles by driveFilesFlow.collectAsState(initial = emptyList())
+
+    // 2. Background Cloud Delta Sync
+    LaunchedEffect(Unit) {
+        withContext(Dispatchers.IO) {
+            try {
+                SettingsDbManager.restoreCloudFileIndexToRoom(context)
+            } catch (_: Exception) {}
         }
     }
 
+    // Free Up Space Dialog
     if (showFreeUpSpaceDialog) {
         FreeUpSpaceDialog(
             onDismiss = {
                 showFreeUpSpaceDialog = false
-                loadDriveFiles()
             }
         )
     }
 
+    // Share Modal
     if (shareModalFile != null) {
         ShareLinkModal(
             file = shareModalFile!!,
@@ -199,6 +192,7 @@ fun DriveExplorerScreen(
         )
     }
 
+    // Audio Player Sheet
     if (activeAudioPlayerItem != null) {
         com.example.telegrambackup.ui.player.ModernAudioPlayerSheet(
             filePathOrUrl = activeAudioPlayerItem!!.first,
@@ -207,6 +201,7 @@ fun DriveExplorerScreen(
         )
     }
 
+    // Video Player Dialog
     if (activeVideoPlayerItem != null) {
         com.example.telegrambackup.ui.player.ModernVideoPlayerDialog(
             filePathOrUrl = activeVideoPlayerItem!!.first,
@@ -215,31 +210,27 @@ fun DriveExplorerScreen(
         )
     }
 
-    // Launcher for uploading multiple personal files directly into Cloud Drive (4x Parallel Stream Engine)
+    // File Upload Launchers
     val personalFileUploadLauncher = rememberLauncherForActivityResult(contract = ActivityResultContracts.GetMultipleContents()) { uris: List<Uri> ->
         if (uris.isNotEmpty()) {
             Toast.makeText(context, "⚡ Uploading ${uris.size} files in 4x parallel streams...", Toast.LENGTH_SHORT).show()
-            DriveUploadManager.enqueuePersonalFiles(context, uris, currentDriveDirectoryPath) {
-                loadDriveFiles()
-            }
+            DriveUploadManager.enqueuePersonalFiles(context, uris, currentDriveDirectoryPath) {}
         }
     }
 
-    // Launcher for uploading ENTIRE FOLDER TREES recursively into Cloud Drive (4x Parallel Stream Engine)
     val uploadFolderTreeLauncher = rememberLauncherForActivityResult(contract = ActivityResultContracts.OpenDocumentTree()) { treeUri: Uri? ->
         if (treeUri != null) {
             Toast.makeText(context, "📂 Uploading folder tree in 4x parallel streams...", Toast.LENGTH_SHORT).show()
-            DriveUploadManager.enqueueFolderTree(context, treeUri, currentDriveDirectoryPath) {
-                loadDriveFiles()
-            }
+            DriveUploadManager.enqueueFolderTree(context, treeUri, currentDriveDirectoryPath) {}
         }
     }
 
-    BackHandler(enabled = showFabSpeedDial || activeDriveMediaIndex != -1 || itemOptionsFile != null || selectedDriveItems.isNotEmpty() || showCreateFolderModal || showCreateNoteModal || showRenameDialog || driveFolderPathHistory.size > 1) {
+    // Back Handler
+    BackHandler(enabled = showFabSpeedDial || activeDriveMediaFile != null || itemOptionsFile != null || selectedDriveItems.isNotEmpty() || showCreateFolderModal || showCreateNoteModal || showRenameDialog || driveFolderPathHistory.size > 1) {
         if (showFabSpeedDial) {
             showFabSpeedDial = false
-        } else if (activeDriveMediaIndex != -1) {
-            activeDriveMediaIndex = -1
+        } else if (activeDriveMediaFile != null) {
+            activeDriveMediaFile = null
         } else if (itemOptionsFile != null) {
             itemOptionsFile = null
             showDetailedMetadataDialog = false
@@ -262,25 +253,7 @@ fun DriveExplorerScreen(
         }
     }
 
-    LaunchedEffect(Unit) {
-        loadDriveFiles()
-    }
-
-    fun normalizeDrivePath(path: String): String {
-        var clean = path.replace("\\", "/").trim()
-        if (clean.contains("storage/emulated/0")) {
-            clean = clean.substringAfter("storage/emulated/0").removePrefix("/")
-        } else if (clean.matches(Regex("^[A-Za-z]:[/\\\\].*"))) {
-            clean = clean.substring(2).removePrefix("/")
-        } else if (clean.startsWith("primary:")) {
-            clean = clean.removePrefix("primary:").removePrefix("/")
-        } else if (clean.startsWith("raw:")) {
-            clean = clean.removePrefix("raw:").removePrefix("/")
-        }
-        clean = clean.trimEnd('/')
-        return if (clean.isEmpty()) "Internal Storage" else if (clean.startsWith("Internal Storage")) clean else "Internal Storage/$clean"
-    }
-
+    // Current Folder Hierarchy computation
     val currentFolderItems = remember(allDriveUploadedFiles, currentDriveDirectoryPath) {
         val directoriesMap = mutableMapOf<String, MutableList<UploadedFile>>()
         val directFilesList = mutableListOf<UploadedFile>()
@@ -336,22 +309,31 @@ fun DriveExplorerScreen(
 
     val isSearching = externalSearchQuery.trim().isNotEmpty()
 
-    val photosBytes = remember(allDriveUploadedFiles) {
-        allDriveUploadedFiles.filter { it.telegramFileId != "DIR_MARKER" && matchesDriveCategory(it, "PHOTOS") }.sumOf { it.size }
-    }
-    val videosBytes = remember(allDriveUploadedFiles) {
-        allDriveUploadedFiles.filter { it.telegramFileId != "DIR_MARKER" && matchesDriveCategory(it, "VIDEOS") }.sumOf { it.size }
-    }
-    val audioBytes = remember(allDriveUploadedFiles) {
-        allDriveUploadedFiles.filter { it.telegramFileId != "DIR_MARKER" && matchesDriveCategory(it, "AUDIO") }.sumOf { it.size }
-    }
-    val docsBytes = remember(allDriveUploadedFiles) {
-        allDriveUploadedFiles.filter { it.telegramFileId != "DIR_MARKER" && matchesDriveCategory(it, "DOCUMENTS") }.sumOf { it.size }
-    }
-    val totalDriveBytes = remember(allDriveUploadedFiles) {
-        allDriveUploadedFiles.filter { it.telegramFileId != "DIR_MARKER" }.sumOf { it.size }
+    // 1-Pass Storage Breakdown calculation
+    val storageBreakdown = remember(allDriveUploadedFiles) {
+        var count = 0
+        var total = 0L
+        var p = 0L
+        var v = 0L
+        var a = 0L
+        var d = 0L
+        for (file in allDriveUploadedFiles) {
+            if (file.telegramFileId != "DIR_MARKER") {
+                count++
+                total += file.size
+                val ext = file.fileName.substringAfterLast('.', "").lowercase()
+                when {
+                    ext in setOf("jpg", "jpeg", "png", "webp", "gif", "bmp", "heic", "svg") -> p += file.size
+                    ext in setOf("mp4", "mkv", "avi", "mov", "webm", "3gp", "flv") -> v += file.size
+                    ext in setOf("mp3", "m4a", "wav", "flac", "ogg", "aac", "opus") -> a += file.size
+                    ext in setOf("pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt") -> d += file.size
+                }
+            }
+        }
+        DriveStorageBreakdown(count, total, p, v, a, d)
     }
 
+    // Active Display Items with Filter & Sorting
     val activeDisplayDriveItems = remember(allDriveUploadedFiles, currentFolderItems, externalSearchQuery, driveSortOption, selectedCategory, selectedSizeFilter) {
         val q = externalSearchQuery.trim()
         var list = if (q.isNotEmpty()) {
@@ -366,9 +348,9 @@ fun DriveExplorerScreen(
             list = list.filter { it.telegramFileId == "DIR_MARKER" || (it.size >= selectedSizeFilter.minBytes && it.size <= selectedSizeFilter.maxBytes) }
         }
         list = when (driveSortOption) {
-            DriveSortOption.NAME -> list.sortedBy { it.fileName.lowercase() }
-            DriveSortOption.SIZE -> list.sortedByDescending { it.size }
-            DriveSortOption.DATE -> list.sortedByDescending { it.timestamp }
+            DriveSortOption.NAME -> list.sortedWith(compareBy({ it.telegramFileId != "DIR_MARKER" }, { it.fileName.lowercase() }))
+            DriveSortOption.SIZE -> list.sortedWith(compareBy({ it.telegramFileId != "DIR_MARKER" }, { -it.size }))
+            DriveSortOption.DATE -> list.sortedWith(compareBy({ it.telegramFileId != "DIR_MARKER" }, { -it.timestamp }))
         }
         list
     }
@@ -377,19 +359,24 @@ fun DriveExplorerScreen(
         activeDisplayDriveItems.filter { it.telegramFileId != "DIR_MARKER" }
     }
 
-    if (activeDriveMediaIndex != -1 && activeDriveMediaIndex in activeDisplayFilesOnly.indices) {
+    // Media Viewer Dialog
+    if (activeDriveMediaFile != null) {
+        val initialIdx = activeDisplayFilesOnly.indexOfFirst { it.path == activeDriveMediaFile?.path }.coerceAtLeast(0)
         AdvancedMediaViewerDialog(
-            initialIndex = activeDriveMediaIndex,
-            filesList = activeDisplayFilesOnly,
-            onDismiss = { activeDriveMediaIndex = -1 },
+            initialIndex = initialIdx,
+            filesList = if (activeDisplayFilesOnly.isNotEmpty()) activeDisplayFilesOnly else listOf(activeDriveMediaFile!!),
+            onDismiss = { activeDriveMediaFile = null },
             onDeleteRequested = { fileToDelete ->
                 scope.launch(Dispatchers.IO) {
-                    val db = AppDatabase.getDatabase(context)
-                    db.uploadedFileDao().softDelete(fileToDelete.path, fileToDelete.telegramFileId, System.currentTimeMillis())
+                    val dao = AppDatabase.getDatabase(context).uploadedFileDao()
+                    dao.softDelete(fileToDelete.path, fileToDelete.telegramFileId, System.currentTimeMillis())
+                    val userEmail = AppPrefs(context).userEmail
+                    if (userEmail.isNotEmpty() && fileToDelete.telegramFileId.isNotEmpty()) {
+                        try { ServerApi().deleteFile(AppPrefs(context).serverUrl, userEmail, fileToDelete.telegramFileId, fileToDelete.path) } catch (_: Exception) {}
+                    }
                     withContext(Dispatchers.Main) {
                         Toast.makeText(context, "Moved ${fileToDelete.fileName} to Trash Bin", Toast.LENGTH_SHORT).show()
-                        activeDriveMediaIndex = -1
-                        loadDriveFiles()
+                        activeDriveMediaFile = null
                     }
                 }
             },
@@ -400,7 +387,7 @@ fun DriveExplorerScreen(
         )
     }
 
-    // CREATE NEW PERSONAL NOTE DIALOG
+    // CREATE NOTE DIALOG
     if (showCreateNoteModal) {
         AlertDialog(
             onDismissRequest = { showCreateNoteModal = false; noteTitleInput = ""; noteContentInput = "" },
@@ -430,10 +417,10 @@ fun DriveExplorerScreen(
                         val rawTitle = noteTitleInput.trim()
                         if (rawTitle.isNotEmpty()) {
                             val fileName = if (rawTitle.contains(".")) rawTitle else "$rawTitle.txt"
-                            val noteDir = java.io.File(context.cacheDir, "drive_notes")
+                            val noteDir = File(context.cacheDir, "drive_notes")
                             if (!noteDir.exists()) noteDir.mkdirs()
 
-                            val noteFile = java.io.File(noteDir, fileName)
+                            val noteFile = File(noteDir, fileName)
                             try {
                                 java.io.FileOutputStream(noteFile).use { fos ->
                                     fos.write(noteContentInput.toByteArray())
@@ -459,7 +446,6 @@ fun DriveExplorerScreen(
                                     showCreateNoteModal = false
                                     noteTitleInput = ""
                                     noteContentInput = ""
-                                    loadDriveFiles()
                                 }
                             }
                         }
@@ -471,7 +457,7 @@ fun DriveExplorerScreen(
         )
     }
 
-    // CREATE NEW FOLDER DIALOG
+    // CREATE FOLDER DIALOG
     if (showCreateFolderModal) {
         AlertDialog(
             onDismissRequest = { showCreateFolderModal = false; newFolderNameInput = "" },
@@ -523,7 +509,6 @@ fun DriveExplorerScreen(
                                     Toast.makeText(context, "Created Folder '$name'", Toast.LENGTH_SHORT).show()
                                     showCreateFolderModal = false
                                     newFolderNameInput = ""
-                                    loadDriveFiles()
                                 }
                             }
                         }
@@ -535,7 +520,7 @@ fun DriveExplorerScreen(
         )
     }
 
-    // RENAME ITEM DIALOG
+    // RENAME DIALOG
     if (showRenameDialog && selectedDriveItems.isNotEmpty()) {
         val targetItem = selectedDriveItems.first()
         val isFolder = targetItem.telegramFileId == "DIR_MARKER"
@@ -558,18 +543,18 @@ fun DriveExplorerScreen(
                         val newName = renameInputName.trim()
                         if (newName.isNotEmpty()) {
                             scope.launch(Dispatchers.IO) {
-                                val db = AppDatabase.getDatabase(context)
+                                val dbDao = AppDatabase.getDatabase(context).uploadedFileDao()
                                 val oldPath = targetItem.path
                                 val parent = File(oldPath).parent?.replace("\\", "/") ?: currentDriveDirectoryPath
                                 val newPath = "$parent/$newName"
 
                                 if (isFolder) {
-                                    val allFiles = db.uploadedFileDao().getDriveFiles()
+                                    val allFiles = dbDao.getDriveFiles()
                                     val children = allFiles.filter { it.path.startsWith("$oldPath/") }
                                     children.forEach { child ->
                                         val newChildPath = child.path.replaceFirst(oldPath, newPath)
-                                        db.uploadedFileDao().deleteByPath(child.path)
-                                        db.uploadedFileDao().insert(child.apply { path = newChildPath; isDriveUpload = true })
+                                        dbDao.deleteByPath(child.path)
+                                        dbDao.insert(child.apply { path = newChildPath; isDriveUpload = true })
                                     }
                                 }
 
@@ -583,8 +568,8 @@ fun DriveExplorerScreen(
                                 ).apply {
                                     isDriveUpload = true
                                 }
-                                db.uploadedFileDao().deleteByPath(oldPath)
-                                db.uploadedFileDao().insert(updated)
+                                dbDao.deleteByPath(oldPath)
+                                dbDao.insert(updated)
 
                                 val userEmail = AppPrefs(context).userEmail
                                 if (userEmail.isNotEmpty()) {
@@ -608,7 +593,6 @@ fun DriveExplorerScreen(
                                     Toast.makeText(context, "Renamed to $newName", Toast.LENGTH_SHORT).show()
                                     showRenameDialog = false
                                     selectedDriveItems.clear()
-                                    loadDriveFiles()
                                 }
                             }
                         }
@@ -705,19 +689,30 @@ fun DriveExplorerScreen(
                         Row(modifier = Modifier.fillMaxWidth().clickable {
                             triggerHapticFeedback(context, haptic)
                             scope.launch(Dispatchers.IO) {
-                                val db = AppDatabase.getDatabase(context)
+                                val dao = AppDatabase.getDatabase(context).uploadedFileDao()
                                 val now = System.currentTimeMillis()
+                                val userEmail = AppPrefs(context).userEmail
+                                val serverUrl = AppPrefs(context).serverUrl
+                                val serverApi = ServerApi()
+
                                 if (isFolder) {
-                                    val filesInFol = db.uploadedFileDao().getDriveFiles().filter { it.path.startsWith("${file.path}/") }
-                                    filesInFol.forEach { db.uploadedFileDao().softDelete(it.path, it.telegramFileId, now) }
-                                    db.uploadedFileDao().softDelete(file.path, file.telegramFileId, now)
+                                    val filesInFol = dao.getDriveFiles().filter { it.path.startsWith("${file.path}/") }
+                                    filesInFol.forEach {
+                                        dao.softDelete(it.path, it.telegramFileId, now)
+                                        if (userEmail.isNotEmpty() && it.telegramFileId.isNotEmpty()) {
+                                            try { serverApi.deleteFile(serverUrl, userEmail, it.telegramFileId, it.path) } catch (_: Exception) {}
+                                        }
+                                    }
+                                    dao.softDelete(file.path, file.telegramFileId, now)
                                 } else {
-                                    db.uploadedFileDao().softDelete(file.path, file.telegramFileId, now)
+                                    dao.softDelete(file.path, file.telegramFileId, now)
+                                    if (userEmail.isNotEmpty() && file.telegramFileId.isNotEmpty()) {
+                                        try { serverApi.deleteFile(serverUrl, userEmail, file.telegramFileId, file.path) } catch (_: Exception) {}
+                                    }
                                 }
                                 withContext(Dispatchers.Main) {
                                     Toast.makeText(context, "Moved to Trash Bin", Toast.LENGTH_SHORT).show()
                                     itemOptionsFile = null
-                                    loadDriveFiles()
                                 }
                             }
                         }.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -732,24 +727,41 @@ fun DriveExplorerScreen(
         )
     }
 
-    // ADVANCED MEDIA VIEWER FOR DRIVE FILES
-    if (activeDriveMediaIndex >= 0 && activeDriveMediaIndex < activeDisplayFilesOnly.size) {
-        AdvancedMediaViewerDialog(
-            initialIndex = activeDriveMediaIndex,
-            filesList = activeDisplayFilesOnly,
-            onDismiss = { activeDriveMediaIndex = -1 },
-            onDeleteRequested = { fileToDelete ->
-                scope.launch(Dispatchers.IO) {
-                    AppDatabase.getDatabase(context).uploadedFileDao().softDelete(fileToDelete.path, fileToDelete.telegramFileId, System.currentTimeMillis())
-                    withContext(Dispatchers.Main) {
-                        Toast.makeText(context, "Moved to Trash Bin", Toast.LENGTH_SHORT).show()
-                        loadDriveFiles()
-                        activeDriveMediaIndex = -1
+    // Universal Item Click Handler
+    fun handleDriveItemClick(driveItem: UploadedFile) {
+        val isDir = driveItem.telegramFileId == "DIR_MARKER"
+        if (isDriveSelectionActive) {
+            val isSelected = selectedDriveItems.any { it.path == driveItem.path }
+            if (isSelected) {
+                selectedDriveItems.removeAll { it.path == driveItem.path }
+                if (selectedDriveItems.isEmpty()) isDriveSelectionActive = false
+            } else {
+                selectedDriveItems.add(driveItem)
+            }
+        } else {
+            if (isDir) {
+                currentDriveDirectoryPath = driveItem.path
+                driveFolderPathHistory.add(driveItem.path)
+            } else {
+                val localFile = File(driveItem.path)
+                val hasLocal = localFile.exists() && localFile.length() > 0
+
+                when {
+                    FileViewerHelper.isAudioFile(driveItem.fileName) -> {
+                        activeAudioPlayerItem = Pair(if (hasLocal) driveItem.path else driveItem.telegramFileId, driveItem.fileName)
+                    }
+                    FileViewerHelper.isVideoFile(driveItem.fileName) -> {
+                        activeVideoPlayerItem = Pair(if (hasLocal) driveItem.path else driveItem.telegramFileId, driveItem.fileName)
+                    }
+                    FileViewerHelper.isImageFile(driveItem.fileName) || FileViewerHelper.isPdfFile(driveItem.fileName) -> {
+                        activeDriveMediaFile = driveItem
+                    }
+                    else -> {
+                        FileViewerHelper.openFile(context, driveItem.path, driveItem.fileName, driveItem.telegramFileId)
                     }
                 }
-            },
-            onInfoRequested = { fileInfo -> itemOptionsFile = fileInfo }
-        )
+            }
+        }
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -790,15 +802,21 @@ fun DriveExplorerScreen(
                                     .horizontalScroll(rememberScrollState()),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                val pathSegments = currentDriveDirectoryPath.split("/")
+                                val pathSegments = currentDriveDirectoryPath.split("/").filter { it.isNotBlank() }
                                 var pathAccumulator = ""
 
                                 pathSegments.forEachIndexed { sIdx, segment ->
                                     pathAccumulator = if (sIdx == 0) segment else "$pathAccumulator/$segment"
                                     val targetLevelPath = pathAccumulator
 
+                                    val displayName = when {
+                                        segment == "Internal Storage" -> "Cloud Drive"
+                                        segment == "Private Safe Vault" -> "🔒 Safe Vault"
+                                        else -> segment
+                                    }
+
                                     Text(
-                                        text = segment,
+                                        text = displayName,
                                         style = MaterialTheme.typography.titleSmall.copy(
                                             fontWeight = if (sIdx == pathSegments.lastIndex) FontWeight.Bold else FontWeight.Medium,
                                             color = if (sIdx == pathSegments.lastIndex) MaterialTheme.colorScheme.onSurface else TelegramBlue
@@ -822,25 +840,26 @@ fun DriveExplorerScreen(
                         }
 
                         // Private Safe Vault Button
+                        val isVaultActive = currentDriveDirectoryPath == "Internal Storage/Private Safe Vault"
                         IconButton(
                             onClick = {
                                 triggerHapticFeedback(context, haptic)
-                                if (currentDriveDirectoryPath == "/Private Vault") {
-                                    currentDriveDirectoryPath = "/"
+                                if (isVaultActive) {
+                                    currentDriveDirectoryPath = "Internal Storage"
                                     driveFolderPathHistory.clear()
-                                    driveFolderPathHistory.add("/")
+                                    driveFolderPathHistory.add("Internal Storage")
                                 } else {
                                     val activity = context as? androidx.fragment.app.FragmentActivity
-                                    val prefs = AppPrefs(context)
-                                    if (activity != null && prefs.isBiometricEnabled) {
+                                    val isBiometricOn = prefs.isBiometricEnabled
+                                    if (activity != null && isBiometricOn) {
                                         BiometricHelper.showBiometricPrompt(
                                             activity = activity,
-                                            title = "Unlock Private Vault",
+                                            title = "Unlock Private Safe Vault",
                                             subtitle = "Verify fingerprint or face to access encrypted safe folder",
                                             onSuccess = {
-                                                currentDriveDirectoryPath = "/Private Vault"
-                                                if (!driveFolderPathHistory.contains("/Private Vault")) {
-                                                    driveFolderPathHistory.add("/Private Vault")
+                                                currentDriveDirectoryPath = "Internal Storage/Private Safe Vault"
+                                                if (!driveFolderPathHistory.contains("Internal Storage/Private Safe Vault")) {
+                                                    driveFolderPathHistory.add("Internal Storage/Private Safe Vault")
                                                 }
                                             },
                                             onError = { err ->
@@ -848,21 +867,20 @@ fun DriveExplorerScreen(
                                             }
                                         )
                                     } else {
-                                        currentDriveDirectoryPath = "/Private Vault"
-                                        if (!driveFolderPathHistory.contains("/Private Vault")) {
-                                            driveFolderPathHistory.add("/Private Vault")
+                                        currentDriveDirectoryPath = "Internal Storage/Private Safe Vault"
+                                        if (!driveFolderPathHistory.contains("Internal Storage/Private Safe Vault")) {
+                                            driveFolderPathHistory.add("Internal Storage/Private Safe Vault")
                                         }
                                     }
                                 }
                             }
                         ) {
                             Icon(
-                                imageVector = if (currentDriveDirectoryPath == "/Private Vault") Icons.Default.LockOpen else Icons.Default.Lock,
+                                imageVector = if (isVaultActive) Icons.Default.LockOpen else Icons.Default.Lock,
                                 contentDescription = "Private Safe Vault",
-                                tint = if (currentDriveDirectoryPath == "/Private Vault") TelegramEmerald else Color(0xFF8B5CF6)
+                                tint = if (isVaultActive) TelegramEmerald else Color(0xFF8B5CF6)
                             )
                         }
-
                     }
                 }
             }
@@ -871,12 +889,12 @@ fun DriveExplorerScreen(
             if (currentDriveDirectoryPath == "Internal Storage" && !isSearching) {
                 Spacer(modifier = Modifier.height(10.dp))
                 StorageStatsCard(
-                    totalFilesCount = allDriveUploadedFiles.filter { it.telegramFileId != "DIR_MARKER" }.size,
-                    totalStorageBytes = totalDriveBytes,
-                    photosBytes = photosBytes,
-                    videosBytes = videosBytes,
-                    audioBytes = audioBytes,
-                    docsBytes = docsBytes,
+                    totalFilesCount = storageBreakdown.count,
+                    totalStorageBytes = storageBreakdown.totalBytes,
+                    photosBytes = storageBreakdown.photosBytes,
+                    videosBytes = storageBreakdown.videosBytes,
+                    audioBytes = storageBreakdown.audioBytes,
+                    docsBytes = storageBreakdown.docsBytes,
                     onFreeUpSpaceClick = { showFreeUpSpaceDialog = true },
                     onCategoryClick = { selectedCategory = it }
                 )
@@ -897,32 +915,35 @@ fun DriveExplorerScreen(
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            if (isDriveDataLoading) {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = TelegramBlue) }
-            } else if (activeDisplayDriveItems.isEmpty()) {
+            if (activeDisplayDriveItems.isEmpty()) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(24.dp)) {
                         Icon(Icons.Default.CloudQueue, contentDescription = null, tint = TelegramBlue, modifier = Modifier.size(64.dp))
                         Spacer(modifier = Modifier.height(16.dp))
-                        Text("No Files Match Filter", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
+                        Text(
+                            if (isSearching) "No Files Matching '$externalSearchQuery'" else "This Folder is Empty",
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                        )
                         Spacer(modifier = Modifier.height(6.dp))
                         Text(
-                            "Try clearing filters or uploading files directly into your personal cloud drive.",
+                            "Tap '+ New' to upload files or create folders in this cloud location.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.outline
                         )
                         Spacer(modifier = Modifier.height(16.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Button(
-                                onClick = { selectedCategory = "ALL"; selectedSizeFilter = SizeFilter.ANY },
-                                colors = ButtonDefaults.buttonColors(containerColor = TelegramBlue)
-                            ) {
-                                Text("Reset Filters")
+                            if (selectedCategory != "ALL" || selectedSizeFilter != SizeFilter.ANY) {
+                                Button(
+                                    onClick = { selectedCategory = "ALL"; selectedSizeFilter = SizeFilter.ANY },
+                                    colors = ButtonDefaults.buttonColors(containerColor = TelegramBlue)
+                                ) {
+                                    Text("Reset Filters")
+                                }
                             }
                             OutlinedButton(onClick = { personalFileUploadLauncher.launch("*/*") }) {
                                 Icon(Icons.Default.FileUpload, contentDescription = null, modifier = Modifier.size(18.dp))
                                 Spacer(modifier = Modifier.width(4.dp))
-                                Text("Upload")
+                                Text("Upload Files")
                             }
                         }
                     }
@@ -937,7 +958,7 @@ fun DriveExplorerScreen(
                         contentPadding = PaddingValues(bottom = 120.dp),
                         modifier = Modifier.fillMaxSize()
                     ) {
-                        itemsIndexed(activeDisplayDriveItems, key = { index, item -> "${item.path}_$index" }) { _, driveItem ->
+                        itemsIndexed(activeDisplayDriveItems, key = { _, item -> "${item.path}_${item.telegramFileId}" }) { _, driveItem ->
                             val isDir = driveItem.telegramFileId == "DIR_MARKER"
                             val isSelected = selectedDriveItems.any { it.path == driveItem.path }
 
@@ -948,35 +969,7 @@ fun DriveExplorerScreen(
                                 isBigGrid = gridViewMode == GridViewMode.LARGE,
                                 onClick = {
                                     triggerHapticFeedback(context, haptic)
-                                    if (isDriveSelectionActive) {
-                                        if (isSelected) {
-                                            selectedDriveItems.removeAll { it.path == driveItem.path }
-                                            if (selectedDriveItems.isEmpty()) isDriveSelectionActive = false
-                                        } else {
-                                            selectedDriveItems.add(driveItem)
-                                        }
-                                    } else {
-                                        if (isDir) {
-                                            currentDriveDirectoryPath = driveItem.path
-                                            driveFolderPathHistory.add(driveItem.path)
-                                        } else {
-                                            val localFile = File(driveItem.path)
-                                            val hasLocal = localFile.exists() && localFile.length() > 0
-
-                                            if (FileViewerHelper.isAudioFile(driveItem.fileName)) {
-                                                activeAudioPlayerItem = Pair(if (hasLocal) driveItem.path else driveItem.telegramFileId, driveItem.fileName)
-                                            } else if (FileViewerHelper.isVideoFile(driveItem.fileName)) {
-                                                activeVideoPlayerItem = Pair(if (hasLocal) driveItem.path else driveItem.telegramFileId, driveItem.fileName)
-                                            } else {
-                                                val idx = activeDisplayFilesOnly.indexOfFirst { it.path == driveItem.path }
-                                                if (idx != -1 && (FileViewerHelper.isImageFile(driveItem.fileName) || FileViewerHelper.isPdfFile(driveItem.fileName))) {
-                                                    activeDriveMediaIndex = idx
-                                                } else {
-                                                    FileViewerHelper.openFile(context, driveItem.path, driveItem.fileName, driveItem.telegramFileId)
-                                                }
-                                            }
-                                        }
-                                    }
+                                    handleDriveItemClick(driveItem)
                                 },
                                 onLongClick = {
                                     triggerHapticFeedback(context, haptic)
@@ -995,7 +988,7 @@ fun DriveExplorerScreen(
                         contentPadding = PaddingValues(bottom = 120.dp),
                         modifier = Modifier.fillMaxSize()
                     ) {
-                        itemsIndexed(activeDisplayDriveItems, key = { index, item -> "${item.path}_$index" }) { _, driveItem ->
+                        itemsIndexed(activeDisplayDriveItems, key = { _, item -> "${item.path}_${item.telegramFileId}" }) { _, driveItem ->
                             val isDir = driveItem.telegramFileId == "DIR_MARKER"
                             val isSelected = selectedDriveItems.any { it.path == driveItem.path }
 
@@ -1005,37 +998,7 @@ fun DriveExplorerScreen(
                                 isSelected = isSelected,
                                 onClick = {
                                     triggerHapticFeedback(context, haptic)
-                                    if (isDriveSelectionActive) {
-                                        if (isSelected) {
-                                            selectedDriveItems.removeAll { it.path == driveItem.path }
-                                            if (selectedDriveItems.isEmpty()) isDriveSelectionActive = false
-                                        } else {
-                                            selectedDriveItems.add(driveItem)
-                                        }
-                                    } else {
-                                        if (isDir) {
-                                            currentDriveDirectoryPath = driveItem.path
-                                            driveFolderPathHistory.add(driveItem.path)
-                                        } else {
-                                            val localFile = File(driveItem.path)
-                                            val hasLocal = localFile.exists() && localFile.length() > 0
-
-                                            if (FileViewerHelper.isAudioFile(driveItem.fileName)) {
-                                                activeAudioPlayerItem = Pair(if (hasLocal) driveItem.path else driveItem.telegramFileId, driveItem.fileName)
-                                            } else if (FileViewerHelper.isVideoFile(driveItem.fileName)) {
-                                                activeVideoPlayerItem = Pair(if (hasLocal) driveItem.path else driveItem.telegramFileId, driveItem.fileName)
-                                            } else {
-                                                val idx = activeDisplayFilesOnly.indexOfFirst { it.path == driveItem.path }
-                                                if (idx != -1) {
-                                                    activeDriveMediaIndex = idx
-                                                } else if (hasLocal) {
-                                                    FileViewerHelper.openFile(context, driveItem.path, driveItem.fileName, driveItem.telegramFileId)
-                                                } else {
-                                                    itemOptionsFile = driveItem
-                                                }
-                                            }
-                                        }
-                                    }
+                                    handleDriveItemClick(driveItem)
                                 },
                                 onLongClick = {
                                     triggerHapticFeedback(context, haptic)
@@ -1052,8 +1015,11 @@ fun DriveExplorerScreen(
             }
         }
 
-        // GOOGLE DRIVE STYLE "+ NEW" FLOATING ACTION BUTTON (FAB)
-        Box(
+        // GOOGLE DRIVE STYLE "+ NEW" FLOATING ACTION BUTTON (FAB) - Auto-hides during multi-select
+        AnimatedVisibility(
+            visible = !isDriveSelectionActive && selectedDriveItems.isEmpty(),
+            enter = fadeIn() + scaleIn(),
+            exit = fadeOut() + scaleOut(),
             modifier = Modifier
                 .align(Alignment.BottomEnd)
                 .padding(bottom = 16.dp, end = 8.dp)
@@ -1180,18 +1146,29 @@ fun DriveExplorerScreen(
                     try {
                         val dao = AppDatabase.getDatabase(context).uploadedFileDao()
                         val now = System.currentTimeMillis()
+                        val userEmail = AppPrefs(context).userEmail
+                        val serverUrl = AppPrefs(context).serverUrl
+                        val serverApi = ServerApi()
+
                         itemsToDelete.forEach { item ->
                             if (item.telegramFileId == "DIR_MARKER") {
                                 val children = dao.getDriveFiles().filter { it.path.startsWith("${item.path}/") }
-                                children.forEach { dao.softDelete(it.path, it.telegramFileId, now) }
+                                children.forEach { child ->
+                                    dao.softDelete(child.path, child.telegramFileId, now)
+                                    if (userEmail.isNotEmpty() && child.telegramFileId.isNotEmpty()) {
+                                        try { serverApi.deleteFile(serverUrl, userEmail, child.telegramFileId, child.path) } catch (_: Exception) {}
+                                    }
+                                }
                             }
                             dao.softDelete(item.path, item.telegramFileId, now)
+                            if (userEmail.isNotEmpty() && item.telegramFileId.isNotEmpty()) {
+                                try { serverApi.deleteFile(serverUrl, userEmail, item.telegramFileId, item.path) } catch (_: Exception) {}
+                            }
                         }
                         withContext(Dispatchers.Main) {
                             Toast.makeText(context, "Moved $count items to Trash Bin", Toast.LENGTH_SHORT).show()
                             selectedDriveItems.clear()
                             isDriveSelectionActive = false
-                            loadDriveFiles()
                         }
                     } catch (e: Exception) {
                         withContext(Dispatchers.Main) {
