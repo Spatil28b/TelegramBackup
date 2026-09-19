@@ -51,8 +51,13 @@ object FileEncryptor {
         try {
             FileInputStream(file).use { fis ->
                 val header = ByteArray(8)
-                val read = fis.read(header)
-                if (read == 8) {
+                var bytesRead = 0
+                while (bytesRead < 8) {
+                    val r = fis.read(header, bytesRead, 8 - bytesRead)
+                    if (r == -1) break
+                    bytesRead += r
+                }
+                if (bytesRead == 8) {
                     return header.contentEquals(MAGIC_HEADER)
                 }
             }
@@ -103,8 +108,14 @@ object FileEncryptor {
         FileInputStream(inputFile).use { fis ->
             val hasMagic = isEncryptedFile(inputFile)
             if (hasMagic) {
-                // Skip the 8-byte magic header
-                fis.skip(8)
+                // Safely read and discard the 8-byte magic header
+                val magicBuf = ByteArray(8)
+                var bytesSkipped = 0
+                while (bytesSkipped < 8) {
+                    val r = fis.read(magicBuf, bytesSkipped, 8 - bytesSkipped)
+                    if (r == -1) break
+                    bytesSkipped += r
+                }
             }
 
             CipherInputStream(fis, cipher).use { cis ->

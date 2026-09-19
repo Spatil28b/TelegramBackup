@@ -188,6 +188,12 @@ object ZipBackupDownloader {
                 }
 
                 if (fileToCompress != null && fileToCompress.exists()) {
+                    // Decrypt in-place if encrypted so user receives usable plain files
+                    if (prefs.encryptionKey.isNotBlank() && FileEncryptor.isEncryptedFile(fileToCompress)) {
+                        try {
+                            FileEncryptor.decryptFileInPlace(fileToCompress, prefs.encryptionKey)
+                        } catch (_: Exception) {}
+                    }
                     val fileSize = fileToCompress.length()
 
                     // Check if current zip part exceeds 500 MB threshold -> split into part files

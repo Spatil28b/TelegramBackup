@@ -321,7 +321,7 @@ class BackupWorker(
             val tempDir = File(applicationContext.cacheDir, "backup_temp")
             if (!tempDir.exists()) tempDir.mkdirs()
 
-            val concurrency = prefs.uploadThreads.coerceIn(1, 6)
+            val concurrency = prefs.uploadThreads.coerceIn(1, 16)
             val parallelSemaphore = Semaphore(concurrency)
             val successCount = AtomicInteger(0)
             val failCount = AtomicInteger(0)
@@ -402,7 +402,7 @@ class BackupWorker(
                                     BackupProgressTracker.updateActiveUpload(file.absolutePath, file.name, file.length(), 0, totalChunks, 0.05f)
                                 }
 
-                                val chunkConcurrency = minOf(botPool.size, 6).coerceAtLeast(1)
+                                val chunkConcurrency = minOf(botPool.size, maxOf(prefs.uploadThreads, 16)).coerceAtLeast(1)
                                 val chunkSemaphore = Semaphore(chunkConcurrency)
                                 val allBotsCount = db.telegramBotDao().getActiveBots().size.coerceAtLeast(1)
                                 BackupProgressTracker.updateBotUtilization(working = minOf(chunkConcurrency, botPool.size), total = allBotsCount)
@@ -527,7 +527,7 @@ class BackupWorker(
                                     entity.totalChunks = totalChunks
                                 }
                                 uploadedDao.insert(entity)
-                                chunkDao.deleteChunksForFile(file.absolutePath)
+                                // Retain chunk records in chunk_upload_progress so multi-part files can be downloaded/streamed complete
 
                                 if (userEmail.isNotEmpty()) {
                                     try {

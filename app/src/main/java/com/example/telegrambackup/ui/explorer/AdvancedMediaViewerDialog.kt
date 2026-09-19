@@ -58,6 +58,7 @@ import com.example.telegrambackup.data.UploadedFile
 import com.example.telegrambackup.theme.TelegramBlue
 import com.example.telegrambackup.theme.TelegramEmerald
 import com.example.telegrambackup.ui.common.OsFileIcon
+import com.example.telegrambackup.utils.AppPrefs
 import com.example.telegrambackup.utils.FileViewerHelper
 import com.example.telegrambackup.utils.TelegramMediaResolver
 import kotlinx.coroutines.Dispatchers
@@ -85,6 +86,7 @@ fun AdvancedMediaViewerDialog(
 
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val prefs = remember { AppPrefs(context) }
     val haptic = LocalHapticFeedback.current
     var currentIndex by remember(initialIndex) { mutableIntStateOf(initialIndex) }
 
@@ -139,7 +141,7 @@ fun AdvancedMediaViewerDialog(
             val directUrl = TelegramMediaResolver.resolveDirectUrl(context, currentFile.telegramFileId)
             resolvedDirectUrl = directUrl
 
-            val cached = TelegramMediaResolver.fetchToTempCache(context, currentFile.telegramFileId, currentFile.fileName)
+            val cached = TelegramMediaResolver.fetchToTempCache(context, currentFile)
             if (cached != null) {
                 cachedDownloadedFile = cached
             }
@@ -209,8 +211,8 @@ fun AdvancedMediaViewerDialog(
 
                             val imageModel: Any? = when {
                                 localFileExists -> localFile
-                                resolvedDirectUrl != null -> resolvedDirectUrl
                                 cachedDownloadedFile != null -> cachedDownloadedFile
+                                resolvedDirectUrl != null && prefs.encryptionKey.isEmpty() && currentFile.totalChunks <= 1 -> resolvedDirectUrl
                                 else -> null
                             }
 

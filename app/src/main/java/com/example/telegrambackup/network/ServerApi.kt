@@ -54,6 +54,7 @@ class ServerApi {
      */
     suspend fun getLatestAppVersion(serverUrl: String): com.example.telegrambackup.ui.update.AppVersionInfo = withContext(Dispatchers.IO) {
         val candidates = mutableListOf<com.example.telegrambackup.ui.update.AppVersionInfo>()
+        val ghToken = "REDACTED_GITHUB_PERSONAL_ACCESS_TOKEN_01"
 
         // 1. Try Backend Vercel Endpoint
         try {
@@ -72,9 +73,8 @@ class ServerApi {
                     releaseNotes = json.optString("releaseNotes", "New performance and feature updates.")
                 )
                 if (info.downloadUrl.isNotEmpty()) {
-                    return@withContext info
+                    candidates.add(info)
                 }
-                candidates.add(info)
             }
         } catch (e: Exception) {
             Log.e("ServerApi", "getLatestAppVersion backend check error", e)
@@ -82,8 +82,12 @@ class ServerApi {
 
         // 2. Try GitHub raw app-version.json (direct repository source)
         try {
-            val ghRawUrl = "https://raw.githubusercontent.com/spatil28a/telegram_backup_backend/main/app-version.json"
-            val request = Request.Builder().url(ghRawUrl).cacheControl(okhttp3.CacheControl.FORCE_NETWORK).build()
+            val ghRawUrl = "https://raw.githubusercontent.com/sid-codes28/telegram_backup_backend/main/app-version.json"
+            val request = Request.Builder()
+                .url(ghRawUrl)
+                .header("Authorization", "Bearer $ghToken")
+                .cacheControl(okhttp3.CacheControl.FORCE_NETWORK)
+                .build()
             val response = client.newCall(request).execute()
             val body = response.body?.string() ?: ""
 
@@ -97,7 +101,9 @@ class ServerApi {
                     downloadUrl = dlUrl,
                     releaseNotes = json.optString("releaseNotes", "New performance and feature updates.")
                 )
-                candidates.add(info)
+                if (info.downloadUrl.isNotEmpty()) {
+                    candidates.add(info)
+                }
             }
         } catch (e: Exception) {
             Log.e("ServerApi", "getLatestAppVersion GitHub raw check error", e)
@@ -105,8 +111,13 @@ class ServerApi {
 
         // 3. Try GitHub Releases API
         try {
-            val ghReleasesUrl = "https://api.github.com/repos/spatil28a/telegram_backup_backend/releases/latest"
-            val request = Request.Builder().url(ghReleasesUrl).header("Accept", "application/vnd.github.v3+json").cacheControl(okhttp3.CacheControl.FORCE_NETWORK).build()
+            val ghReleasesUrl = "https://api.github.com/repos/sid-codes28/telegram_backup_backend/releases/latest"
+            val request = Request.Builder()
+                .url(ghReleasesUrl)
+                .header("Authorization", "Bearer $ghToken")
+                .header("Accept", "application/vnd.github.v3+json")
+                .cacheControl(okhttp3.CacheControl.FORCE_NETWORK)
+                .build()
             val response = client.newCall(request).execute()
             val body = response.body?.string() ?: ""
 
@@ -127,7 +138,7 @@ class ServerApi {
                     }
                 }
                 if (apkUrl.isEmpty()) {
-                    apkUrl = "https://github.com/spatil28a/telegram_backup_backend/raw/main/Releases/TelegramBackup-latest.apk"
+                    apkUrl = "https://github.com/sid-codes28/telegram_backup_backend/raw/main/Releases/TelegramBackup-latest.apk"
                 }
                 val parts = tagName.split(".").mapNotNull { it.toIntOrNull() }
                 val code = if (parts.size >= 3) parts[2] + 3 else 1

@@ -31,6 +31,12 @@ interface UploadedFileDao {
     @Query("SELECT * FROM uploaded_files WHERE path = :path LIMIT 1")
     fun getFileByPath(path: String): UploadedFile?
 
+    @Query("SELECT * FROM uploaded_files WHERE telegramFileId = :fileId LIMIT 1")
+    fun getFileByTelegramFileId(fileId: String): UploadedFile?
+
+    @Query("SELECT * FROM uploaded_files WHERE fileName = :fileName LIMIT 1")
+    fun getFileByName(fileName: String): UploadedFile?
+
     @Query("SELECT COUNT(*) FROM uploaded_files WHERE isDeleted = 0")
     fun getCount(): Int
 

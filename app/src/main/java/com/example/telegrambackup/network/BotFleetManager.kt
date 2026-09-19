@@ -130,7 +130,8 @@ object BotFleetManager {
         val pool = if (healthyBots.isNotEmpty()) healthyBots else activeBots
 
         val result = mutableListOf<TelegramBotEntity>()
-        for (i in 0 until requiredCount) {
+        val count = maxOf(requiredCount, pool.size)
+        for (i in 0 until count) {
             result.add(pool[i % pool.size])
         }
         return@withContext result
@@ -225,11 +226,7 @@ object BotFleetManager {
                 pool.take(minAuto) // strictly dedicated slice
             }
             "BALANCED" -> {
-                if (fileSize < 100 * 1024 * 1024L) {
-                    pool.take(minOf(pool.size, maxOf(minAuto, 2)))
-                } else {
-                    pool
-                }
+                pool // Fully leverage all healthy bots in fleet for auto-backup
             }
             else -> { // "MAX"
                 pool

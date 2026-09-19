@@ -26,6 +26,7 @@ import com.example.telegrambackup.theme.TelegramEmerald
 import com.example.telegrambackup.utils.AppPrefs
 import com.example.telegrambackup.utils.DynamicProcessTracker
 import com.example.telegrambackup.utils.FileEncryptor
+import com.example.telegrambackup.utils.TelegramMediaResolver
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
@@ -181,10 +182,7 @@ fun CloudRestoreWizardDialog(
                     )
 
                     scope.launch(Dispatchers.IO) {
-                        val client = HttpClientProvider.client
-                        val activeBots = try { BotFleetManager.getBotPoolForParallelChunks(context, 10) } catch (_: Exception) { emptyList() }
-                        val botPool = if (activeBots.isNotEmpty()) activeBots.map { it.botToken } else listOf(botToken)
-                        val concurrency = (prefs.uploadThreads).coerceIn(2, 6)
+                        val concurrency = (prefs.uploadThreads).coerceIn(1, 16)
                         val restoreSemaphore = Semaphore(concurrency)
                         val successCounter = java.util.concurrent.atomic.AtomicInteger(0)
                         val processedCounter = java.util.concurrent.atomic.AtomicInteger(0)
@@ -193,36 +191,12 @@ fun CloudRestoreWizardDialog(
                             val jobs = filesToRestore.mapIndexed { idx, item ->
                                 launch {
                                     restoreSemaphore.withPermit {
-                                        val assignedBotToken = botPool[idx % botPool.size]
                                         try {
                                             val targetFile = File(restoreFolder, item.fileName)
                                             if (item.telegramFileId.isNotEmpty() && item.telegramFileId != "DIR_MARKER") {
-                                                // 1. Get File Path from Telegram Bot API
-                                                val getFileUrl = "https://api.telegram.org/bot$assignedBotToken/getFile?file_id=${item.telegramFileId}"
-                                                val req = Request.Builder().url(getFileUrl).build()
-                                                val res = client.newCall(req).execute()
-                                                val body = res.body?.string() ?: ""
-
-                                                if (res.isSuccessful && body.contains("\"ok\":true")) {
-                                                    val filePath = org.json.JSONObject(body).optJSONObject("result")?.optString("file_path", "") ?: ""
-                                                    if (filePath.isNotEmpty()) {
-                                                        val downloadUrl = "https://api.telegram.org/file/bot$assignedBotToken/$filePath"
-                                                        val dlReq = Request.Builder().url(downloadUrl).build()
-                                                        val dlRes = client.newCall(dlReq).execute()
-
-                                                        dlRes.body?.byteStream()?.use { input ->
-                                                            FileOutputStream(targetFile).use { output ->
-                                                                input.copyTo(output)
-                                                            }
-                                                        }
-
-                                                        // Decrypt file only if it is actually encrypted
-                                                        if (prefs.encryptionKey.isNotEmpty() && FileEncryptor.isEncryptedFile(targetFile)) {
-                                                            FileEncryptor.decryptFileInPlace(targetFile, prefs.encryptionKey)
-                                                        }
-
-                                                        successCounter.incrementAndGet()
-                                                    }
+                                                val ok = TelegramMediaResolver.restoreFileToTarget(context, item, targetFile)
+                                                if (ok && targetFile.exists() && targetFile.length() > 0) {
+                                                    successCounter.incrementAndGet()
                                                 }
                                             }
                                         } catch (e: Exception) {

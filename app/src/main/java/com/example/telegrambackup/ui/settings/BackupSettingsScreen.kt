@@ -1903,7 +1903,7 @@ fun BackupSettingsScreen(
                             Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
                                 Text("Concurrent Upload Streams", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium))
                                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                    listOf(1, 2, 4, 8).forEach { t ->
+                                    listOf(1, 2, 4, 8, 10, 12, 16).forEach { t ->
                                         FilterChip(selected = uploadThreads == t, onClick = { uploadThreads = t; prefs.uploadThreads = t }, label = { Text("${t}x") })
                                     }
                                 }

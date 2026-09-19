@@ -312,7 +312,7 @@ object DriveUploadManager {
             BackupProgressTracker.updateActiveUpload(targetPath, fileName, file.length(), 0, totalChunks, 0.05f)
         }
 
-        val chunkConcurrency = minOf(driveBotPool.size, 4).coerceAtLeast(1)
+        val chunkConcurrency = minOf(driveBotPool.size, maxOf(prefs.uploadThreads, 16)).coerceAtLeast(1)
         val chunkSemaphore = Semaphore(chunkConcurrency)
         val allBotsCount = db.telegramBotDao().getActiveBots().size.coerceAtLeast(1)
         BackupProgressTracker.updateBotUtilization(working = minOf(chunkConcurrency, driveBotPool.size), total = allBotsCount)

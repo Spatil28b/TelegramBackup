@@ -373,9 +373,9 @@ fun AppUpdaterDialog(
                             val candidateUrls = listOfNotNull(
                                 versionInfo.downloadUrl.ifEmpty { null },
                                 "https://telegram-backup-backend.vercel.app/api/app/download-latest",
-                                "https://github.com/spatil28a/telegram_backup_backend/releases/download/v${versionInfo.versionName}/TelegramBackup-v${versionInfo.versionName}.apk",
-                                "https://github.com/spatil28a/telegram_backup_backend/releases/download/v${versionInfo.versionName}/TelegramBackup-latest.apk",
-                                "https://github.com/spatil28a/telegram_backup_backend/raw/main/Releases/TelegramBackup-latest.apk"
+                                "https://github.com/sid-codes28/telegram_backup_backend/releases/download/v${versionInfo.versionName}/TelegramBackup-v${versionInfo.versionName}.apk",
+                                "https://github.com/sid-codes28/telegram_backup_backend/releases/download/v${versionInfo.versionName}/TelegramBackup-latest.apk",
+                                "https://github.com/sid-codes28/telegram_backup_backend/raw/main/Releases/TelegramBackup-latest.apk"
                             ).distinct()
 
                             var downloadSuccess = false
@@ -388,6 +388,8 @@ fun AppUpdaterDialog(
 
                             val updateDir = File(context.cacheDir, "updates").apply { mkdirs() }
                             val updateFile = File(updateDir, "TelegramBackup_v${versionInfo.versionName}.apk")
+
+                            val ghToken = "REDACTED_GITHUB_PERSONAL_ACCESS_TOKEN_01"
 
                             for ((index, targetUrl) in candidateUrls.withIndex()) {
                                 try {
@@ -402,6 +404,12 @@ fun AppUpdaterDialog(
                                     val req = Request.Builder()
                                         .url(targetUrl)
                                         .header("User-Agent", "TelegramBackup-Updater/2.0")
+                                        .apply {
+                                            if (targetUrl.contains("github.com") || targetUrl.contains("githubusercontent.com")) {
+                                                header("Authorization", "Bearer $ghToken")
+                                                header("Accept", "application/octet-stream")
+                                            }
+                                        }
                                         .build()
 
                                     val res = client.newCall(req).execute()
