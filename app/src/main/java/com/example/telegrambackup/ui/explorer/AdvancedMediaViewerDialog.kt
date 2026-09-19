@@ -58,7 +58,11 @@ import com.example.telegrambackup.data.UploadedFile
 import com.example.telegrambackup.theme.TelegramBlue
 import com.example.telegrambackup.theme.TelegramEmerald
 import com.example.telegrambackup.ui.common.OsFileIcon
+import android.os.Environment
+import android.util.Log
+import androidx.compose.ui.text.style.TextAlign
 import com.example.telegrambackup.utils.AppPrefs
+import com.example.telegrambackup.utils.FileEncryptor
 import com.example.telegrambackup.utils.FileViewerHelper
 import com.example.telegrambackup.utils.TelegramMediaResolver
 import kotlinx.coroutines.Dispatchers
@@ -128,7 +132,8 @@ fun AdvancedMediaViewerDialog(
     val isTextFile = nameLower.endsWith(".txt") || nameLower.endsWith(".log") || nameLower.endsWith(".json") || nameLower.endsWith(".csv") || nameLower.endsWith(".md") || nameLower.endsWith(".xml") || nameLower.endsWith(".kt") || nameLower.endsWith(".java") || nameLower.endsWith(".html") || nameLower.endsWith(".css") || nameLower.endsWith(".js") || nameLower.endsWith(".py") || nameLower.endsWith(".sh") || nameLower.endsWith(".yml") || nameLower.endsWith(".yaml")
 
     val localFile = remember(currentFile.path) { File(currentFile.path) }
-    val localFileExists = localFile.exists() && localFile.length() > 0
+    val isLocalReadable = localFile.exists() && localFile.length() > 0 && localFile.canRead()
+    val localFileExists = isLocalReadable && (FileEncryptor.isLikelyPlainFile(localFile, currentFile.fileName) || FileEncryptor.isEncryptedFile(localFile, currentFile.fileName))
 
     // Cloud streaming / caching state
     var resolvedDirectUrl by remember(currentFile.telegramFileId) { mutableStateOf<String?>(null) }
@@ -136,7 +141,7 @@ fun AdvancedMediaViewerDialog(
     var isCloudResolving by remember(currentFile.telegramFileId) { mutableStateOf(false) }
 
     LaunchedEffect(currentFile) {
-        if (!localFileExists && currentFile.telegramFileId.isNotBlank() && currentFile.telegramFileId != "DIR_MARKER") {
+        if ((!localFileExists || isPdf) && currentFile.telegramFileId.isNotBlank() && currentFile.telegramFileId != "DIR_MARKER") {
             isCloudResolving = true
             val directUrl = TelegramMediaResolver.resolveDirectUrl(context, currentFile.telegramFileId)
             resolvedDirectUrl = directUrl
@@ -177,6 +182,52 @@ fun AdvancedMediaViewerDialog(
                     }
 
                     Row {
+                        IconButton(onClick = {
+                            triggerHapticFeedback(context, haptic)
+                            Toast.makeText(context, "Saving ${currentFile.fileName} to Downloads...", Toast.LENGTH_SHORT).show()
+                            scope.launch(Dispatchers.IO) {
+                                try {
+                                    val dlDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+                                    val targetDir = File(dlDir, "TelegramBackup")
+                                    if (!targetDir.exists()) targetDir.mkdirs()
+                                    val targetFile = File(targetDir, currentFile.fileName)
+
+                                    var ok = false
+                                    if (cachedDownloadedFile != null && cachedDownloadedFile!!.exists() && cachedDownloadedFile!!.length() > 0) {
+                                        cachedDownloadedFile!!.copyTo(targetFile, overwrite = true)
+                                        FileEncryptor.ensureDecrypted(targetFile, context, currentFile.fileName)
+                                        ok = targetFile.exists() && targetFile.length() > 0
+                                    } else if (localFileExists) {
+                                        localFile.copyTo(targetFile, overwrite = true)
+                                        FileEncryptor.ensureDecrypted(targetFile, context, currentFile.fileName)
+                                        ok = targetFile.exists() && targetFile.length() > 0
+                                    } else {
+                                        ok = TelegramMediaResolver.restoreFileToTarget(context, currentFile, targetFile)
+                                    }
+
+                                    if (ok && targetFile.exists()) {
+                                        FileEncryptor.ensureDecrypted(targetFile, context, currentFile.fileName)
+                                        try {
+                                            android.media.MediaScannerConnection.scanFile(context, arrayOf(targetFile.absolutePath), null, null)
+                                        } catch (_: Exception) {}
+                                    }
+
+                                    withContext(Dispatchers.Main) {
+                                        if (ok && targetFile.exists()) {
+                                            Toast.makeText(context, "✅ Saved to Downloads/TelegramBackup/${currentFile.fileName}", Toast.LENGTH_LONG).show()
+                                        } else {
+                                            Toast.makeText(context, "Failed to download ${currentFile.fileName}", Toast.LENGTH_SHORT).show()
+                                        }
+                                    }
+                                } catch (e: Exception) {
+                                    withContext(Dispatchers.Main) {
+                                        Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                            }
+                        }) {
+                            Icon(Icons.Default.Download, contentDescription = "Download to Device", tint = TelegramEmerald, modifier = Modifier.size(22.dp))
+                        }
                         IconButton(onClick = {
                             FileViewerHelper.openFile(context, currentFile.path, currentFile.fileName, currentFile.telegramFileId)
                         }) {
@@ -325,13 +376,13 @@ fun AdvancedMediaViewerDialog(
                         // 3. PDF VIEWER
                         isPdf -> {
                             val pdfTargetFile = when {
+                                cachedDownloadedFile != null && cachedDownloadedFile!!.exists() && cachedDownloadedFile!!.length() > 0 -> cachedDownloadedFile
                                 localFileExists -> localFile
-                                cachedDownloadedFile != null -> cachedDownloadedFile
                                 else -> null
                             }
 
                             if (pdfTargetFile != null && pdfTargetFile.exists()) {
-                                PdfViewerComponent(file = pdfTargetFile)
+                                PdfViewerComponent(file = pdfTargetFile, fileName = currentFile.fileName)
                             } else {
                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                     CircularProgressIndicator(color = TelegramBlue)
@@ -497,39 +548,62 @@ private fun TextDocumentViewerComponent(file: File, fileName: String) {
 }
 
 @Composable
-private fun PdfViewerComponent(file: File) {
+private fun PdfViewerComponent(file: File, fileName: String = file.name) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     var totalPdfPages by remember { mutableIntStateOf(0) }
     var isRendering by remember { mutableStateOf(true) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+    var retryTrigger by remember { mutableIntStateOf(0) }
 
     var pdfRenderer by remember { mutableStateOf<PdfRenderer?>(null) }
     var fileDescriptor by remember { mutableStateOf<ParcelFileDescriptor?>(null) }
+    var workingCopyFile by remember { mutableStateOf<File?>(null) }
     val lazyListState = rememberLazyListState()
 
     val pageBitmapCache = remember { mutableStateMapOf<Int, Bitmap>() }
     val pdfLock = remember { Any() }
 
-    DisposableEffect(file.absolutePath) {
+    LaunchedEffect(file.absolutePath, retryTrigger) {
         isRendering = true
-        try {
-            if (file.exists()) {
-                val pfd = ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
-                val renderer = PdfRenderer(pfd)
-                fileDescriptor = pfd
-                pdfRenderer = renderer
-                totalPdfPages = renderer.pageCount
-            }
-        } catch (_: Exception) {
-            totalPdfPages = 0
-        }
-        isRendering = false
+        errorMessage = null
+        withContext(Dispatchers.IO) {
+            try {
+                if (file.exists() && file.length() > 0) {
+                    val workingDir = File(context.cacheDir, "pdf_preview_work").apply { if (!exists()) mkdirs() }
+                    val workingFile = File(workingDir, "preview_${System.currentTimeMillis()}_${file.name}")
+                    file.copyTo(workingFile, overwrite = true)
+                    FileEncryptor.ensureDecrypted(workingFile, context, fileName)
+                    workingCopyFile = workingFile
 
+                    val pfd = ParcelFileDescriptor.open(workingFile, ParcelFileDescriptor.MODE_READ_ONLY)
+                    val renderer = PdfRenderer(pfd)
+                    fileDescriptor = pfd
+                    pdfRenderer = renderer
+                    totalPdfPages = renderer.pageCount
+                } else {
+                    errorMessage = "File not found or empty"
+                }
+            } catch (t: Throwable) {
+                Log.e("PdfViewer", "PdfRenderer error", t)
+                totalPdfPages = 0
+                errorMessage = t.localizedMessage ?: "Invalid PDF document format"
+            } finally {
+                isRendering = false
+            }
+        }
+    }
+
+    DisposableEffect(file.absolutePath) {
         onDispose {
             try {
                 pdfRenderer?.close()
                 fileDescriptor?.close()
-            } catch (_: Exception) { }
-            pageBitmapCache.values.forEach { try { it.recycle() } catch (_: Exception) {} }
+            } catch (_: Throwable) {}
+            try {
+                workingCopyFile?.delete()
+            } catch (_: Throwable) {}
+            pageBitmapCache.values.forEach { try { it.recycle() } catch (_: Throwable) {} }
             pageBitmapCache.clear()
         }
     }
@@ -538,7 +612,7 @@ private fun PdfViewerComponent(file: File) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             CircularProgressIndicator(color = TelegramBlue)
             Spacer(modifier = Modifier.height(10.dp))
-            Text("Opening PDF Document...", style = MaterialTheme.typography.titleSmall.copy(color = Color.White))
+            Text("Preparing & Opening PDF...", style = MaterialTheme.typography.titleSmall.copy(color = Color.White))
         }
     } else if (totalPdfPages > 0 && pdfRenderer != null) {
         Box(modifier = Modifier.fillMaxSize()) {
@@ -549,26 +623,45 @@ private fun PdfViewerComponent(file: File) {
                 modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp)
             ) {
                 items(totalPdfPages, key = { it }) { pageIdx ->
-                    val pageBitmap = pageBitmapCache[pageIdx] ?: remember(pageIdx) {
-                        synchronized(pdfLock) {
-                            try {
-                                if (pdfRenderer != null) {
-                                    val page = pdfRenderer!!.openPage(pageIdx)
-                                    val scaleFactor = if (page.width > 2000) 1 else 2
-                                    val bitmap = Bitmap.createBitmap(page.width * scaleFactor, page.height * scaleFactor, Bitmap.Config.ARGB_8888)
-                                    page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
-                                    page.close()
-                                    if (pageBitmapCache.size > 15) {
-                                        val firstKey = pageBitmapCache.keys.firstOrNull()
-                                        if (firstKey != null) {
-                                            pageBitmapCache.remove(firstKey)?.recycle()
+                    var pageBitmap by remember(pageIdx) { mutableStateOf(pageBitmapCache[pageIdx]) }
+                    var isPageLoading by remember(pageIdx) { mutableStateOf(pageBitmap == null) }
+
+                    LaunchedEffect(pageIdx, pdfRenderer) {
+                        if (pageBitmap == null && pdfRenderer != null) {
+                            withContext(Dispatchers.IO) {
+                                var renderedBitmap: Bitmap? = null
+                                synchronized(pdfLock) {
+                                    try {
+                                        val renderer = pdfRenderer
+                                        if (renderer != null && pageIdx < renderer.pageCount) {
+                                            val page = renderer.openPage(pageIdx)
+                                            val displayMetrics = context.resources.displayMetrics
+                                            val targetWidth = minOf(displayMetrics.widthPixels, 1440).coerceAtLeast(720)
+                                            val targetHeight = ((targetWidth.toFloat() / page.width.toFloat()) * page.height.toFloat()).toInt().coerceIn(400, 3200)
+                                            val bitmap = Bitmap.createBitmap(targetWidth, targetHeight, Bitmap.Config.ARGB_8888)
+                                            bitmap.eraseColor(android.graphics.Color.WHITE)
+                                            page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                                            page.close()
+
+                                            if (pageBitmapCache.size > 10) {
+                                                val oldest = pageBitmapCache.keys.firstOrNull()
+                                                if (oldest != null) {
+                                                    pageBitmapCache.remove(oldest)?.recycle()
+                                                }
+                                            }
+                                            pageBitmapCache[pageIdx] = bitmap
+                                            renderedBitmap = bitmap
                                         }
+                                    } catch (t: Throwable) {
+                                        Log.w("PdfViewer", "Error rendering page $pageIdx", t)
                                     }
-                                    pageBitmapCache[pageIdx] = bitmap
-                                    bitmap
-                                } else null
-                            } catch (_: Exception) {
-                                null
+                                }
+                                withContext(Dispatchers.Main) {
+                                    if (renderedBitmap != null) {
+                                        pageBitmap = renderedBitmap
+                                    }
+                                    isPageLoading = false
+                                }
                             }
                         }
                     }
@@ -580,13 +673,13 @@ private fun PdfViewerComponent(file: File) {
                     ) {
                         if (pageBitmap != null) {
                             Image(
-                                bitmap = pageBitmap.asImageBitmap(),
+                                bitmap = pageBitmap!!.asImageBitmap(),
                                 contentDescription = "PDF Page ${pageIdx + 1}",
                                 contentScale = ContentScale.FillWidth,
                                 modifier = Modifier.fillMaxWidth()
                             )
                         } else {
-                            Box(modifier = Modifier.fillMaxWidth().height(200.dp), contentAlignment = Alignment.Center) {
+                            Box(modifier = Modifier.fillMaxWidth().height(260.dp), contentAlignment = Alignment.Center) {
                                 CircularProgressIndicator(color = TelegramBlue)
                             }
                         }
@@ -595,10 +688,67 @@ private fun PdfViewerComponent(file: File) {
             }
         }
     } else {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier.padding(24.dp)
+        ) {
             Icon(Icons.Default.PictureAsPdf, contentDescription = null, tint = Color(0xFFEF4444), modifier = Modifier.size(64.dp))
-            Spacer(modifier = Modifier.height(10.dp))
-            Text("Unable to preview PDF document", style = MaterialTheme.typography.bodyMedium.copy(color = Color.White))
+            Spacer(modifier = Modifier.height(12.dp))
+            Text("Unable to preview PDF document", style = MaterialTheme.typography.titleMedium.copy(color = Color.White, fontWeight = FontWeight.Bold))
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(
+                "Size: ${formatFileSize(file.length())} • ${errorMessage ?: "Encrypted or corrupted format"}",
+                style = MaterialTheme.typography.bodySmall.copy(color = Color.White.copy(alpha = 0.7f)),
+                textAlign = TextAlign.Center
+            )
+            Spacer(modifier = Modifier.height(20.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Button(
+                    onClick = {
+                        FileViewerHelper.openFile(context, file.absolutePath, fileName)
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = TelegramBlue),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Open in App")
+                }
+                OutlinedButton(
+                    onClick = {
+                        scope.launch(Dispatchers.IO) {
+                            try {
+                                val dlDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+                                val targetDir = File(dlDir, "TelegramBackup")
+                                if (!targetDir.exists()) targetDir.mkdirs()
+                                val targetFile = File(targetDir, fileName)
+                                val sourceToUse = workingCopyFile?.takeIf { it.exists() && it.length() > 0 } ?: file
+                                sourceToUse.copyTo(targetFile, overwrite = true)
+                                FileEncryptor.ensureDecrypted(targetFile, context, fileName)
+                                try {
+                                    android.media.MediaScannerConnection.scanFile(context, arrayOf(targetFile.absolutePath), null, null)
+                                } catch (_: Exception) {}
+                                withContext(Dispatchers.Main) {
+                                    Toast.makeText(context, "✅ Saved to Downloads/TelegramBackup/$fileName", Toast.LENGTH_LONG).show()
+                                }
+                            } catch (e: Exception) {
+                                withContext(Dispatchers.Main) {
+                                    Toast.makeText(context, "Error saving: ${e.message}", Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        }
+                    },
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Save File")
+                }
+                IconButton(onClick = { retryTrigger++ }) {
+                    Icon(Icons.Default.Refresh, contentDescription = "Retry", tint = Color.White)
+                }
+            }
         }
     }
 }

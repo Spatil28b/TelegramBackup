@@ -85,6 +85,15 @@ object FileViewerHelper {
             // 3. Local Filesystem
             val localFile = File(filePath)
             if (localFile.exists() && localFile.length() > 0) {
+                if (!FileEncryptor.isLikelyPlainFile(localFile, fileName)) {
+                    CoroutineScope(Dispatchers.IO).launch {
+                        FileEncryptor.ensureDecrypted(localFile, context, fileName)
+                        withContext(Dispatchers.Main) {
+                            launchFileProviderIntent(context, localFile, fileName)
+                        }
+                    }
+                    return
+                }
                 launchFileProviderIntent(context, localFile, fileName)
                 return
             }
@@ -98,6 +107,15 @@ object FileViewerHelper {
                 }
                 val found = cachedMatches?.firstOrNull { it.exists() && it.length() > 0 }
                 if (found != null) {
+                    if (!FileEncryptor.isLikelyPlainFile(found, fileName)) {
+                        CoroutineScope(Dispatchers.IO).launch {
+                            FileEncryptor.ensureDecrypted(found, context, fileName)
+                            withContext(Dispatchers.Main) {
+                                launchFileProviderIntent(context, found, fileName)
+                            }
+                        }
+                        return
+                    }
                     launchFileProviderIntent(context, found, fileName)
                     return
                 }
@@ -108,6 +126,9 @@ object FileViewerHelper {
                 Toast.makeText(context, "Preparing $fileName for viewing...", Toast.LENGTH_SHORT).show()
                 CoroutineScope(Dispatchers.IO).launch {
                     val downloaded = TelegramMediaResolver.fetchToTempCache(context, telegramFileId, fileName)
+                    if (downloaded != null && downloaded.exists()) {
+                        FileEncryptor.ensureDecrypted(downloaded, context, fileName)
+                    }
                     withContext(Dispatchers.Main) {
                         if (downloaded != null && downloaded.exists()) {
                             launchFileProviderIntent(context, downloaded, fileName)
@@ -126,20 +147,50 @@ object FileViewerHelper {
     }
 
     private fun launchFileProviderIntent(context: Context, file: File, fileName: String) {
-        val uri = FileProvider.getUriForFile(
-            context,
-            "${context.packageName}.fileprovider",
+        val sharedDir = File(context.cacheDir, "shared_provider_cache").apply { if (!exists()) mkdirs() }
+        val sharedFile = File(sharedDir, fileName)
+        val fileForUri = try {
+            file.copyTo(sharedFile, overwrite = true)
+            FileEncryptor.ensureDecrypted(sharedFile, context, fileName)
+            if (sharedFile.exists() && sharedFile.length() > 0) sharedFile else file
+        } catch (_: Exception) {
+            FileEncryptor.ensureDecrypted(file, context, fileName)
             file
-        )
+        }
+
+        val uri: Uri = try {
+            FileProvider.getUriForFile(
+                context,
+                "${context.packageName}.fileprovider",
+                fileForUri
+            )
+        } catch (e: Exception) {
+            FileProvider.getUriForFile(
+                context,
+                "${context.packageName}.fileprovider",
+                file
+            )
+        }
 
         val mimeType = getMimeType(fileName)
+        val clip = android.content.ClipData.newRawUri(fileName, uri)
         val intent = Intent(Intent.ACTION_VIEW).apply {
             setDataAndType(uri, mimeType)
+            clipData = clip
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }
 
+        try {
+            val resInfoList = context.packageManager.queryIntentActivities(intent, android.content.pm.PackageManager.MATCH_DEFAULT_ONLY)
+            for (resolveInfo in resInfoList) {
+                val packageName = resolveInfo.activityInfo.packageName
+                context.grantUriPermission(packageName, uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+        } catch (_: Exception) {}
+
         val chooser = Intent.createChooser(intent, "Open ${getFileTypeLabel(fileName)}").apply {
+            clipData = clip
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
@@ -149,10 +200,12 @@ object FileViewerHelper {
         } catch (_: Exception) {
             val fallbackIntent = Intent(Intent.ACTION_VIEW).apply {
                 setDataAndType(uri, "*/*")
+                clipData = clip
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
             context.startActivity(Intent.createChooser(fallbackIntent, "Open with...").apply {
+                clipData = clip
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             })

@@ -363,25 +363,6 @@ fun BackupExplorerScreen(
         list
     }
 
-    if (activeViewerIndex != -1 && activeViewerIndex < activeDisplayFiles.size) {
-        AdvancedMediaViewerDialog(
-            initialIndex = activeViewerIndex,
-            filesList = activeDisplayFiles,
-            onDismiss = { activeViewerIndex = -1 },
-            onDeleteRequested = { fileToDelete ->
-                activeViewerIndex = -1
-                scope.launch(Dispatchers.IO) {
-                    AppDatabase.getDatabase(context).uploadedFileDao().softDelete(fileToDelete.path, fileToDelete.telegramFileId, System.currentTimeMillis())
-                    withContext(Dispatchers.Main) { refreshCloudData() }
-                }
-            },
-            onInfoRequested = { fileToInspect ->
-                infoSheetFile = fileToInspect
-                showDetailedMetadataDialog = true
-            }
-        )
-    }
-
     // LONG PRESS ITEM OPTIONS & INFO MODAL
     if (infoSheetFile != null || infoSheetFolder != null) {
         val itemName = infoSheetFile?.fileName ?: infoSheetFolder?.folderName ?: "Item Info"
@@ -921,7 +902,8 @@ fun BackupExplorerScreen(
                                     // Download Selected
                                     Button(
                                         onClick = {
-                                            Toast.makeText(context, "Downloading ${selectedFilesList.size} selected files...", Toast.LENGTH_SHORT).show()
+                                            restoreTargetFiles = selectedFilesList.toList()
+                                            showCloudRestoreWizard = true
                                             selectedFilesList.clear()
                                             isSelectionModeActive = false
                                         },

@@ -258,11 +258,15 @@ object AppNotificationHelper {
 
         val file = File(filePath)
         val intent = if (file.exists()) {
+            FileEncryptor.ensureDecrypted(file, context, fileName)
+            val mimeType = FileViewerHelper.getMimeType(fileName)
+            val uri = try {
+                FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+            } catch (_: Exception) { Uri.fromFile(file) }
+
             Intent(Intent.ACTION_VIEW).apply {
-                val uri = try {
-                    FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
-                } catch (_: Exception) { Uri.fromFile(file) }
-                setDataAndType(uri, "*/*")
+                setDataAndType(uri, mimeType)
+                clipData = android.content.ClipData.newRawUri(fileName, uri)
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
             }
         } else {

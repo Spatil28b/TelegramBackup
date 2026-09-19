@@ -6,23 +6,15 @@ import android.util.Log
 import com.example.telegrambackup.data.UploadedFile
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import okhttp3.OkHttpClient
-import okhttp3.Request
-import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
 import java.io.File
+import java.io.FileInputStream
 import java.io.FileOutputStream
-import java.util.concurrent.TimeUnit
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
 object FolderZipDownloader {
     private const val TAG = "FolderZipDownloader"
-
-    private val httpClient = OkHttpClient.Builder()
-        .connectTimeout(30, TimeUnit.SECONDS)
-        .readTimeout(60, TimeUnit.SECONDS)
-        .build()
 
     suspend fun downloadFolderAsZip(
         context: Context,
@@ -45,30 +37,23 @@ object FolderZipDownloader {
                 files.forEachIndexed { index, file ->
                     onProgress(index + 1, totalFiles, (index.toFloat() / totalFiles.toFloat()).coerceIn(0.05f, 0.98f))
 
-                    val downloadUrl = TelegramMediaResolver.resolveDirectUrl(context, file.telegramFileId.ifBlank { file.path })
-                    if (downloadUrl != null) {
-                        try {
-                            val request = Request.Builder().url(downloadUrl).get().build()
-                            val response = httpClient.newCall(request).execute()
-                            if (response.isSuccessful) {
-                                val bodyStream = response.body?.byteStream()
-                                if (bodyStream != null) {
-                                    val entry = ZipEntry(file.fileName.ifBlank { "file_${index + 1}" })
-                                    zos.putNextEntry(entry)
-                                    BufferedInputStream(bodyStream).use { bis ->
-                                        val buffer = ByteArray(32 * 1024)
-                                        var bytesRead: Int
-                                        while (bis.read(buffer).also { bytesRead = it } != -1) {
-                                            zos.write(buffer, 0, bytesRead)
-                                        }
-                                    }
-                                    zos.closeEntry()
+                    try {
+                        val decryptedFile = TelegramMediaResolver.fetchToTempCache(context, file)
+                        if (decryptedFile != null && decryptedFile.exists() && decryptedFile.length() > 0) {
+                            FileEncryptor.ensureDecrypted(decryptedFile, context, file.fileName)
+                            val entry = ZipEntry(file.fileName.ifBlank { "file_${index + 1}" })
+                            zos.putNextEntry(entry)
+                            FileInputStream(decryptedFile).use { fis ->
+                                val buffer = ByteArray(32 * 1024)
+                                var bytesRead: Int
+                                while (fis.read(buffer).also { bytesRead = it } != -1) {
+                                    zos.write(buffer, 0, bytesRead)
                                 }
                             }
-                            response.close()
-                        } catch (e: Exception) {
-                            Log.e(TAG, "Error writing zip entry for ${file.fileName}", e)
+                            zos.closeEntry()
                         }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error writing zip entry for ${file.fileName}", e)
                     }
                 }
             }

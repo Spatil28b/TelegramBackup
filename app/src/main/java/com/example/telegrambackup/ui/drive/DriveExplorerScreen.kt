@@ -3,6 +3,7 @@ package com.example.telegrambackup.ui.drive
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Environment
 import android.os.Vibrator
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
@@ -648,7 +649,27 @@ fun DriveExplorerScreen(
                                         }
                                     }
                                 } else {
-                                    ZipBackupDownloader.downloadFilesAsZip(context, listOf(file), file.fileName)
+                                    withContext(Dispatchers.Main) {
+                                        Toast.makeText(context, "Downloading ${file.fileName} to device...", Toast.LENGTH_SHORT).show()
+                                    }
+                                    try {
+                                        val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+                                        val targetDir = File(downloadsDir, "TelegramBackup")
+                                        if (!targetDir.exists()) targetDir.mkdirs()
+                                        val targetFile = File(targetDir, file.fileName)
+                                        val success = TelegramMediaResolver.restoreFileToTarget(context, file, targetFile)
+                                        withContext(Dispatchers.Main) {
+                                            if (success && targetFile.exists()) {
+                                                Toast.makeText(context, "✅ Downloaded to Downloads/TelegramBackup/${targetFile.name}", Toast.LENGTH_LONG).show()
+                                            } else {
+                                                Toast.makeText(context, "Failed to download ${file.fileName}", Toast.LENGTH_SHORT).show()
+                                            }
+                                        }
+                                    } catch (e: Exception) {
+                                        withContext(Dispatchers.Main) {
+                                            Toast.makeText(context, "Download error: ${e.message}", Toast.LENGTH_SHORT).show()
+                                        }
+                                    }
                                 }
                             }
                             itemOptionsFile = null

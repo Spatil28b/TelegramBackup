@@ -32,11 +32,12 @@ import java.util.concurrent.atomic.AtomicInteger
  */
 object DriveUploadManager {
     private const val TAG = "DriveUploadManager"
-    private const val MAX_PARALLEL_UPLOADS = 4
+    private const val MAX_PARALLEL_UPLOADS = 16
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val parallelSemaphore = Semaphore(MAX_PARALLEL_UPLOADS)
     private val activeUploadCount = AtomicInteger(0)
+    private val driveGlobalBotIndex = AtomicInteger(0)
 
     private fun resolveFileName(context: Context, uri: Uri): String {
         var result: String? = null
@@ -82,8 +83,8 @@ object DriveUploadManager {
             val driveChannel = BotFleetManager.resolveDestinationChannel(appCtx, "DRIVE")
             val targetChatId = driveChannel.chatId.ifBlank { prefs.chatId }
 
-            // Dedicated Drive Bot Pool (3-4 bots)
-            val driveBotPool = BotFleetManager.getDriveBotPool(appCtx, 4)
+            // Dedicated Drive Bot Pool (up to 16 bots)
+            val driveBotPool = BotFleetManager.getDriveBotPool(appCtx, 16)
             val primaryBotToken = driveBotPool.firstOrNull()?.botToken ?: prefs.botToken
 
             if (primaryBotToken.isEmpty() || targetChatId.isEmpty()) {
@@ -162,8 +163,8 @@ object DriveUploadManager {
             val driveChannel = BotFleetManager.resolveDestinationChannel(appCtx, "DRIVE")
             val targetChatId = driveChannel.chatId.ifBlank { prefs.chatId }
 
-            // Dedicated Drive Bot Pool (3-4 bots)
-            val driveBotPool = BotFleetManager.getDriveBotPool(appCtx, 4)
+            // Dedicated Drive Bot Pool (up to 16 bots)
+            val driveBotPool = BotFleetManager.getDriveBotPool(appCtx, 16)
             val primaryBotToken = driveBotPool.firstOrNull()?.botToken ?: prefs.botToken
 
             if (primaryBotToken.isEmpty() || targetChatId.isEmpty()) return@launch
@@ -312,23 +313,25 @@ object DriveUploadManager {
             BackupProgressTracker.updateActiveUpload(targetPath, fileName, file.length(), 0, totalChunks, 0.05f)
         }
 
-        val chunkConcurrency = minOf(driveBotPool.size, maxOf(prefs.uploadThreads, 16)).coerceAtLeast(1)
-        val chunkSemaphore = Semaphore(chunkConcurrency)
         val allBotsCount = db.telegramBotDao().getActiveBots().size.coerceAtLeast(1)
+        val chunkConcurrency = minOf(driveBotPool.size, maxOf(prefs.uploadThreads, allBotsCount)).coerceIn(1, 16)
+        val chunkSemaphore = Semaphore(chunkConcurrency)
         BackupProgressTracker.updateBotUtilization(working = minOf(chunkConcurrency, driveBotPool.size), total = allBotsCount)
 
-        // Upload chunks in parallel across dedicated Drive Bot Pool (3-4 bots)
+        // Upload chunks in parallel across dedicated Drive Bot Pool
         coroutineScope {
             val chunkJobs = (1..totalChunks).map { chunkIdx ->
                 launch(Dispatchers.IO) {
                     if (uploadedChunksMap.containsKey(chunkIdx)) return@launch
 
                     chunkSemaphore.withPermit {
-                        val assignedBot = driveBotPool.getOrNull((chunkIdx - 1) % driveBotPool.size)
+                        val botIndex = (driveGlobalBotIndex.getAndIncrement() and 0x7FFFFFFF) % driveBotPool.size
+                        val assignedBot = driveBotPool.getOrNull(botIndex)
                         val botTokenToUse = if (!assignedBot?.botToken.isNullOrBlank()) assignedBot!!.botToken else defaultBotToken
 
                         val safeChunkId = System.currentTimeMillis() + ((targetPath.hashCode() + chunkIdx).toLong() and 0x7FFFFFFF)
                         val chunkFile = File(tempDir, "${safeChunkId}_drive_part%03d".format(chunkIdx))
+                        BackupProgressTracker.onBotStartedWork(botTokenToUse, allBotsCount)
                         try {
                             FileChunker.extractSingleChunk(fileToUpload, chunkIdx, chunkFile)
 
@@ -375,6 +378,7 @@ object DriveUploadManager {
                                 Log.e(TAG, "Failed chunk $chunkIdx for Drive file $fileName")
                             }
                         } finally {
+                            BackupProgressTracker.onBotFinishedWork(botTokenToUse)
                             if (chunkFile.exists()) chunkFile.delete()
                         }
                     }

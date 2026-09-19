@@ -66,9 +66,23 @@ object BackupProgressTracker {
     private val _totalBotsCount = MutableStateFlow(1)
     val totalBotsCount: StateFlow<Int> = _totalBotsCount.asStateFlow()
 
+    private val activeWorkingBotTokens = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+
     fun updateBotUtilization(working: Int, total: Int) {
-        _workingBotsCount.value = working.coerceAtLeast(0)
+        val count = maxOf(working, activeWorkingBotTokens.size).coerceAtLeast(0)
+        _workingBotsCount.value = count
         _totalBotsCount.value = total.coerceAtLeast(1)
+    }
+
+    fun onBotStartedWork(botToken: String, totalBots: Int = 1) {
+        if (botToken.isNotBlank()) activeWorkingBotTokens.add(botToken)
+        _workingBotsCount.value = activeWorkingBotTokens.size
+        _totalBotsCount.value = maxOf(_totalBotsCount.value, totalBots, 1)
+    }
+
+    fun onBotFinishedWork(botToken: String) {
+        if (botToken.isNotBlank()) activeWorkingBotTokens.remove(botToken)
+        _workingBotsCount.value = activeWorkingBotTokens.size
     }
 
     // ⚡ Real-Time Transfer Speeds
@@ -294,6 +308,8 @@ object BackupProgressTracker {
         _currentFileProgress.value = 0f
         _uploadSpeedBps.value = 0L
         _formattedUploadSpeed.value = "0 KB/s"
+        activeWorkingBotTokens.clear()
+        _workingBotsCount.value = 0
         _pendingFilesQueue.value = emptyList()
         _activeUploadsMap.value = emptyMap()
         activeUploadsList.value = emptyList()

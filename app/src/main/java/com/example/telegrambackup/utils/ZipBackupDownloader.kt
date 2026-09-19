@@ -149,7 +149,7 @@ object ZipBackupDownloader {
                             val fileIdToFetch = chunkRecord?.telegramFileId ?: if (cIdx == 1) item.telegramFileId else ""
 
                             if (fileIdToFetch.isNotEmpty()) {
-                                val downloadUrl = telegramDownloader.getDownloadUrl(botToken, fileIdToFetch)
+                                val downloadUrl = TelegramMediaResolver.resolveDirectUrl(context, fileIdToFetch) ?: telegramDownloader.getDownloadUrl(botToken, fileIdToFetch)
                                 if (downloadUrl != null) {
                                     val ok = downloadDirectToFile(downloadUrl, chunkCacheFile)
                                     if (ok) {
@@ -177,7 +177,7 @@ object ZipBackupDownloader {
                         }
                     } else {
                         // Single-file download from Telegram Cloud
-                        val downloadUrl = telegramDownloader.getDownloadUrl(botToken, item.telegramFileId)
+                        val downloadUrl = TelegramMediaResolver.resolveDirectUrl(context, item.telegramFileId) ?: telegramDownloader.getDownloadUrl(botToken, item.telegramFileId)
                         if (downloadUrl != null) {
                             val success = downloadDirectToFile(downloadUrl, cachedFile)
                             if (success) {
@@ -188,12 +188,10 @@ object ZipBackupDownloader {
                 }
 
                 if (fileToCompress != null && fileToCompress.exists()) {
-                    // Decrypt in-place if encrypted so user receives usable plain files
-                    if (prefs.encryptionKey.isNotBlank() && FileEncryptor.isEncryptedFile(fileToCompress)) {
-                        try {
-                            FileEncryptor.decryptFileInPlace(fileToCompress, prefs.encryptionKey)
-                        } catch (_: Exception) {}
-                    }
+                    // Decrypt in-place using candidate keys so user receives usable plain files
+                    try {
+                        FileEncryptor.ensureDecrypted(fileToCompress, context, item.fileName)
+                    } catch (_: Exception) {}
                     val fileSize = fileToCompress.length()
 
                     // Check if current zip part exceeds 500 MB threshold -> split into part files

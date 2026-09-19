@@ -82,6 +82,11 @@ object SettingsDbManager {
                     settingsMap["trash_auto_clean_days"]?.let { prefs.trashAutoCleanDays = it.toIntOrNull() ?: 30 }
                     settingsMap["stop_all_backups"]?.let { prefs.stopAllBackups = it.toBoolean() }
                     settingsMap["credentials_verified"]?.let { prefs.credentialsVerified = it.toBoolean() }
+                    settingsMap["encryption_key"]?.let {
+                        if (it.isNotBlank() && it != "default_aes_key") {
+                            prefs.forceSetEncryptionKey(it)
+                        }
+                    }
                 }
 
                 // Sync credentials to PostgreSQL DB if missing, or retrieve if local is completely blank

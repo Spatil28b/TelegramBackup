@@ -8,6 +8,7 @@ import android.net.Uri
 import android.os.Environment
 import android.os.ParcelFileDescriptor
 import android.util.LruCache
+import com.example.telegrambackup.utils.FileEncryptor
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -301,24 +302,32 @@ fun FileThumbnailView(
                     withContext(Dispatchers.IO) {
                         try {
                             val activeFile = if (localFileExists) localFile else TelegramMediaResolver.fetchToTempCache(context, telegramFileId, fileName)
-                            if (activeFile != null && activeFile.exists()) {
-                                val pfd = ParcelFileDescriptor.open(activeFile, ParcelFileDescriptor.MODE_READ_ONLY)
-                                val renderer = PdfRenderer(pfd)
-                                if (renderer.pageCount > 0) {
-                                    val page = renderer.openPage(0)
-                                    val bmp = Bitmap.createBitmap(page.width.coerceAtMost(512), page.height.coerceAtMost(512), Bitmap.Config.ARGB_8888)
-                                    bmp.eraseColor(android.graphics.Color.WHITE)
-                                    page.render(bmp, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
-                                    page.close()
-                                    renderer.close()
-                                    pfd.close()
-                                    thumbnailMemoryCache.put(if (localFileExists) "pdf_$filePath" else "pdf_$telegramFileId", bmp)
-                                    withContext(Dispatchers.Main) {
-                                        pdfBitmap = bmp
+                            if (activeFile != null && activeFile.exists() && activeFile.length() > 0) {
+                                val workingDir = File(context.cacheDir, "pdf_thumb_work").apply { if (!exists()) mkdirs() }
+                                val workingFile = File(workingDir, "thumb_${activeFile.name.hashCode() and 0x7FFFFFFF}.pdf")
+                                try {
+                                    activeFile.copyTo(workingFile, overwrite = true)
+                                    FileEncryptor.ensureDecrypted(workingFile, context, fileName)
+                                    val pfd = ParcelFileDescriptor.open(workingFile, ParcelFileDescriptor.MODE_READ_ONLY)
+                                    val renderer = PdfRenderer(pfd)
+                                    if (renderer.pageCount > 0) {
+                                        val page = renderer.openPage(0)
+                                        val bmp = Bitmap.createBitmap(page.width.coerceAtMost(512), page.height.coerceAtMost(512), Bitmap.Config.ARGB_8888)
+                                        bmp.eraseColor(android.graphics.Color.WHITE)
+                                        page.render(bmp, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                                        page.close()
+                                        renderer.close()
+                                        pfd.close()
+                                        thumbnailMemoryCache.put(if (localFileExists) "pdf_$filePath" else "pdf_$telegramFileId", bmp)
+                                        withContext(Dispatchers.Main) {
+                                            pdfBitmap = bmp
+                                        }
+                                    } else {
+                                        renderer.close()
+                                        pfd.close()
                                     }
-                                } else {
-                                    renderer.close()
-                                    pfd.close()
+                                } finally {
+                                    if (workingFile.exists()) workingFile.delete()
                                 }
                             }
                         } catch (_: Exception) {}

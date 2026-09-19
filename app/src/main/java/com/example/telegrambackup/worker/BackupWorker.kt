@@ -69,6 +69,7 @@ class BackupWorker(
     companion object {
         private const val TAG = "BackupWorker"
         private val isWorkerRunning = AtomicBoolean(false)
+        private val globalBotIndex = AtomicInteger(0)
 
         fun enqueue(context: Context) {
             val workRequest = androidx.work.OneTimeWorkRequestBuilder<BackupWorker>()
@@ -321,7 +322,9 @@ class BackupWorker(
             val tempDir = File(applicationContext.cacheDir, "backup_temp")
             if (!tempDir.exists()) tempDir.mkdirs()
 
-            val concurrency = prefs.uploadThreads.coerceIn(1, 16)
+            val allBots = db.telegramBotDao().getActiveBots()
+            val allBotsCount = allBots.size.coerceAtLeast(1)
+            val concurrency = maxOf(prefs.uploadThreads, allBotsCount).coerceIn(1, 16)
             val parallelSemaphore = Semaphore(concurrency)
             val successCount = AtomicInteger(0)
             val failCount = AtomicInteger(0)
@@ -402,10 +405,9 @@ class BackupWorker(
                                     BackupProgressTracker.updateActiveUpload(file.absolutePath, file.name, file.length(), 0, totalChunks, 0.05f)
                                 }
 
-                                val chunkConcurrency = minOf(botPool.size, maxOf(prefs.uploadThreads, 16)).coerceAtLeast(1)
+                                val chunkConcurrency = minOf(botPool.size, maxOf(prefs.uploadThreads, allBotsCount)).coerceIn(1, 16)
                                 val chunkSemaphore = Semaphore(chunkConcurrency)
-                                val allBotsCount = db.telegramBotDao().getActiveBots().size.coerceAtLeast(1)
-                                BackupProgressTracker.updateBotUtilization(working = minOf(chunkConcurrency, botPool.size), total = allBotsCount)
+                                BackupProgressTracker.updateBotUtilization(working = minOf(chunkConcurrency, allBotsCount), total = allBotsCount)
 
                                 // Step 8d: Process all 4 MB chunks SIMULTANEOUSLY in parallel across Bot Fleet
                                 coroutineScope {
@@ -414,29 +416,33 @@ class BackupWorker(
                                             if (prefs.stopAllBackups) return@launch
                                             if (uploadedChunksMap.containsKey(chunkIdx)) return@launch
 
-                                            chunkSemaphore.withPermit {
-                                                if (prefs.stopAllBackups) return@withPermit
+                                             chunkSemaphore.withPermit {
+                                                 if (prefs.stopAllBackups) return@withPermit
 
-                                                val assignedBot = botPool.getOrNull((chunkIdx - 1) % botPool.size) ?: BotFleetManager.getNextAvailableBot(applicationContext)
-                                                val botTokenToUse: String = if (!assignedBot?.botToken.isNullOrBlank()) assignedBot!!.botToken else botToken
+                                                 val botIdx = if (botPool.isNotEmpty()) {
+                                                     (globalBotIndex.getAndIncrement() and 0x7FFFFFFF) % botPool.size
+                                                 } else 0
+                                                 val assignedBot = botPool.getOrNull(botIdx) ?: BotFleetManager.getNextAvailableBot(applicationContext)
+                                                 val botTokenToUse: String = if (!assignedBot?.botToken.isNullOrBlank()) assignedBot!!.botToken else botToken
 
-                                                val claimEntity = ChunkProgressEntity(
-                                                    sourcePath = file.absolutePath,
-                                                    chunkIndex = chunkIdx,
-                                                    totalChunks = totalChunks,
-                                                    telegramFileId = "",
-                                                    messageId = 0L,
-                                                    chunkSize = 0L,
-                                                    status = "UPLOADING",
-                                                    botTokenUsed = botTokenToUse,
-                                                    channelId = destinationChatId,
-                                                    uploadedAt = System.currentTimeMillis()
-                                                )
-                                                chunkDao.insert(claimEntity)
+                                                 val claimEntity = ChunkProgressEntity(
+                                                     sourcePath = file.absolutePath,
+                                                     chunkIndex = chunkIdx,
+                                                     totalChunks = totalChunks,
+                                                     telegramFileId = "",
+                                                     messageId = 0L,
+                                                     chunkSize = 0L,
+                                                     status = "UPLOADING",
+                                                     botTokenUsed = botTokenToUse,
+                                                     channelId = destinationChatId,
+                                                     uploadedAt = System.currentTimeMillis()
+                                                 )
+                                                 chunkDao.insert(claimEntity)
 
-                                                val safeChunkId = System.currentTimeMillis() + ((file.hashCode() + chunkIdx).toLong() and 0x7FFFFFFF)
-                                                val chunkTempFile = File(tempDir, "${safeChunkId}_part%03d".format(chunkIdx))
-                                                try {
+                                                 val safeChunkId = System.currentTimeMillis() + ((file.hashCode() + chunkIdx).toLong() and 0x7FFFFFFF)
+                                                 val chunkTempFile = File(tempDir, "${safeChunkId}_part%03d".format(chunkIdx))
+                                                 BackupProgressTracker.onBotStartedWork(botTokenToUse, allBotsCount)
+                                                 try {
                                                     FileChunker.extractSingleChunk(fileToUpload, chunkIdx, chunkTempFile)
 
                                                     val caption = if (isChunked) {
@@ -488,6 +494,7 @@ class BackupWorker(
                                                         Log.e(TAG, "Failed to upload chunk $chunkIdx/$totalChunks for ${file.name}")
                                                     }
                                                 } finally {
+                                                    BackupProgressTracker.onBotFinishedWork(botTokenToUse)
                                                     if (chunkTempFile.exists()) chunkTempFile.delete()
                                                 }
                                             }
@@ -714,7 +721,7 @@ class BackupWorker(
      * Uploads a single file/chunk to Telegram via Bot API `sendDocument` endpoint with full AES-256 encryption.
      * Uses ProgressCountingRequestBody for silky-smooth real-time speed calculation and progress updates.
      */
-    private fun uploadToTelegramSingleAttempt(
+    private suspend fun uploadToTelegramSingleAttempt(
         botToken: String,
         chatId: String,
         file: File,
@@ -801,6 +808,16 @@ class BackupWorker(
                     if (fileId.isNotEmpty()) {
                         return Pair(fileId, messageId)
                     }
+                }
+            }
+
+            if (response.code == 429) {
+                try {
+                    val json = JSONObject(body)
+                    val retryAfter = json.optJSONObject("parameters")?.optInt("retry_after", 30) ?: 30
+                    BotFleetManager.markBotRateLimited(applicationContext, botToken, retryAfter)
+                } catch (e: Exception) {
+                    BotFleetManager.markBotRateLimited(applicationContext, botToken, 30)
                 }
             }
 

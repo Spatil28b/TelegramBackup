@@ -92,15 +92,17 @@ object NetworkAnalysisAdvisor {
 
         // Recommendations based on measured metrics
         val recommendedThreads = when {
-            avgSpeed > 8000 -> 6
-            avgSpeed > 3000 -> 4
-            else -> 2
+            avgSpeed > 10000 -> 16
+            avgSpeed > 6000 -> 12
+            avgSpeed > 3000 -> 10
+            avgSpeed > 1500 -> 6
+            else -> 4
         }
 
         val recommendedSmartMode = if (bestWindowStart in 0..5) 2 else 0 // Night Express if peak is early morning
         val recommendedWifiOnly = wifiReliability >= 70 || avgSpeed < 2000
         val recommendedBotFleetMode = when {
-            avgSpeed > 5000 -> "TURBO"
+            avgSpeed > 5000 -> "BOOST"
             avgSpeed > 2000 -> "BALANCED"
             else -> "DEDICATED"
         }
@@ -157,10 +159,10 @@ object NetworkAnalysisAdvisor {
             totalTestsRun = 0,
             bestBackupWindow = "02:00 - 06:00",
             bestStartHour = 2,
-            recommendedThreads = 4,
+            recommendedThreads = 10,
             recommendedSmartMode = 2,
             recommendedWifiOnly = true,
-            recommendedBotFleetMode = "TURBO",
+            recommendedBotFleetMode = "BOOST",
             hourlyAverages = emptyMap(),
             recommendationSummary = "Self-analysis has started. Over the next 7 days, the app will benchmark your connection every 30 minutes to fine-tune optimal backup hours and bot speeds."
         )

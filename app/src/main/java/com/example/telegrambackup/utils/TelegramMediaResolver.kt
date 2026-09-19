@@ -39,7 +39,7 @@ object TelegramMediaResolver {
         }
     }
 
-    private suspend fun getCandidateBotTokens(context: Context): List<String> = withContext(Dispatchers.IO) {
+    suspend fun getCandidateBotTokens(context: Context): List<String> = withContext(Dispatchers.IO) {
         val prefs = AppPrefs(context)
         val tokens = mutableListOf<String>()
         if (prefs.botToken.isNotBlank()) tokens.add(prefs.botToken.trim())
@@ -70,14 +70,22 @@ object TelegramMediaResolver {
     /**
      * Resolves a Telegram file_id to a direct HTTPS file streaming URL with multi-bot fleet failover.
      */
-    suspend fun resolveDirectUrl(context: Context, telegramFileId: String): String? = withContext(Dispatchers.IO) {
+    suspend fun resolveDirectUrl(context: Context, telegramFileId: String, preferredBotToken: String = ""): String? = withContext(Dispatchers.IO) {
         if (telegramFileId.isBlank() || telegramFileId == "DIR_MARKER" || telegramFileId.startsWith("NOTE_MARKER")) {
             return@withContext null
         }
 
         urlCache.get(telegramFileId)?.let { return@withContext it }
 
-        val candidateTokens = getCandidateBotTokens(context)
+        val candidateTokens = mutableListOf<String>()
+        if (preferredBotToken.isNotBlank()) {
+            candidateTokens.add(preferredBotToken.trim())
+        }
+        for (t in getCandidateBotTokens(context)) {
+            if (!candidateTokens.contains(t)) {
+                candidateTokens.add(t)
+            }
+        }
         val client = HttpClientProvider.client
 
         for (botToken in candidateTokens) {
@@ -108,29 +116,38 @@ object TelegramMediaResolver {
      * Uses local Room DB records first. If older records were pruned, scans Telegram channel messages
      * to reconstruct the complete multi-part list and caches them permanently in Room DB.
      */
-    suspend fun resolveChunksForFile(context: Context, file: UploadedFile): List<Pair<Int, String>> = withContext(Dispatchers.IO) {
+    suspend fun resolveChunksForFile(context: Context, file: UploadedFile): List<Triple<Int, String, String>> = withContext(Dispatchers.IO) {
         if (file.totalChunks <= 1) {
-            return@withContext if (file.telegramFileId.isNotBlank()) listOf(Pair(1, file.telegramFileId)) else emptyList()
+            return@withContext if (file.telegramFileId.isNotBlank()) listOf(Triple(1, file.telegramFileId, file.botTokenUsed)) else emptyList()
         }
 
         val db = AppDatabase.getDatabase(context)
         val chunkDao = db.chunkProgressDao()
         val recorded = chunkDao.getUploadedChunksForFile(file.path)
         val chunkMap = mutableMapOf<Int, String>()
+        val tokenMap = mutableMapOf<Int, String>()
         for (c in recorded) {
             if (c.telegramFileId.isNotBlank()) {
                 chunkMap[c.chunkIndex] = c.telegramFileId
+                if (c.botTokenUsed.isNotBlank()) {
+                    tokenMap[c.chunkIndex] = c.botTokenUsed
+                }
             }
         }
 
         // Part 1 is always available on the main uploaded_files record
         if (file.telegramFileId.isNotBlank() && !chunkMap.containsKey(1)) {
             chunkMap[1] = file.telegramFileId
+            if (file.botTokenUsed.isNotBlank()) {
+                tokenMap[1] = file.botTokenUsed
+            }
         }
 
         // If all chunks are present in Room DB, return them sorted
         if (chunkMap.size >= file.totalChunks) {
-            return@withContext (1..file.totalChunks).mapNotNull { idx -> chunkMap[idx]?.let { Pair(idx, it) } }
+            return@withContext (1..file.totalChunks).mapNotNull { idx ->
+                chunkMap[idx]?.let { Triple(idx, it, tokenMap[idx] ?: "") }
+            }
         }
 
         // If some chunks are missing from DB, query Telegram channel messages starting from file.messageId
@@ -138,7 +155,9 @@ object TelegramMediaResolver {
             recoverMissingChunksFromTelegram(context, file, chunkMap)
         }
 
-        return@withContext (1..file.totalChunks).mapNotNull { idx -> chunkMap[idx]?.let { Pair(idx, it) } }
+        return@withContext (1..file.totalChunks).mapNotNull { idx ->
+            chunkMap[idx]?.let { Triple(idx, it, tokenMap[idx] ?: "") }
+        }
     }
 
     /**
@@ -259,7 +278,7 @@ object TelegramMediaResolver {
 
         if (chunks.size == 1 && file.totalChunks <= 1) {
             // Single chunk file: direct stream
-            val directUrl = resolveDirectUrl(context, chunks[0].second) ?: return@withContext false
+            val directUrl = resolveDirectUrl(context, chunks[0].second, chunks[0].third.ifBlank { file.botTokenUsed }) ?: return@withContext false
             val ok = downloadUrlToFile(directUrl, tempMergedFile, onProgress)
             if (!ok || !tempMergedFile.exists() || tempMergedFile.length() == 0L) {
                 if (tempMergedFile.exists()) tempMergedFile.delete()
@@ -276,7 +295,7 @@ object TelegramMediaResolver {
 
             var downloadFailed = false
             coroutineScope {
-                val jobs = chunks.map { (chunkIdx, chunkFileId) ->
+                val jobs = chunks.map { (chunkIdx, chunkFileId, chunkBotToken) ->
                     launch {
                         semaphore.withPermit {
                             if (downloadFailed) return@withPermit
@@ -287,7 +306,7 @@ object TelegramMediaResolver {
                                 return@withPermit
                             }
 
-                            val directUrl = resolveDirectUrl(context, chunkFileId)
+                            val directUrl = resolveDirectUrl(context, chunkFileId, chunkBotToken)
                             if (directUrl == null) {
                                 downloadFailed = true
                                 return@withPermit
@@ -325,21 +344,19 @@ object TelegramMediaResolver {
             }
         }
 
-        // Decrypt in place ONLY if encrypted
-        val prefs = AppPrefs(context)
-        if (prefs.encryptionKey.isNotBlank() && FileEncryptor.isEncryptedFile(tempMergedFile)) {
-            try {
-                FileEncryptor.decryptFileInPlace(tempMergedFile, prefs.encryptionKey)
-            } catch (e: Exception) {
-                Log.w(TAG, "Decryption error for ${file.fileName}", e)
-            }
-        }
+        // Decrypt in place using candidate keys (handles both modern and legacy cipherstreams)
+        FileEncryptor.ensureDecrypted(tempMergedFile, context, file.fileName)
 
         if (targetFile.exists()) targetFile.delete()
         val success = tempMergedFile.renameTo(targetFile)
         if (!success && tempMergedFile.exists()) {
             tempMergedFile.copyTo(targetFile, overwrite = true)
             tempMergedFile.delete()
+        }
+
+        // Final safety check: ensure targetFile is confirmed decrypted
+        if (targetFile.exists()) {
+            FileEncryptor.ensureDecrypted(targetFile, context, file.fileName)
         }
 
         onProgress(1f)
@@ -362,7 +379,18 @@ object TelegramMediaResolver {
         val targetFile = File(cacheDir, "${file.telegramFileId.hashCode()}_$safeName")
 
         if (targetFile.exists() && targetFile.length() > 0) {
-            return@withContext targetFile
+            if (!FileEncryptor.isLikelyPlainFile(targetFile, file.fileName)) {
+                val ok = FileEncryptor.ensureDecrypted(targetFile, context, file.fileName)
+                if (ok && FileEncryptor.isLikelyPlainFile(targetFile, file.fileName)) {
+                    return@withContext targetFile
+                } else {
+                    // Stale, encrypted, or corrupted cache file: purge it to download clean from Telegram
+                    Log.w(TAG, "Cached file ${targetFile.name} was corrupted or not plain, purging to re-download")
+                    targetFile.delete()
+                }
+            } else {
+                return@withContext targetFile
+            }
         }
 
         try {
@@ -371,6 +399,7 @@ object TelegramMediaResolver {
             BackupProgressTracker.finishDownload()
             AppCacheManager.autoPruneCache(context)
             if (ok && targetFile.exists() && targetFile.length() > 0) {
+                FileEncryptor.ensureDecrypted(targetFile, context, file.fileName)
                 AppNotificationHelper.showDownloadFinishedNotification(context, file.fileName, targetFile.absolutePath)
                 return@withContext targetFile
             }
@@ -410,7 +439,16 @@ object TelegramMediaResolver {
         val safeName = fileName.replace(Regex("[^a-zA-Z0-9._-]"), "_").ifBlank { "file" }
         val targetFile = File(cacheDir, "${telegramFileId.hashCode()}_$safeName")
         if (targetFile.exists() && targetFile.length() > 0) {
-            return@withContext targetFile
+            if (!FileEncryptor.isLikelyPlainFile(targetFile, fileName)) {
+                val ok = FileEncryptor.ensureDecrypted(targetFile, context, fileName)
+                if (ok && FileEncryptor.isLikelyPlainFile(targetFile, fileName)) {
+                    return@withContext targetFile
+                } else {
+                    targetFile.delete()
+                }
+            } else {
+                return@withContext targetFile
+            }
         }
 
         val directUrl = resolveDirectUrl(context, telegramFileId) ?: return@withContext null
@@ -419,11 +457,9 @@ object TelegramMediaResolver {
             BackupProgressTracker.startDownload(fileName)
             val ok = downloadUrlToFile(directUrl, tempDownloadFile, onProgress)
             if (ok && tempDownloadFile.exists() && tempDownloadFile.length() > 0) {
-                val prefs = AppPrefs(context)
-                if (prefs.encryptionKey.isNotBlank() && FileEncryptor.isEncryptedFile(tempDownloadFile)) {
-                    try { FileEncryptor.decryptFileInPlace(tempDownloadFile, prefs.encryptionKey) } catch (_: Exception) {}
-                }
-                if (tempDownloadFile.renameTo(targetFile)) {
+                FileEncryptor.ensureDecrypted(tempDownloadFile, context, fileName)
+                if (tempDownloadFile.renameTo(targetFile) || (tempDownloadFile.exists() && run { tempDownloadFile.copyTo(targetFile, true); tempDownloadFile.delete(); true })) {
+                    FileEncryptor.ensureDecrypted(targetFile, context, fileName)
                     BackupProgressTracker.finishDownload()
                     return@withContext targetFile
                 }
@@ -521,6 +557,18 @@ object TelegramMediaResolver {
         targetFile: File,
         onProgress: (Float) -> Unit = {}
     ): Boolean = withContext(Dispatchers.IO) {
-        return@withContext downloadAndAssembleFile(context, file, targetFile, onProgress)
+        val ok = downloadAndAssembleFile(context, file, targetFile, onProgress)
+        if (ok && targetFile.exists()) {
+            FileEncryptor.ensureDecrypted(targetFile, context, file.fileName)
+            try {
+                android.media.MediaScannerConnection.scanFile(
+                    context,
+                    arrayOf(targetFile.absolutePath),
+                    null,
+                    null
+                )
+            } catch (_: Exception) {}
+        }
+        return@withContext ok
     }
 }

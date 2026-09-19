@@ -46,7 +46,11 @@ fun CloudRestoreWizardDialog(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val prefs = remember { AppPrefs(context) }
-    val botToken = remember { prefs.botToken }
+    var hasBotToken by remember { mutableStateOf(prefs.botToken.isNotBlank()) }
+    LaunchedEffect(Unit) {
+        val tokens = TelegramMediaResolver.getCandidateBotTokens(context)
+        hasBotToken = tokens.isNotEmpty()
+    }
 
     var isRestoring by remember { mutableStateOf(false) }
     var currentFileIndex by remember { mutableIntStateOf(0) }
@@ -169,7 +173,7 @@ fun CloudRestoreWizardDialog(
         confirmButton = {
             Button(
                 onClick = {
-                    if (botToken.isEmpty()) {
+                    if (!hasBotToken) {
                         Toast.makeText(context, "Telegram Bot Token required to download files!", Toast.LENGTH_LONG).show()
                         return@Button
                     }
