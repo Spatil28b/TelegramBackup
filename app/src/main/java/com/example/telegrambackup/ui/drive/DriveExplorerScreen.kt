@@ -135,7 +135,8 @@ private fun normalizeDrivePath(path: String): String {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DriveExplorerScreen(
-    externalSearchQuery: String = ""
+    externalSearchQuery: String = "",
+    onMenuClick: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -168,7 +169,7 @@ fun DriveExplorerScreen(
     var showRenameDialog by remember { mutableStateOf(false) }
     var renameInputName by remember { mutableStateOf("") }
 
-    var showFabSpeedDial by remember { mutableStateOf(false) }
+    var showCreateActionSheet by remember { mutableStateOf(false) }
     var activeAudioPlayerItem by remember { mutableStateOf<Pair<String, String>?>(null) }
     var activeVideoPlayerItem by remember { mutableStateOf<Pair<String, String>?>(null) }
     var activeDriveMediaFile by remember { mutableStateOf<UploadedFile?>(null) }
@@ -239,9 +240,9 @@ fun DriveExplorerScreen(
     }
 
     // Back Handler
-    BackHandler(enabled = showFabSpeedDial || activeDriveMediaFile != null || itemOptionsFile != null || selectedDriveItems.isNotEmpty() || showCreateFolderModal || showCreateNoteModal || showRenameDialog || driveFolderPathHistory.size > 1) {
-        if (showFabSpeedDial) {
-            showFabSpeedDial = false
+    BackHandler(enabled = showCreateActionSheet || activeDriveMediaFile != null || itemOptionsFile != null || selectedDriveItems.isNotEmpty() || showCreateFolderModal || showCreateNoteModal || showRenameDialog || driveFolderPathHistory.size > 1) {
+        if (showCreateActionSheet) {
+            showCreateActionSheet = false
         } else if (activeDriveMediaFile != null) {
             activeDriveMediaFile = null
         } else if (itemOptionsFile != null) {
@@ -689,16 +690,29 @@ fun DriveExplorerScreen(
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
                             if (driveFolderPathHistory.size > 1) {
-                                IconButton(onClick = {
-                                    triggerHapticFeedback(context, haptic)
-                                    driveFolderPathHistory.removeAt(driveFolderPathHistory.size - 1)
-                                    currentDriveDirectoryPath = driveFolderPathHistory.last()
-                                }) {
-                                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = TelegramBlue)
+                                IconButton(
+                                    onClick = {
+                                        triggerHapticFeedback(context, haptic)
+                                        driveFolderPathHistory.removeAt(driveFolderPathHistory.size - 1)
+                                        currentDriveDirectoryPath = driveFolderPathHistory.last()
+                                    },
+                                    modifier = Modifier.size(36.dp)
+                                ) {
+                                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = TelegramBlue, modifier = Modifier.size(20.dp))
+                                }
+                            } else {
+                                IconButton(
+                                    onClick = {
+                                        triggerHapticFeedback(context, haptic)
+                                        onMenuClick()
+                                    },
+                                    modifier = Modifier.size(36.dp)
+                                ) {
+                                    Icon(Icons.Default.Menu, contentDescription = "Open Navigation Menu", tint = TelegramBlue, modifier = Modifier.size(20.dp))
                                 }
                             }
 
-                            Icon(Icons.Default.CloudQueue, contentDescription = null, tint = TelegramBlue, modifier = Modifier.size(24.dp))
+                            Icon(Icons.Default.CloudQueue, contentDescription = null, tint = TelegramBlue, modifier = Modifier.size(22.dp))
                             Spacer(modifier = Modifier.width(8.dp))
 
                             // Interactive Breadcrumbs Row
@@ -921,82 +935,90 @@ fun DriveExplorerScreen(
             }
         }
 
-        // GOOGLE DRIVE STYLE "+ NEW" FLOATING ACTION BUTTON (FAB) - Auto-hides during multi-select
+        // MATERIAL 3 MINIMAL FLOATING ACTION BUTTON (+) & ACTION SHEET
         AnimatedVisibility(
             visible = !isDriveSelectionActive && selectedDriveItems.isEmpty(),
             enter = fadeIn() + scaleIn(),
             exit = fadeOut() + scaleOut(),
             modifier = Modifier
                 .align(Alignment.BottomEnd)
-                .padding(bottom = 16.dp, end = 8.dp)
+                .padding(bottom = 16.dp, end = 16.dp)
         ) {
-            Column(horizontalAlignment = Alignment.End) {
-                AnimatedVisibility(
-                    visible = showFabSpeedDial,
-                    enter = fadeIn() + expandVertically(),
-                    exit = fadeOut() + shrinkVertically()
+            FloatingActionButton(
+                onClick = {
+                    triggerHapticFeedback(context, haptic)
+                    showCreateActionSheet = true
+                },
+                containerColor = TelegramBlue,
+                contentColor = Color.White,
+                shape = CircleShape,
+                elevation = FloatingActionButtonDefaults.elevation(4.dp)
+            ) {
+                Icon(Icons.Default.Add, contentDescription = "Create or Upload", modifier = Modifier.size(28.dp))
+            }
+        }
+
+        if (showCreateActionSheet) {
+            ModalBottomSheet(
+                onDismissRequest = { showCreateActionSheet = false },
+                sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+                containerColor = MaterialTheme.colorScheme.surface,
+                shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 24.dp, vertical = 12.dp)
+                        .navigationBarsPadding()
                 ) {
-                    Column(
-                        horizontalAlignment = Alignment.End,
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                        modifier = Modifier.padding(bottom = 12.dp)
+                    Text(
+                        text = "Create new",
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                    )
+                    Spacer(modifier = Modifier.height(20.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceAround
                     ) {
-                        ExtendedFloatingActionButton(
-                            text = { Text("New Folder", fontWeight = FontWeight.Bold) },
-                            icon = { Icon(Icons.Default.CreateNewFolder, contentDescription = null) },
+                        DriveActionItem(
+                            label = "Folder",
+                            icon = Icons.Default.CreateNewFolder,
+                            tint = TelegramBlue,
                             onClick = {
-                                showFabSpeedDial = false
+                                showCreateActionSheet = false
                                 showCreateFolderModal = true
-                            },
-                            containerColor = MaterialTheme.colorScheme.surface,
-                            contentColor = TelegramBlue
+                            }
                         )
-
-                        ExtendedFloatingActionButton(
-                            text = { Text("Upload Files", fontWeight = FontWeight.Bold) },
-                            icon = { Icon(Icons.Default.FileUpload, contentDescription = null) },
+                        DriveActionItem(
+                            label = "Upload",
+                            icon = Icons.Default.FileUpload,
+                            tint = TelegramEmerald,
                             onClick = {
-                                showFabSpeedDial = false
+                                showCreateActionSheet = false
                                 personalFileUploadLauncher.launch("*/*")
-                            },
-                            containerColor = MaterialTheme.colorScheme.surface,
-                            contentColor = TelegramBlue
+                            }
                         )
-
-                        ExtendedFloatingActionButton(
-                            text = { Text("Upload Folder", fontWeight = FontWeight.Bold) },
-                            icon = { Icon(Icons.Default.FolderZip, contentDescription = null) },
+                        DriveActionItem(
+                            label = "Folder Upload",
+                            icon = Icons.Default.FolderZip,
+                            tint = Color(0xFFF59E0B),
                             onClick = {
-                                showFabSpeedDial = false
+                                showCreateActionSheet = false
                                 uploadFolderTreeLauncher.launch(null)
-                            },
-                            containerColor = MaterialTheme.colorScheme.surface,
-                            contentColor = TelegramBlue
+                            }
                         )
-
-                        ExtendedFloatingActionButton(
-                            text = { Text("Create Note", fontWeight = FontWeight.Bold) },
-                            icon = { Icon(Icons.AutoMirrored.Filled.NoteAdd, contentDescription = null) },
+                        DriveActionItem(
+                            label = "Note",
+                            icon = Icons.AutoMirrored.Filled.NoteAdd,
+                            tint = Color(0xFF8B5CF6),
                             onClick = {
-                                showFabSpeedDial = false
+                                showCreateActionSheet = false
                                 showCreateNoteModal = true
-                            },
-                            containerColor = MaterialTheme.colorScheme.surface,
-                            contentColor = TelegramBlue
+                            }
                         )
                     }
+                    Spacer(modifier = Modifier.height(20.dp))
                 }
-
-                ExtendedFloatingActionButton(
-                    text = { Text(if (showFabSpeedDial) "Close" else "New", fontWeight = FontWeight.Bold) },
-                    icon = { Icon(if (showFabSpeedDial) Icons.Default.Close else Icons.Default.Add, contentDescription = "New") },
-                    onClick = {
-                        triggerHapticFeedback(context, haptic)
-                        showFabSpeedDial = !showFabSpeedDial
-                    },
-                    containerColor = TelegramBlue,
-                    contentColor = Color.White
-                )
             }
         }
 
@@ -1269,5 +1291,42 @@ private fun ListDriveItemCard(
                 Icon(Icons.Default.MoreVert, contentDescription = "Options", tint = MaterialTheme.colorScheme.outline)
             }
         }
+    }
+}
+
+@Composable
+private fun DriveActionItem(
+    label: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    tint: Color,
+    onClick: () -> Unit
+) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 8.dp, vertical = 6.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .size(52.dp)
+                .clip(CircleShape)
+                .background(tint.copy(alpha = 0.12f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = label,
+                tint = tint,
+                modifier = Modifier.size(24.dp)
+            )
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Medium),
+            color = MaterialTheme.colorScheme.onSurface
+        )
     }
 }

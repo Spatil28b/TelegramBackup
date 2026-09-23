@@ -3,6 +3,7 @@ package com.example.telegrambackup.ui.settings
 import android.widget.Toast
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -49,8 +50,8 @@ fun AppInfoDialog(
         try {
             val pkg = context.packageManager.getPackageInfo(context.packageName, 0)
             val code = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) pkg.longVersionCode.toInt() else @Suppress("DEPRECATION") pkg.versionCode
-            Pair(pkg.versionName ?: "2.1.81", if (code > 0) code else 84)
-        } catch (_: Exception) { Pair("2.1.81", 84) }
+            Pair(pkg.versionName ?: "2.2.1", if (code > 0) code else 104)
+        } catch (_: Exception) { Pair("2.2.1", 104) }
     }
 
     if (showWhatsNewModal) {
@@ -69,118 +70,237 @@ fun AppInfoDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)),
-        containerColor = Color(0xFF0F172A),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(28.dp)),
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+        shape = RoundedCornerShape(28.dp),
         title = {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth()
+            ) {
                 Box(
-                    modifier = Modifier.size(36.dp).clip(CircleShape).background(TelegramBlue),
+                    modifier = Modifier
+                        .size(44.dp)
+                        .clip(CircleShape)
+                        .background(TelegramBlue.copy(alpha = 0.15f)),
                     contentAlignment = Alignment.Center
                 ) {
                     Image(
                         painter = painterResource(id = R.drawable.app_logo),
                         contentDescription = "App Logo",
-                        modifier = Modifier.size(24.dp)
+                        modifier = Modifier.size(28.dp)
                     )
                 }
-                Spacer(modifier = Modifier.width(10.dp))
-                Column {
+                Spacer(modifier = Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
                         "Telegram Backup",
-                        style = MaterialTheme.typography.titleMedium.copy(color = Color.White, fontWeight = FontWeight.Bold)
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        ),
+                        maxLines = 1,
+                        softWrap = false
                     )
                     Text(
-                        "App Info & Update Center",
-                        style = MaterialTheme.typography.labelSmall.copy(color = TelegramEmerald)
+                        "Cloud Storage & Vault",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            color = TelegramEmerald,
+                            fontWeight = FontWeight.SemiBold
+                        ),
+                        maxLines = 1,
+                        softWrap = false
                     )
                 }
             }
         },
         text = {
-            Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                // Minimal Google M3 Version Card
                 Card(
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
-                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+                    ),
+                    shape = RoundedCornerShape(16.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("Installed Version:", style = MaterialTheme.typography.labelMedium.copy(color = Color.White.copy(alpha = 0.7f)))
-                            Text("v${currentAppInfo.first} (Build ${currentAppInfo.second})", style = MaterialTheme.typography.labelMedium.copy(color = Color.White, fontWeight = FontWeight.Bold))
+                    Column(
+                        modifier = Modifier.padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                "Installed Version",
+                                style = MaterialTheme.typography.bodyMedium.copy(
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            )
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = TelegramBlue.copy(alpha = 0.15f)
+                            ) {
+                                Text(
+                                    "v${currentAppInfo.first} (${currentAppInfo.second})",
+                                    style = MaterialTheme.typography.labelMedium.copy(
+                                        color = TelegramBlue,
+                                        fontWeight = FontWeight.Bold
+                                    ),
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
+                            }
                         }
-                        HorizontalDivider(color = Color.White.copy(alpha = 0.1f))
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("Architecture:", style = MaterialTheme.typography.labelMedium.copy(color = Color.White.copy(alpha = 0.7f)))
-                            Text("Jetpack Compose 36", style = MaterialTheme.typography.labelMedium.copy(color = TelegramBlue, fontWeight = FontWeight.Bold))
+                    }
+                }
+
+                // Option to view past updates & changelog
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(14.dp))
+                        .clickable { showWhatsNewModal = true }
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Default.History,
+                            contentDescription = null,
+                            tint = TelegramEmerald,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                "Past Updates & Changelog",
+                                style = MaterialTheme.typography.labelMedium.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                ),
+                                maxLines = 1,
+                                softWrap = false
+                            )
+                            Text(
+                                "View features & release history",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    color = MaterialTheme.colorScheme.outline
+                                ),
+                                maxLines = 1,
+                                softWrap = false
+                            )
                         }
-                        HorizontalDivider(color = Color.White.copy(alpha = 0.1f))
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("Encryption Engine:", style = MaterialTheme.typography.labelMedium.copy(color = Color.White.copy(alpha = 0.7f)))
-                            Text("AES-256 Zero-Knowledge", style = MaterialTheme.typography.labelMedium.copy(color = TelegramEmerald, fontWeight = FontWeight.Bold))
-                        }
-                        HorizontalDivider(color = Color.White.copy(alpha = 0.1f))
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("Cloud Server:", style = MaterialTheme.typography.labelMedium.copy(color = Color.White.copy(alpha = 0.7f)))
-                            Text("Vercel & Neon DB", style = MaterialTheme.typography.labelMedium.copy(color = Color.White, fontWeight = FontWeight.Bold))
-                        }
+                        Icon(
+                            Icons.Default.ChevronRight,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.outline,
+                            modifier = Modifier.size(18.dp)
+                        )
                     }
                 }
 
                 if (upToDateText.isNotEmpty()) {
-                    Text(
-                        upToDateText,
-                        style = MaterialTheme.typography.bodySmall.copy(color = TelegramEmerald, fontWeight = FontWeight.Bold)
-                    )
-                }
-            }
-        },
-        confirmButton = {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(
-                    onClick = { showWhatsNewModal = true },
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White)
-                ) {
-                    Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = TelegramEmerald, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("What's New", fontWeight = FontWeight.Bold)
-                }
-
-                Button(
-                    onClick = {
-                        if (isCheckingUpdate) return@Button
-                        isCheckingUpdate = true
-                        upToDateText = "Checking online server for updates..."
-                        scope.launch(Dispatchers.IO) {
-                            val serverUrl = prefs.serverUrl.ifEmpty { "https://telegram-backup-backend.vercel.app" }
-                            val versionInfo = ServerApi().getLatestAppVersion(serverUrl)
-                            withContext(Dispatchers.Main) {
-                                isCheckingUpdate = false
-                                val isNewerVersionCode = versionInfo.versionCode > currentAppInfo.second
-                                val isNewerSemVer = com.example.telegrambackup.utils.SemVerUtils.isServerVersionNewer(versionInfo.versionName, currentAppInfo.first)
-                                if (versionInfo.success && (isNewerVersionCode || isNewerSemVer) && versionInfo.downloadUrl.isNotEmpty()) {
-                                    updateInfoAvailable = versionInfo
-                                    upToDateText = ""
-                                } else {
-                                    upToDateText = "✅ Your app is fully up to date! (v${currentAppInfo.first})"
-                                }
-                            }
-                        }
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = TelegramBlue)
-                ) {
-                    if (isCheckingUpdate) {
-                        CircularProgressIndicator(modifier = Modifier.size(18.dp), color = Color.White, strokeWidth = 2.dp)
-                    } else {
-                        Icon(Icons.Default.SystemUpdate, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("Update", fontWeight = FontWeight.Bold)
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = if (upToDateText.startsWith("✅")) TelegramEmerald.copy(alpha = 0.12f) else TelegramBlue.copy(alpha = 0.12f),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            upToDateText,
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                color = if (upToDateText.startsWith("✅")) TelegramEmerald else TelegramBlue,
+                                fontWeight = FontWeight.SemiBold
+                            ),
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                        )
                     }
                 }
             }
         },
+        confirmButton = {
+            Button(
+                onClick = {
+                    if (isCheckingUpdate) return@Button
+                    isCheckingUpdate = true
+                    upToDateText = "Checking online server for updates..."
+                    scope.launch(Dispatchers.IO) {
+                        val serverUrl = prefs.serverUrl.ifEmpty { "https://telegram-backup-backend.vercel.app" }
+                        val versionInfo = ServerApi().getLatestAppVersion(serverUrl)
+                        withContext(Dispatchers.Main) {
+                            isCheckingUpdate = false
+                            val isNewerVersionCode = versionInfo.versionCode > currentAppInfo.second
+                            val isNewerSemVer = com.example.telegrambackup.utils.SemVerUtils.isServerVersionNewer(versionInfo.versionName, currentAppInfo.first)
+                            if (versionInfo.success && (isNewerVersionCode || isNewerSemVer) && versionInfo.downloadUrl.isNotEmpty()) {
+                                updateInfoAvailable = versionInfo
+                                upToDateText = ""
+                            } else {
+                                upToDateText = "✅ App is up to date (v${currentAppInfo.first})"
+                            }
+                        }
+                    }
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = TelegramBlue),
+                shape = RoundedCornerShape(12.dp),
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 0.dp),
+                modifier = Modifier.height(40.dp)
+            ) {
+                if (isCheckingUpdate) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(16.dp),
+                        color = Color.White,
+                        strokeWidth = 2.dp
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        "Checking...",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 13.sp,
+                        maxLines = 1,
+                        softWrap = false
+                    )
+                } else {
+                    Icon(
+                        Icons.Default.Refresh,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        "Check for Updates",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 13.sp,
+                        maxLines = 1,
+                        softWrap = false
+                    )
+                }
+            }
+        },
         dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Close", color = Color.White.copy(alpha = 0.7f))
+            TextButton(
+                onClick = onDismiss,
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+                modifier = Modifier.height(40.dp)
+            ) {
+                Text(
+                    "Close",
+                    style = MaterialTheme.typography.labelLarge.copy(
+                        color = MaterialTheme.colorScheme.outline
+                    ),
+                    maxLines = 1,
+                    softWrap = false
+                )
             }
         }
     )

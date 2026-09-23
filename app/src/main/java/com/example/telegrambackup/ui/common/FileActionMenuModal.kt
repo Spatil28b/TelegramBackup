@@ -93,6 +93,7 @@ fun FileActionMenuModal(
     val isFolder = file.telegramFileId == "DIR_MARKER"
     val prefs = remember { AppPrefs(context) }
     var isStarred by remember(file.path) { mutableStateOf(prefs.isFileStarred(file.path)) }
+    var isSafeVault by remember(file.path) { mutableStateOf(prefs.isSafeVaultFile(file.path)) }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -341,6 +342,18 @@ fun FileActionMenuModal(
                     onClick = {
                         isStarred = prefs.toggleStarredFile(file.path)
                         Toast.makeText(context, if (isStarred) "⭐ Added to Starred" else "Removed from Starred", Toast.LENGTH_SHORT).show()
+                    }
+                )
+
+                // 4c. Safe Folder Vault (AES-256 Encrypted / Biometric Protected)
+                FileActionRow(
+                    icon = if (isSafeVault) Icons.Default.LockOpen else Icons.Default.Lock,
+                    iconTint = if (isSafeVault) TelegramEmerald else Color(0xFF8B5CF6),
+                    title = if (isSafeVault) "Remove from Safe Folder" else "Move to Safe Folder",
+                    subtitle = if (isSafeVault) "Remove encryption lock from file" else "Protect with biometric fingerprint / PIN",
+                    onClick = {
+                        isSafeVault = prefs.toggleSafeVaultFile(file.path)
+                        Toast.makeText(context, if (isSafeVault) "🔒 Moved to Safe Folder (Protected)" else "Removed from Safe Folder", Toast.LENGTH_SHORT).show()
                     }
                 )
 

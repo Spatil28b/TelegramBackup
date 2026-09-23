@@ -108,6 +108,7 @@ enum class StreamlinedCategory {
     NETWORK_PERFORMANCE,
     SECURITY_PRIVACY_RESTORE,
     APPEARANCE_REGION,
+    BOTTOM_NAV_CUSTOMIZATION,
     DANGER_ZONE
 }
 
@@ -1747,6 +1748,25 @@ fun BackupSettingsScreen(
                                 }
                             }
 
+                            if (matchSearch("bottom", "navigation", "nav", "bar", "tabs", "labels", "m3", "customization", "compact", "material")) {
+                                val navTabsCount = prefs.bottomNavVisibleTabs.split(",").filter { it.isNotBlank() }.size
+                                val densityLabel = when (prefs.bottomNavHeightMode) {
+                                    1 -> "Compact"
+                                    2 -> "Slim"
+                                    else -> "Standard M3"
+                                }
+                                SpotiSettingsItem(
+                                    icon = Icons.Default.ViewCarousel,
+                                    title = "Bottom Navigation Bar",
+                                    subtitle = "Fully customizable M3 tabs, labels, pills & height",
+                                    value = "$navTabsCount tabs • $densityLabel",
+                                    iconTint = Color(0xFF0EA5E9)
+                                ) {
+                                    triggerHapticFeedback(context, haptic)
+                                    currentCategory = StreamlinedCategory.BOTTOM_NAV_CUSTOMIZATION
+                                }
+                            }
+
                             if (matchSearch("notification", "controller", "status", "bar", "start", "stop", "alert", "download", "minimal")) {
                                 var persistentNotifActive by remember { mutableStateOf(prefs.persistentNotificationEnabled) }
                                 SpotiSettingsItem(
@@ -2834,6 +2854,494 @@ fun BackupSettingsScreen(
                     }
 
                     Spacer(modifier = Modifier.height(24.dp))
+                }
+            }
+
+            // =========================================================================
+            // 🧭 MATERIAL 3 BOTTOM NAVIGATION BAR CUSTOMIZATION SUB-SETTING SCREEN
+            // =========================================================================
+            StreamlinedCategory.BOTTOM_NAV_CUSTOMIZATION -> {
+                var visibleTabsState by remember { mutableStateOf(prefs.bottomNavVisibleTabs) }
+                var labelModeState by remember { mutableIntStateOf(prefs.bottomNavLabelMode) }
+                var heightModeState by remember { mutableIntStateOf(prefs.bottomNavHeightMode) }
+                var indicatorShapeState by remember { mutableIntStateOf(prefs.bottomNavIndicatorShape) }
+                var hapticState by remember { mutableStateOf(prefs.bottomNavHapticFeedback) }
+                var previewActiveTab by remember { mutableStateOf("HOME") }
+
+                val activeTabsList = remember(visibleTabsState) {
+                    visibleTabsState.split(",").map { it.trim() }.filter { it.isNotBlank() }
+                }
+
+                fun toggleNavTab(tabKey: String) {
+                    val currentList = visibleTabsState.split(",").map { it.trim() }.filter { it.isNotBlank() }.toMutableList()
+                    if (currentList.contains(tabKey)) {
+                        if (currentList.size <= 2) {
+                            Toast.makeText(context, "At least 2 tabs must remain visible", Toast.LENGTH_SHORT).show()
+                            return
+                        }
+                        currentList.remove(tabKey)
+                    } else {
+                        currentList.add(tabKey)
+                    }
+                    val newTabsStr = currentList.joinToString(",")
+                    visibleTabsState = newTabsStr
+                    prefs.bottomNavVisibleTabs = newTabsStr
+                    triggerHapticFeedback(context, haptic)
+                }
+
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(MaterialTheme.colorScheme.background)
+                        .verticalScroll(rememberScrollState())
+                        .padding(horizontal = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    SpotiSubpageHeader(
+                        title = "Bottom Navigation Bar",
+                        subtitle = "Customize tabs, labels, bar height & indicator shapes",
+                        onBack = {
+                            currentCategory = StreamlinedCategory.MAIN
+                        }
+                    )
+
+                    // 1. LIVE INTERACTIVE PREVIEW
+                    Text(
+                        "LIVE INTERACTIVE PREVIEW",
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, letterSpacing = 0.8.sp)
+                    )
+
+                    val previewIndicatorShape = when (indicatorShapeState) {
+                        1 -> RoundedCornerShape(10.dp)
+                        2 -> CircleShape
+                        3 -> RoundedCornerShape(4.dp)
+                        else -> RoundedCornerShape(16.dp)
+                    }
+
+                    val previewHeightDp = when (heightModeState) {
+                        1 -> 64.dp
+                        2 -> 54.dp
+                        else -> 80.dp
+                    }
+
+                    Surface(
+                        shape = RoundedCornerShape(20.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(12.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text(
+                                "Tap tabs below to preview active state",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.outline
+                            )
+                            Spacer(modifier = Modifier.height(10.dp))
+
+                            Surface(
+                                shape = RoundedCornerShape(16.dp),
+                                color = MaterialTheme.colorScheme.surfaceContainer,
+                                shadowElevation = 2.dp,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                NavigationBar(
+                                    containerColor = Color.Transparent,
+                                    tonalElevation = 0.dp,
+                                    modifier = Modifier.height(previewHeightDp)
+                                ) {
+                                    val previewColors = NavigationBarItemDefaults.colors(
+                                        indicatorColor = MaterialTheme.colorScheme.secondaryContainer,
+                                        selectedIconColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                                        selectedTextColor = MaterialTheme.colorScheme.onSurface,
+                                        unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+
+                                    val allAvailableTabs = listOf(
+                                        Triple("HOME", "Clean", Icons.Default.CleaningServices),
+                                        Triple("FILES", "Browse", Icons.Default.Folder),
+                                        Triple("DRIVE", "Drive", Icons.Default.CloudQueue),
+                                        Triple("MONTHLY_ARCHIVE", "Monthly", Icons.Default.CalendarMonth),
+                                        Triple("PROGRESS", "Progress", Icons.Default.HourglassTop),
+                                        Triple("SETTINGS", "Settings", Icons.Default.Settings)
+                                    )
+
+                                    val displayTabs = allAvailableTabs.filter { activeTabsList.contains(it.first) }
+
+                                    displayTabs.forEach { (key, label, icon) ->
+                                        val isSelected = previewActiveTab == key
+                                        val showLabel = when (labelModeState) {
+                                            0 -> true
+                                            1 -> isSelected
+                                            else -> false
+                                        }
+
+                                        NavigationBarItem(
+                                            selected = isSelected,
+                                            onClick = {
+                                                previewActiveTab = key
+                                                if (hapticState) triggerHapticFeedback(context, haptic)
+                                            },
+                                            icon = {
+                                                Icon(icon, contentDescription = label)
+                                            },
+                                            label = if (showLabel) {
+                                                { Text(label, style = MaterialTheme.typography.labelSmall.copy(fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium)) }
+                                            } else null,
+                                            alwaysShowLabel = labelModeState == 0,
+                                            colors = previewColors
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // 2. VISIBLE TABS SELECTION
+                    Text(
+                        "VISIBLE TABS (${activeTabsList.size} OF 6 ENABLED)",
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, letterSpacing = 0.8.sp)
+                    )
+
+                    Surface(
+                        shape = RoundedCornerShape(18.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.40f),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(vertical = 4.dp)) {
+                            val tabsConfig = listOf(
+                                Triple("HOME", "Clean (Dashboard)", "Storage cleaner, cache scanner & quick backups") to Icons.Default.CleaningServices,
+                                Triple("FILES", "Browse (Files)", "File explorer, recent media, Safe & Starred collections") to Icons.Default.Folder,
+                                Triple("DRIVE", "Cloud Drive", "Google Drive-style cloud folders, instant DB streaming") to Icons.Default.CloudQueue,
+                                Triple("MONTHLY_ARCHIVE", "Monthly Archive", "Timeline backup archives grouped by month & year") to Icons.Default.CalendarMonth,
+                                Triple("PROGRESS", "Upload Progress", "Live upload progress, chunk status & bot speed monitor") to Icons.Default.HourglassTop,
+                                Triple("SETTINGS", "Settings", "Full preferences, themes, bot fleet & security vault") to Icons.Default.Settings
+                            )
+
+                            tabsConfig.forEachIndexed { index, (tabInfo, icon) ->
+                                val (key, title, subtitle) = tabInfo
+                                val isEnabled = activeTabsList.contains(key)
+
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable { toggleNavTab(key) }
+                                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(38.dp)
+                                                .clip(CircleShape)
+                                                .background(if (isEnabled) TelegramBlue.copy(alpha = 0.15f) else Color.Gray.copy(alpha = 0.15f)),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(
+                                                imageVector = icon,
+                                                contentDescription = null,
+                                                tint = if (isEnabled) TelegramBlue else Color.Gray,
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                        }
+
+                                        Spacer(modifier = Modifier.width(12.dp))
+
+                                        Column {
+                                            Text(
+                                                text = title,
+                                                style = MaterialTheme.typography.bodyMedium.copy(
+                                                    fontWeight = if (isEnabled) FontWeight.Bold else FontWeight.Medium
+                                                )
+                                            )
+                                            Text(
+                                                text = subtitle,
+                                                style = MaterialTheme.typography.bodySmall.copy(color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                            )
+                                        }
+                                    }
+
+                                    Switch(
+                                        checked = isEnabled,
+                                        onCheckedChange = { toggleNavTab(key) },
+                                        colors = SwitchDefaults.colors(
+                                            checkedThumbColor = Color.White,
+                                            checkedTrackColor = TelegramBlue
+                                        )
+                                    )
+                                }
+
+                                if (index < tabsConfig.size - 1) {
+                                    HorizontalDivider(
+                                        modifier = Modifier.padding(horizontal = 16.dp),
+                                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // 3. LABEL DISPLAY STYLE
+                    Text(
+                        "LABEL DISPLAY STYLE",
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, letterSpacing = 0.8.sp)
+                    )
+
+                    Surface(
+                        shape = RoundedCornerShape(18.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.40f),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(vertical = 4.dp)) {
+                            val labelModes = listOf(
+                                Triple(0, "Always Show Labels", "Labels visible under all navigation icons (Standard M3)"),
+                                Triple(1, "Show on Active Tab Only", "Only the currently active tab displays its text label"),
+                                Triple(2, "Never Show Labels (Icons Only)", "Ultra-minimal icon-only navigation without text labels")
+                            )
+
+                            labelModes.forEachIndexed { index, (mode, title, desc) ->
+                                val isSelected = labelModeState == mode
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            labelModeState = mode
+                                            prefs.bottomNavLabelMode = mode
+                                            triggerHapticFeedback(context, haptic)
+                                        }
+                                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
+                                        Text(
+                                            title,
+                                            style = MaterialTheme.typography.bodyMedium.copy(
+                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                                color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                                            )
+                                        )
+                                        Text(
+                                            desc,
+                                            style = MaterialTheme.typography.bodySmall.copy(color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        )
+                                    }
+                                    RadioButton(
+                                        selected = isSelected,
+                                        onClick = {
+                                            labelModeState = mode
+                                            prefs.bottomNavLabelMode = mode
+                                            triggerHapticFeedback(context, haptic)
+                                        }
+                                    )
+                                }
+                                if (index < labelModes.size - 1) {
+                                    HorizontalDivider(
+                                        modifier = Modifier.padding(horizontal = 16.dp),
+                                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // 4. BAR DENSITY & HEIGHT
+                    Text(
+                        "BAR DENSITY & HEIGHT",
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, letterSpacing = 0.8.sp)
+                    )
+
+                    Surface(
+                        shape = RoundedCornerShape(18.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.40f),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(vertical = 4.dp)) {
+                            val heightModes = listOf(
+                                Triple(0, "Standard Material 3 (80dp)", "Default Google M3 spacing with full touch targets"),
+                                Triple(1, "Compact M3 (64dp)", "Reclaims 16dp of screen height while maintaining touch ergonomics"),
+                                Triple(2, "Ultra-Slim (54dp)", "Maximizes usable content area up to 88% of screen height")
+                            )
+
+                            heightModes.forEachIndexed { index, (mode, title, desc) ->
+                                val isSelected = heightModeState == mode
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            heightModeState = mode
+                                            prefs.bottomNavHeightMode = mode
+                                            triggerHapticFeedback(context, haptic)
+                                        }
+                                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
+                                        Text(
+                                            title,
+                                            style = MaterialTheme.typography.bodyMedium.copy(
+                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                                color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                                            )
+                                        )
+                                        Text(
+                                            desc,
+                                            style = MaterialTheme.typography.bodySmall.copy(color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        )
+                                    }
+                                    RadioButton(
+                                        selected = isSelected,
+                                        onClick = {
+                                            heightModeState = mode
+                                            prefs.bottomNavHeightMode = mode
+                                            triggerHapticFeedback(context, haptic)
+                                        }
+                                    )
+                                }
+                                if (index < heightModes.size - 1) {
+                                    HorizontalDivider(
+                                        modifier = Modifier.padding(horizontal = 16.dp),
+                                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // 5. ACTIVE TAB INDICATOR SHAPE
+                    Text(
+                        "ACTIVE TAB INDICATOR SHAPE",
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, letterSpacing = 0.8.sp)
+                    )
+
+                    Surface(
+                        shape = RoundedCornerShape(18.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.40f),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(vertical = 4.dp)) {
+                            val indicatorShapes = listOf(
+                                Triple(0, "Classic M3 Pill", "Rounded pill capsule with 16dp corners"),
+                                Triple(1, "Modern Squircle", "Gentle squircle with 10dp rounded corners"),
+                                Triple(2, "Full Oval Capsule", "Full circle/oval highlight wrapping icon"),
+                                Triple(3, "Minimal Underline Bar", "Clean compact minimal geometry")
+                            )
+
+                            indicatorShapes.forEachIndexed { index, (shapeId, title, desc) ->
+                                val isSelected = indicatorShapeState == shapeId
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            indicatorShapeState = shapeId
+                                            prefs.bottomNavIndicatorShape = shapeId
+                                            triggerHapticFeedback(context, haptic)
+                                        }
+                                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
+                                        Text(
+                                            title,
+                                            style = MaterialTheme.typography.bodyMedium.copy(
+                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                                color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                                            )
+                                        )
+                                        Text(
+                                            desc,
+                                            style = MaterialTheme.typography.bodySmall.copy(color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        )
+                                    }
+                                    RadioButton(
+                                        selected = isSelected,
+                                        onClick = {
+                                            indicatorShapeState = shapeId
+                                            prefs.bottomNavIndicatorShape = shapeId
+                                            triggerHapticFeedback(context, haptic)
+                                        }
+                                    )
+                                }
+                                if (index < indicatorShapes.size - 1) {
+                                    HorizontalDivider(
+                                        modifier = Modifier.padding(horizontal = 16.dp),
+                                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // 6. BEHAVIOR & HAPTICS
+                    Text(
+                        "BEHAVIOR & HAPTICS",
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, letterSpacing = 0.8.sp)
+                    )
+
+                    Surface(
+                        shape = RoundedCornerShape(18.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.40f),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
+                                    Text("Haptic Feedback on Navigation", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold))
+                                    Text("Subtle tactile vibration pulse when switching tabs", style = MaterialTheme.typography.bodySmall.copy(color = MaterialTheme.colorScheme.onSurfaceVariant))
+                                }
+                                Switch(
+                                    checked = hapticState,
+                                    onCheckedChange = {
+                                        hapticState = it
+                                        prefs.bottomNavHapticFeedback = it
+                                        if (it) triggerHapticFeedback(context, haptic)
+                                    },
+                                    colors = SwitchDefaults.colors(
+                                        checkedThumbColor = Color.White,
+                                        checkedTrackColor = TelegramBlue
+                                    )
+                                )
+                            }
+
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
+
+                            OutlinedButton(
+                                onClick = {
+                                    val defaultTabs = "HOME,FILES,DRIVE,SETTINGS"
+                                    visibleTabsState = defaultTabs
+                                    prefs.bottomNavVisibleTabs = defaultTabs
+                                    labelModeState = 0
+                                    prefs.bottomNavLabelMode = 0
+                                    heightModeState = 0
+                                    prefs.bottomNavHeightMode = 0
+                                    indicatorShapeState = 0
+                                    prefs.bottomNavIndicatorShape = 0
+                                    hapticState = true
+                                    prefs.bottomNavHapticFeedback = true
+                                    triggerHapticFeedback(context, haptic)
+                                    Toast.makeText(context, "✓ Reset Navigation Bar to M3 Defaults", Toast.LENGTH_SHORT).show()
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Reset to Material 3 Defaults", fontWeight = FontWeight.SemiBold)
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(28.dp))
                 }
             }
 

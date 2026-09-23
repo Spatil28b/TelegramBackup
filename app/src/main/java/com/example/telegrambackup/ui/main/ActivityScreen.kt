@@ -56,6 +56,7 @@ data class RealActivityFeedItem(
     val timestampStr: String,
     val type: ActivityType,
     val groupDate: String,
+    val rawTimestamp: Long = 0L,
     val filePath: String = ""
 )
 
@@ -132,6 +133,7 @@ fun ActivityScreen() {
                     timestampStr = timeStr,
                     type = actType,
                     groupDate = groupLabel,
+                    rawTimestamp = if (file.timestamp > 0) file.timestamp else System.currentTimeMillis(),
                     filePath = file.path
                 )
             )
@@ -157,25 +159,28 @@ fun ActivityScreen() {
                     timestampStr = timeStr,
                     type = ActivityType.DELETE,
                     groupDate = groupLabel,
+                    rawTimestamp = if (delTime > 0) delTime else System.currentTimeMillis(),
                     filePath = file.path
                 )
             )
         }
 
         // 3. System Encryption Key Backup log
+        val sysTimestamp = if (dbFiles.isNotEmpty()) dbFiles.first().timestamp - 60000L else System.currentTimeMillis() - 86400000L
         list.add(
             RealActivityFeedItem(
                 title = "Security Encryption Key",
                 detail = "AES-256 Master Key backed up to Cloud",
                 sizeStr = "256-bit • Locked",
-                timestampStr = "09:00 AM",
+                timestampStr = timeFormat.format(Date(sysTimestamp)),
                 type = ActivityType.SECURITY_KEY,
-                groupDate = "Today"
+                groupDate = if (dateFormat.format(Date(sysTimestamp)) == todayDateStr) "Today" else "Yesterday",
+                rawTimestamp = sysTimestamp
             )
         )
 
-        // Sort timeline descending by date group & items
-        list.sortedByDescending { it.timestampStr }
+        // Sort timeline strictly descending by real timestamp: newest events appear on top!
+        list.sortedByDescending { it.rawTimestamp }
     }
 
     val filteredFeed = remember(selectedFilterIndex, activityFeed) {

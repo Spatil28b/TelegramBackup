@@ -228,11 +228,17 @@ fun LiveProgressScreen() {
                             },
                             colors = ButtonDefaults.buttonColors(containerColor = TelegramBlue),
                             shape = CircleShape,
-                            modifier = Modifier.weight(1f).height(42.dp)
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                            modifier = Modifier.weight(1f).height(44.dp)
                         ) {
                             Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("Trigger Backup Now", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold))
+                            Text(
+                                "Backup Now",
+                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                                maxLines = 1,
+                                softWrap = false
+                            )
                         }
 
                         OutlinedButton(
@@ -243,7 +249,8 @@ fun LiveProgressScreen() {
                                 Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
                             },
                             shape = CircleShape,
-                            modifier = Modifier.weight(1f).height(42.dp)
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                            modifier = Modifier.weight(1f).height(44.dp)
                         ) {
                             Icon(
                                 imageVector = if (stopAllBackupsState) Icons.Default.PlayCircle else Icons.Default.PauseCircle,
@@ -252,7 +259,12 @@ fun LiveProgressScreen() {
                                 modifier = Modifier.size(16.dp)
                             )
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text(if (stopAllBackupsState) "Resume Backup" else "Pause Backup", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold))
+                            Text(
+                                if (stopAllBackupsState) "Resume" else "Pause",
+                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                                maxLines = 1,
+                                softWrap = false
+                            )
                         }
                     }
                 }

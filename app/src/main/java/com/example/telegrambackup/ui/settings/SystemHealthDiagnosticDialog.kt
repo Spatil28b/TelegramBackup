@@ -159,23 +159,35 @@ fun SystemHealthDiagnosticDialog(
 
     AlertDialog(
         onDismissRequest = { if (!isRunning) onDismiss() },
-        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)),
-        containerColor = Color(0xFF0F172A),
+        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(28.dp)),
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+        shape = RoundedCornerShape(28.dp),
         title = {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Default.HealthAndSafety, contentDescription = null, tint = TelegramEmerald, modifier = Modifier.size(28.dp))
                 Spacer(modifier = Modifier.width(10.dp))
-                Text("System Diagnostic Check", style = MaterialTheme.typography.titleMedium.copy(color = Color.White, fontWeight = FontWeight.Bold))
+                Text(
+                    "System Diagnostics",
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    ),
+                    maxLines = 1,
+                    softWrap = false
+                )
             }
         },
         text = {
             Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text("Real-time system health and network diagnostic tests:", style = MaterialTheme.typography.bodySmall.copy(color = Color.White.copy(alpha = 0.7f)))
+                Text(
+                    "Real-time system health and network diagnostic tests:",
+                    style = MaterialTheme.typography.bodySmall.copy(color = MaterialTheme.colorScheme.onSurfaceVariant)
+                )
 
                 listOf(botTokenResult, chatIdResult, backendLatencyResult, postgresDbResult, batteryPermResult).forEach { item ->
                     Card(
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
-                        shape = RoundedCornerShape(10.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)),
+                        shape = RoundedCornerShape(12.dp),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -191,8 +203,19 @@ fun SystemHealthDiagnosticDialog(
                             }
                             Spacer(modifier = Modifier.width(10.dp))
                             Column {
-                                Text(item.title, style = MaterialTheme.typography.bodySmall.copy(color = Color.White, fontWeight = FontWeight.Bold))
-                                Text(item.detail, style = MaterialTheme.typography.labelSmall.copy(color = Color.White.copy(alpha = 0.6f)))
+                                Text(
+                                    item.title,
+                                    style = MaterialTheme.typography.bodySmall.copy(
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                )
+                                Text(
+                                    item.detail,
+                                    style = MaterialTheme.typography.labelSmall.copy(
+                                        color = MaterialTheme.colorScheme.outline
+                                    )
+                                )
                             }
                         }
                     }
@@ -202,18 +225,25 @@ fun SystemHealthDiagnosticDialog(
         confirmButton = {
             Button(
                 onClick = { if (!isRunning) runDiagnostics() else onDismiss() },
-                colors = ButtonDefaults.buttonColors(containerColor = TelegramBlue)
+                colors = ButtonDefaults.buttonColors(containerColor = TelegramBlue),
+                shape = RoundedCornerShape(12.dp),
+                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp),
+                modifier = Modifier.height(40.dp)
             ) {
                 if (isRunning) {
-                    CircularProgressIndicator(modifier = Modifier.size(18.dp), color = Color.White, strokeWidth = 2.dp)
+                    CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.White, strokeWidth = 2.dp)
                 } else {
-                    Text("Re-Run Diagnostics", fontWeight = FontWeight.Bold)
+                    Text("Re-Run", fontWeight = FontWeight.Bold, fontSize = 13.sp, maxLines = 1, softWrap = false)
                 }
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Close", color = Color.White.copy(alpha = 0.7f))
+            TextButton(
+                onClick = onDismiss,
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+                modifier = Modifier.height(40.dp)
+            ) {
+                Text("Close", color = MaterialTheme.colorScheme.outline, maxLines = 1, softWrap = false)
             }
         }
     )

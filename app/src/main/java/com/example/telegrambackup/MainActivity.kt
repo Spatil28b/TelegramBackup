@@ -337,14 +337,6 @@ fun MainApp(
         }
     }
 
-    LaunchedEffect(selectedTab) {
-        scope.launch(Dispatchers.IO) {
-            try {
-                SettingsDbManager.restoreCloudFileIndexToRoom(context)
-            } catch (_: Exception) {}
-        }
-    }
-
     LaunchedEffect(activity.intent) {
         val navTab = activity.intent?.getStringExtra(com.example.telegrambackup.utils.AppNotificationHelper.EXTRA_NAVIGATE_TAB)
         if (!navTab.isNullOrBlank()) {
@@ -890,6 +882,8 @@ fun MainApp(
                                 }
                             }
                         }
+                    } else if ((selectedTab == MainTab.FILES && targetCategoryTitle != null) || selectedTab == MainTab.DRIVE) {
+                        // Do NOT render duplicate TopAppBar: BackupExplorerScreen & DriveExplorerScreen render their own dedicated, sleek M3 headers
                     } else {
                         TopAppBar(
                             title = {
@@ -965,9 +959,23 @@ fun MainApp(
                     }
                 },
                 bottomBar = {
+                    val visibleTabsKeys = remember(prefs.bottomNavVisibleTabs) {
+                        val parsed = prefs.bottomNavVisibleTabs.split(",").map { it.trim() }.filter { it.isNotBlank() }
+                        if (parsed.size >= 2) parsed else listOf("HOME", "FILES", "DRIVE", "MONTHLY_ARCHIVE", "SETTINGS")
+                    }
+
+                    val navHeight = when (prefs.bottomNavHeightMode) {
+                        1 -> 64.dp
+                        2 -> 54.dp
+                        else -> 80.dp
+                    }
+
+                    val labelMode = prefs.bottomNavLabelMode
+
                     NavigationBar(
                         containerColor = MaterialTheme.colorScheme.surfaceContainer,
-                        tonalElevation = 3.dp
+                        tonalElevation = 3.dp,
+                        modifier = Modifier.height(navHeight)
                     ) {
                         val navItemColors = NavigationBarItemDefaults.colors(
                             indicatorColor = MaterialTheme.colorScheme.secondaryContainer,
@@ -977,59 +985,43 @@ fun MainApp(
                             unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
                         )
 
-                        NavigationBarItem(
-                            selected = selectedTab == MainTab.HOME,
-                            onClick = {
-                                triggerHapticFeedback(context, haptic)
-                                targetCategoryTitle = null
-                                selectedTab = MainTab.HOME
-                            },
-                            icon = { Icon(Icons.Default.CleaningServices, contentDescription = "Clean") },
-                            label = { Text("Clean", style = MaterialTheme.typography.labelMedium.copy(fontWeight = if (selectedTab == MainTab.HOME) FontWeight.Bold else FontWeight.Medium)) },
-                            colors = navItemColors
+                        val allTabsConfig = listOf(
+                            Triple(MainTab.HOME, "Clean", Icons.Default.CleaningServices) to "HOME",
+                            Triple(MainTab.FILES, "Browse", Icons.Default.Folder) to "FILES",
+                            Triple(MainTab.DRIVE, "Drive", Icons.Default.CloudQueue) to "DRIVE",
+                            Triple(MainTab.MONTHLY_ARCHIVE, "Monthly", Icons.Default.CalendarMonth) to "MONTHLY_ARCHIVE",
+                            Triple(MainTab.PROGRESS, "Progress", Icons.Default.HourglassTop) to "PROGRESS",
+                            Triple(MainTab.SETTINGS, "Settings", Icons.Default.Settings) to "SETTINGS"
                         )
-                        NavigationBarItem(
-                            selected = selectedTab == MainTab.FILES,
-                            onClick = {
-                                triggerHapticFeedback(context, haptic)
-                                targetCategoryTitle = null
-                                selectedTab = MainTab.FILES
-                            },
-                            icon = { Icon(Icons.Default.Folder, contentDescription = "Browse") },
-                            label = { Text("Browse", style = MaterialTheme.typography.labelMedium.copy(fontWeight = if (selectedTab == MainTab.FILES) FontWeight.Bold else FontWeight.Medium)) },
-                            colors = navItemColors
-                        )
-                        NavigationBarItem(
-                            selected = selectedTab == MainTab.DRIVE,
-                            onClick = {
-                                triggerHapticFeedback(context, haptic)
-                                selectedTab = MainTab.DRIVE
-                            },
-                            icon = { Icon(Icons.Default.CloudQueue, contentDescription = "Drive") },
-                            label = { Text("Drive", style = MaterialTheme.typography.labelMedium.copy(fontWeight = if (selectedTab == MainTab.DRIVE) FontWeight.Bold else FontWeight.Medium)) },
-                            colors = navItemColors
-                        )
-                        NavigationBarItem(
-                            selected = selectedTab == MainTab.MONTHLY_ARCHIVE,
-                            onClick = {
-                                triggerHapticFeedback(context, haptic)
-                                targetCategoryTitle = null
-                                selectedTab = MainTab.MONTHLY_ARCHIVE
-                            },
-                            icon = { Icon(Icons.Default.CalendarMonth, contentDescription = "Monthly") },
-                            label = { Text("Monthly", style = MaterialTheme.typography.labelMedium.copy(fontWeight = if (selectedTab == MainTab.MONTHLY_ARCHIVE) FontWeight.Bold else FontWeight.Medium)) },
-                            colors = navItemColors
-                        )
-                        NavigationBarItem(
-                            selected = selectedTab == MainTab.SETTINGS,
-                            onClick = {
-                                triggerHapticFeedback(context, haptic)
-                                selectedTab = MainTab.SETTINGS
-                            },
-                            icon = { Icon(Icons.Default.Settings, contentDescription = "Settings") },
-                            label = { Text("Settings", style = MaterialTheme.typography.labelMedium.copy(fontWeight = if (selectedTab == MainTab.SETTINGS) FontWeight.Bold else FontWeight.Medium)) },
-                            colors = navItemColors
-                        )
+
+                        val activeTabsToDisplay = allTabsConfig.filter { visibleTabsKeys.contains(it.second) }
+
+                        activeTabsToDisplay.forEach { (tabData, _) ->
+                            val (tab, label, icon) = tabData
+                            val isSelected = selectedTab == tab
+                            val showLabel = when (labelMode) {
+                                0 -> true
+                                1 -> isSelected
+                                else -> false
+                            }
+
+                            NavigationBarItem(
+                                selected = isSelected,
+                                onClick = {
+                                    if (prefs.bottomNavHapticFeedback) {
+                                        triggerHapticFeedback(context, haptic)
+                                    }
+                                    targetCategoryTitle = null
+                                    selectedTab = tab
+                                },
+                                icon = { Icon(icon, contentDescription = label) },
+                                label = if (showLabel) {
+                                    { Text(label, style = MaterialTheme.typography.labelMedium.copy(fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium)) }
+                                } else null,
+                                alwaysShowLabel = labelMode == 0,
+                                colors = navItemColors
+                            )
+                        }
                     }
                 }
             ) { paddingValues ->
@@ -1065,7 +1057,11 @@ fun MainApp(
                             }
                         )
                         MainTab.DRIVE -> DriveExplorerScreen(
-                            externalSearchQuery = topSearchQuery
+                            externalSearchQuery = topSearchQuery,
+                            onMenuClick = {
+                                triggerHapticFeedback(context, haptic)
+                                scope.launch { drawerState.open() }
+                            }
                         )
                         MainTab.LOCAL -> LocalFilesScreen()
                         MainTab.PROGRESS -> LiveProgressScreen()

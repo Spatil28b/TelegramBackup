@@ -86,6 +86,7 @@ class ServerApi {
             val request = Request.Builder()
                 .url(ghRawUrl)
                 .header("Authorization", "Bearer $ghToken")
+                .header("Accept", "application/vnd.github.v3.raw")
                 .cacheControl(okhttp3.CacheControl.FORCE_NETWORK)
                 .build()
             val response = client.newCall(request).execute()
@@ -141,7 +142,20 @@ class ServerApi {
                     apkUrl = "https://github.com/sid-codes28/telegram_backup_backend/raw/main/Releases/TelegramBackup-latest.apk"
                 }
                 val parts = tagName.split(".").mapNotNull { it.toIntOrNull() }
-                val code = if (parts.size >= 3) parts[2] + 3 else 1
+                val code = if (parts.size >= 3) {
+                    val major = parts[0]
+                    val minor = parts[1]
+                    val patch = parts[2]
+                    if (major == 2 && minor == 1) {
+                        patch + 3
+                    } else if (major == 2 && minor >= 2) {
+                        103 + (minor - 2) * 10 + patch
+                    } else if (major > 2) {
+                        103 + 80 + (major - 3) * 100 + minor * 10 + patch
+                    } else {
+                        parts[2] + 3
+                    }
+                } else 104
                 candidates.add(
                     com.example.telegrambackup.ui.update.AppVersionInfo(
                         success = true,
@@ -156,9 +170,18 @@ class ServerApi {
             Log.e("ServerApi", "getLatestAppVersion GitHub Releases API error", e)
         }
 
-        // Return candidate with highest version code / SemVer
+        // Return candidate with highest semantic version, then highest version code
         if (candidates.isNotEmpty()) {
-            return@withContext candidates.maxByOrNull { it.versionCode } ?: candidates.first()
+            return@withContext candidates.maxWithOrNull(
+                Comparator { a, b ->
+                    val semCompare = when {
+                        com.example.telegrambackup.utils.SemVerUtils.isServerVersionNewer(a.versionName, b.versionName) -> 1
+                        com.example.telegrambackup.utils.SemVerUtils.isServerVersionNewer(b.versionName, a.versionName) -> -1
+                        else -> 0
+                    }
+                    if (semCompare != 0) semCompare else a.versionCode.compareTo(b.versionCode)
+                }
+            ) ?: candidates.first()
         }
 
         return@withContext com.example.telegrambackup.ui.update.AppVersionInfo(false, 1, "1.0.0", "", "")

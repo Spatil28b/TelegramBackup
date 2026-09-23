@@ -511,6 +511,56 @@ class AppPrefs(private val context: Context) {
     var biometricLockForSafe: Boolean
         get() = prefs.getBoolean("biometric_lock_for_safe", true)
         set(value) = prefs.edit().putBoolean("biometric_lock_for_safe", value).apply()
+
+    // =========================================================================
+    // 🎨 MATERIAL 3 BOTTOM NAVIGATION BAR CUSTOMIZATION PREFERENCES
+    // =========================================================================
+    // Enabled tabs in order. Comma-separated: "HOME,FILES,DRIVE,SETTINGS" (Modern M3 Default)
+    var bottomNavVisibleTabs: String
+        get() = prefs.getString("bottom_nav_visible_tabs", "HOME,FILES,DRIVE,SETTINGS") ?: "HOME,FILES,DRIVE,SETTINGS"
+        set(value) = prefs.edit().putString("bottom_nav_visible_tabs", value).apply()
+
+    // 0 = Always show labels, 1 = Show on active tab only, 2 = Never show labels (compact icon-only)
+    var bottomNavLabelMode: Int
+        get() = prefs.getInt("bottom_nav_label_mode", 0)
+        set(value) = prefs.edit().putInt("bottom_nav_label_mode", value).apply()
+
+    // 0 = Standard M3 (80dp), 1 = Compact M3 (64dp), 2 = Ultra-Slim (54dp)
+    var bottomNavHeightMode: Int
+        get() = prefs.getInt("bottom_nav_height_mode", 0)
+        set(value) = prefs.edit().putInt("bottom_nav_height_mode", value).apply()
+
+    // 0 = Classic Pill (16dp rounded), 1 = Squircle (10dp), 2 = Oval Capsule (CircleShape), 3 = Minimal Underline
+    var bottomNavIndicatorShape: Int
+        get() = prefs.getInt("bottom_nav_indicator_shape", 0)
+        set(value) = prefs.edit().putInt("bottom_nav_indicator_shape", value).apply()
+
+    // Enable tactile haptic response on navigation tab change
+    var bottomNavHapticFeedback: Boolean
+        get() = prefs.getBoolean("bottom_nav_haptic", true)
+        set(value) = prefs.edit().putBoolean("bottom_nav_haptic", value).apply()
+
+    // Dedicated Safe Folder Vault Files Set
+    var safeVaultFilePaths: Set<String>
+        get() = prefs.getStringSet("safe_vault_file_paths", emptySet()) ?: emptySet()
+        set(value) = prefs.edit().putStringSet("safe_vault_file_paths", value).apply()
+
+    fun toggleSafeVaultFile(filePath: String): Boolean {
+        val current = safeVaultFilePaths.toMutableSet()
+        val isNowSafe = if (current.contains(filePath)) {
+            current.remove(filePath)
+            false
+        } else {
+            current.add(filePath)
+            true
+        }
+        safeVaultFilePaths = current
+        return isNowSafe
+    }
+
+    fun isSafeVaultFile(filePath: String): Boolean {
+        return safeVaultFilePaths.contains(filePath)
+    }
 }
 
 enum class BackupFileType(

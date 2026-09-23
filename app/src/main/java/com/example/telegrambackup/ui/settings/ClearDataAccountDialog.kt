@@ -80,8 +80,9 @@ fun ClearDataAccountDialog(
 
     AlertDialog(
         onDismissRequest = { if (!isProcessing) onDismiss() },
-        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)),
-        containerColor = Color(0xFF0B1120),
+        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(28.dp)),
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+        shape = RoundedCornerShape(28.dp),
         title = {
             Column {
                 Row(
@@ -473,22 +474,36 @@ fun ClearDataAccountDialog(
                 enabled = !isProcessing && (selectedTab == 0 || confirmInput.trim().uppercase() == "DELETE"),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = if (selectedTab == 0) WarningAmber else DangerRed
-                )
+                ),
+                shape = RoundedCornerShape(12.dp),
+                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp),
+                modifier = Modifier.height(40.dp)
             ) {
                 if (isProcessing) {
-                    CircularProgressIndicator(modifier = Modifier.size(18.dp), color = Color.White, strokeWidth = 2.dp)
+                    CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.White, strokeWidth = 2.dp)
                 } else {
                     Text(
-                        if (selectedTab == 0) "Wipe Selected Data" else "Delete Account Permanently",
+                        if (selectedTab == 0) "Wipe Data" else "Delete Account",
                         fontWeight = FontWeight.Bold,
-                        color = Color.White
+                        color = Color.White,
+                        maxLines = 1,
+                        softWrap = false
                     )
                 }
             }
         },
         dismissButton = {
-            TextButton(onClick = { if (!isProcessing) onDismiss() }) {
-                Text("Cancel", color = Color.White.copy(alpha = 0.7f))
+            TextButton(
+                onClick = { if (!isProcessing) onDismiss() },
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+                modifier = Modifier.height(40.dp)
+            ) {
+                Text(
+                    "Cancel",
+                    color = Color.White.copy(alpha = 0.7f),
+                    maxLines = 1,
+                    softWrap = false
+                )
             }
         }
     )

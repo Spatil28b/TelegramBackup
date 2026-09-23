@@ -71,6 +71,8 @@ fun CloudRestoreWizardDialog(
 
     AlertDialog(
         onDismissRequest = { if (!isRestoring) onDismiss() },
+        shape = RoundedCornerShape(28.dp),
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
         title = {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(
@@ -235,18 +237,25 @@ fun CloudRestoreWizardDialog(
                     }
                 },
                 enabled = !isRestoring && filesToRestore.isNotEmpty(),
-                colors = ButtonDefaults.buttonColors(containerColor = TelegramEmerald)
+                colors = ButtonDefaults.buttonColors(containerColor = TelegramEmerald),
+                shape = RoundedCornerShape(12.dp),
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 0.dp),
+                modifier = Modifier.height(40.dp)
             ) {
                 if (isRestoring) {
-                    CircularProgressIndicator(modifier = Modifier.size(18.dp), color = Color.White, strokeWidth = 2.dp)
+                    CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.White, strokeWidth = 2.dp)
                 } else {
-                    Text("Start Restore", fontWeight = FontWeight.Bold)
+                    Text("Start Restore", fontWeight = FontWeight.Bold, fontSize = 13.sp, maxLines = 1, softWrap = false)
                 }
             }
         },
         dismissButton = {
-            TextButton(onClick = { if (!isRestoring) onDismiss() }) {
-                Text("Cancel", color = Color.White.copy(alpha = 0.7f))
+            TextButton(
+                onClick = { if (!isRestoring) onDismiss() },
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+                modifier = Modifier.height(40.dp)
+            ) {
+                Text("Cancel", color = MaterialTheme.colorScheme.outline, maxLines = 1, softWrap = false)
             }
         }
     )

@@ -26,6 +26,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import com.example.telegrambackup.theme.TelegramBlue
 import com.example.telegrambackup.theme.TelegramEmerald
@@ -122,6 +123,8 @@ fun PermissionSetupDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
+        shape = RoundedCornerShape(28.dp),
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
         icon = {
             Box(
                 modifier = Modifier
@@ -221,17 +224,31 @@ fun PermissionSetupDialog(
                     }
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = TelegramBlue),
-                modifier = Modifier.fillMaxWidth()
+                shape = RoundedCornerShape(12.dp),
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 0.dp),
+                modifier = Modifier.fillMaxWidth().height(42.dp)
             ) {
-                Text("Continue to Cloud Backup", fontWeight = FontWeight.Bold)
+                Text(
+                    "Continue to Cloud Backup",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 13.sp,
+                    maxLines = 1,
+                    softWrap = false
+                )
             }
         },
         dismissButton = {
             TextButton(
                 onClick = onDismiss,
-                modifier = Modifier.fillMaxWidth()
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+                modifier = Modifier.fillMaxWidth().height(36.dp)
             ) {
-                Text("Skip for Now", style = MaterialTheme.typography.labelSmall)
+                Text(
+                    "Skip for Now",
+                    style = MaterialTheme.typography.labelMedium.copy(color = MaterialTheme.colorScheme.outline),
+                    maxLines = 1,
+                    softWrap = false
+                )
             }
         }
     )

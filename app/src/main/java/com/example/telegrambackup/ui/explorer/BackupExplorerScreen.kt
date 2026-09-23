@@ -5,8 +5,12 @@ import android.os.Build
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
+import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import com.example.telegrambackup.utils.DriveUploadManager
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -243,6 +247,28 @@ fun BackupExplorerScreen(
         refreshCloudData()
     }
 
+    val personalFileUploadLauncher = rememberLauncherForActivityResult(contract = ActivityResultContracts.GetMultipleContents()) { uris: List<Uri> ->
+        if (uris.isNotEmpty()) {
+            Toast.makeText(context, "⚡ Uploading ${uris.size} files in parallel...", Toast.LENGTH_SHORT).show()
+            DriveUploadManager.enqueuePersonalFiles(context, uris, currentFolderDirectoryPath) {
+                refreshCloudData()
+            }
+        }
+    }
+
+    val safeFolderUploadLauncher = rememberLauncherForActivityResult(contract = ActivityResultContracts.GetMultipleContents()) { uris: List<Uri> ->
+        if (uris.isNotEmpty()) {
+            Toast.makeText(context, "🔒 Adding ${uris.size} files to Safe Folder...", Toast.LENGTH_SHORT).show()
+            DriveUploadManager.enqueuePersonalFiles(context, uris, "Internal Storage/Private Safe Vault") {
+                uris.forEach { u ->
+                    val path = u.path ?: u.toString()
+                    prefs.toggleSafeVaultFile(path)
+                }
+                refreshCloudData()
+            }
+        }
+    }
+
     if (actionMenuFile != null) {
         FileActionMenuModal(
             file = actionMenuFile!!,
@@ -293,6 +319,9 @@ fun BackupExplorerScreen(
     }
 
     fun isFileMatchingCategory(f: UploadedFile, title: String): Boolean {
+        if (title != "Safe folder" && title != "Safe Folder" && title != "Private Safe Vault" && prefs.isSafeVaultFile(f.path)) {
+            return false
+        }
         val name = f.fileName.lowercase()
         val path = f.path.lowercase()
         return when (title) {
@@ -303,8 +332,9 @@ fun BackupExplorerScreen(
             "Downloads" -> path.contains("download") || name.contains("download")
             "Apps", "APKs" -> name.endsWith(".apk") || name.endsWith(".xapk")
             "Archives" -> name.endsWith(".zip") || name.endsWith(".rar") || name.endsWith(".7z") || name.endsWith(".tar") || name.endsWith(".gz") || name.endsWith(".bz2")
-            "Starred" -> prefs.isFileStarred(f.path)
-            else -> true
+            "Starred" -> prefs.isFileStarred(f.path) && !prefs.isSafeVaultFile(f.path)
+            "Safe folder", "Safe Folder", "Private Safe Vault" -> prefs.isSafeVaultFile(f.path) || f.path.contains("Safe") || f.path.contains(".private")
+            else -> !prefs.isSafeVaultFile(f.path)
         }
     }
 
@@ -321,16 +351,32 @@ fun BackupExplorerScreen(
         } else if (localSearchQuery.isNotEmpty()) {
             localSearchQuery = ""
         } else if (selectedCategoryTitle != null) {
+            val wasSafe = selectedCategoryTitle == "Safe folder" || selectedCategoryTitle == "Safe Folder"
             selectedCategoryTitle = null
             onCategorySelected(null)
             onBackToCategories()
+            if (wasSafe) {
+                Toast.makeText(context, "🔒 Safe Folder locked", Toast.LENGTH_SHORT).show()
+            }
         } else if (folderPathHistory.size > 1) {
+            val wasSafe = currentFolderDirectoryPath == "Internal Storage/Private Safe Vault"
             folderPathHistory.removeAt(folderPathHistory.size - 1)
             currentFolderDirectoryPath = folderPathHistory.last()
+            if (currentFolderDirectoryPath == "Internal Storage") {
+                onCategorySelected(null)
+            }
+            if (wasSafe) {
+                Toast.makeText(context, "🔒 Safe Folder locked", Toast.LENGTH_SHORT).show()
+            }
         } else if (currentFolderDirectoryPath != "Internal Storage") {
+            val wasSafe = currentFolderDirectoryPath == "Internal Storage/Private Safe Vault"
             currentFolderDirectoryPath = "Internal Storage"
             folderPathHistory.clear()
             folderPathHistory.add("Internal Storage")
+            onCategorySelected(null)
+            if (wasSafe) {
+                Toast.makeText(context, "🔒 Safe Folder locked", Toast.LENGTH_SHORT).show()
+            }
         }
     }
 
@@ -485,16 +531,21 @@ fun BackupExplorerScreen(
         } else if (selectedCategoryTitle != null) {
             val title = selectedCategoryTitle!!
             if (title == "All Files") {
-                cloudFileList
+                cloudFileList.filter { !prefs.isSafeVaultFile(it.path) }
+            } else if (title == "Safe folder" || title == "Safe Folder" || title == "Private Safe Vault") {
+                cloudFileList.filter { prefs.isSafeVaultFile(it.path) || it.path.contains("Safe") || it.path.contains(".private") }
+            } else if (title == "Starred") {
+                cloudFileList.filter { prefs.isFileStarred(it.path) && !prefs.isSafeVaultFile(it.path) }
             } else {
-                cloudFileList.filter { f -> isFileMatchingCategory(f, title) }
+                cloudFileList.filter { f -> isFileMatchingCategory(f, title) && !prefs.isSafeVaultFile(f.path) }
             }
         } else if (currentFolderDirectoryPath == "Internal Storage/Private Safe Vault") {
-            cloudFileList.filter { it.path.contains("Safe") || it.path.contains("Vault") || it.path.contains(".private") || prefs.isFileStarred(it.path) }
+            cloudFileList.filter { prefs.isSafeVaultFile(it.path) || it.path.contains("Safe") || it.path.contains(".private") }
         } else if (currentFolderDirectoryPath == "Internal Storage/Phone Folders" || currentFolderDirectoryPath == "Internal Storage") {
-            cloudFileList
+            cloudFileList.filter { !prefs.isSafeVaultFile(it.path) }
         } else {
             cloudFileList.filter { f ->
+                if (prefs.isSafeVaultFile(f.path)) return@filter false
                 val norm = normalizePath(f.path)
                 val parent = File(norm).parent ?: "Internal Storage"
                 parent.replace("\\", "/") == currentFolderDirectoryPath || norm.startsWith(currentFolderDirectoryPath)
@@ -779,7 +830,7 @@ fun BackupExplorerScreen(
                         Spacer(modifier = Modifier.height(2.dp))
                         GoogleCollectionItemCard(
                             title = "Starred",
-                            subtitle = "${prefs.starredFilePaths.size} files",
+                            subtitle = "${cloudFileList.count { prefs.isFileStarred(it.path) && !prefs.isSafeVaultFile(it.path) }} files",
                             icon = Icons.Default.Star,
                             iconTint = Color(0xFFF59E0B),
                             iconBg = Color(0xFFFEF3C7),
@@ -791,7 +842,7 @@ fun BackupExplorerScreen(
                         )
                         GoogleCollectionItemCard(
                             title = "Safe folder",
-                            subtitle = "PIN or fingerprint protected",
+                            subtitle = "${cloudFileList.count { prefs.isSafeVaultFile(it.path) }} files • PIN/Biometric",
                             icon = Icons.Default.Lock,
                             iconTint = TelegramBlue,
                             iconBg = TelegramBlue.copy(alpha = 0.12f),
@@ -804,16 +855,20 @@ fun BackupExplorerScreen(
                                         title = "Unlock Safe Folder",
                                         subtitle = "Verify your identity to access private safe",
                                         onSuccess = {
+                                            selectedCategoryTitle = "Safe folder"
                                             currentFolderDirectoryPath = "Internal Storage/Private Safe Vault"
                                             folderPathHistory.add("Internal Storage/Private Safe Vault")
+                                            onCategorySelected("Safe folder")
                                         },
                                         onError = { err ->
                                             Toast.makeText(context, "Authentication failed: $err", Toast.LENGTH_SHORT).show()
                                         }
                                     )
                                 } else {
+                                    selectedCategoryTitle = "Safe folder"
                                     currentFolderDirectoryPath = "Internal Storage/Private Safe Vault"
                                     folderPathHistory.add("Internal Storage/Private Safe Vault")
+                                    onCategorySelected("Safe folder")
                                 }
                             }
                         )
@@ -1057,6 +1112,8 @@ fun BackupExplorerScreen(
             }
         } else {
             val titleText = if (isSearching) "Search: \"$effectiveSearchQuery\"" else (selectedCategoryTitle ?: File(currentFolderDirectoryPath).name)
+            val isSafeVault = selectedCategoryTitle == "Safe folder" || selectedCategoryTitle == "Safe Folder" || currentFolderDirectoryPath == "Internal Storage/Private Safe Vault"
+            val isStarred = selectedCategoryTitle == "Starred"
 
             Box(modifier = Modifier.fillMaxSize()) {
                 Column(
@@ -1067,111 +1124,204 @@ fun BackupExplorerScreen(
                     Spacer(modifier = Modifier.height(8.dp))
 
                     Surface(
-                        shape = RoundedCornerShape(20.dp),
+                        shape = RoundedCornerShape(16.dp),
                         color = MaterialTheme.colorScheme.surfaceContainerLow,
                         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Column(modifier = Modifier.padding(12.dp)) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 8.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                                IconButton(
+                                    onClick = {
+                                        triggerHapticFeedback(context, haptic)
+                                        if (localSearchQuery.isNotEmpty()) {
+                                            localSearchQuery = ""
+                                        } else if (selectedCategoryTitle != null) {
+                                            val wasSafe = selectedCategoryTitle == "Safe folder" || selectedCategoryTitle == "Safe Folder"
+                                            selectedCategoryTitle = null
+                                            onCategorySelected(null)
+                                            onBackToCategories()
+                                            if (wasSafe) {
+                                                Toast.makeText(context, "🔒 Safe Folder locked", Toast.LENGTH_SHORT).show()
+                                            }
+                                        } else if (folderPathHistory.size > 1) {
+                                            val wasSafe = currentFolderDirectoryPath == "Internal Storage/Private Safe Vault"
+                                            folderPathHistory.removeAt(folderPathHistory.size - 1)
+                                            currentFolderDirectoryPath = folderPathHistory.last()
+                                            if (currentFolderDirectoryPath == "Internal Storage") {
+                                                onCategorySelected(null)
+                                            }
+                                            if (wasSafe) {
+                                                Toast.makeText(context, "🔒 Safe Folder locked", Toast.LENGTH_SHORT).show()
+                                            }
+                                        } else {
+                                            val wasSafe = currentFolderDirectoryPath == "Internal Storage/Private Safe Vault"
+                                            currentFolderDirectoryPath = "Internal Storage"
+                                            folderPathHistory.clear()
+                                            folderPathHistory.add("Internal Storage")
+                                            onCategorySelected(null)
+                                            if (wasSafe) {
+                                                Toast.makeText(context, "🔒 Safe Folder locked", Toast.LENGTH_SHORT).show()
+                                            }
+                                        }
+                                    },
+                                    modifier = Modifier.size(36.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                        contentDescription = "Back",
+                                        tint = TelegramBlue,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+
+                                Spacer(modifier = Modifier.width(6.dp))
+
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        if (isSafeVault) {
+                                            Icon(Icons.Default.Lock, contentDescription = null, tint = TelegramBlue, modifier = Modifier.size(16.dp))
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                        } else if (isStarred) {
+                                            Icon(Icons.Default.Star, contentDescription = null, tint = Color(0xFFF59E0B), modifier = Modifier.size(16.dp))
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                        }
+                                        Text(
+                                            text = if (isSafeVault) "Safe folder" else if (isStarred) "Starred" else titleText,
+                                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                    Text(
+                                        text = "${activeDisplayFiles.size} items" + if (isSafeVault) " • Protected" else "",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.outline
+                                    )
+                                }
+                            }
+
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                                if (isSafeVault) {
                                     IconButton(
                                         onClick = {
                                             triggerHapticFeedback(context, haptic)
-                                            if (localSearchQuery.isNotEmpty()) {
-                                                localSearchQuery = ""
-                                            } else if (selectedCategoryTitle != null) {
-                                                selectedCategoryTitle = null
-                                                onCategorySelected(null)
-                                            } else if (folderPathHistory.size > 1) {
-                                                folderPathHistory.removeAt(folderPathHistory.size - 1)
-                                                currentFolderDirectoryPath = folderPathHistory.last()
-                                            } else {
-                                                currentFolderDirectoryPath = "Internal Storage"
-                                                folderPathHistory.clear()
-                                                folderPathHistory.add("Internal Storage")
-                                            }
+                                            selectedCategoryTitle = null
+                                            currentFolderDirectoryPath = "Internal Storage"
+                                            folderPathHistory.clear()
+                                            folderPathHistory.add("Internal Storage")
+                                            onCategorySelected(null)
+                                            onBackToCategories()
+                                            Toast.makeText(context, "🔒 Safe Folder locked", Toast.LENGTH_SHORT).show()
                                         },
                                         modifier = Modifier.size(36.dp)
                                     ) {
                                         Icon(
-                                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                            contentDescription = "Back",
+                                            imageVector = Icons.Default.LockReset,
+                                            contentDescription = "Lock Safe Folder",
                                             tint = TelegramBlue,
                                             modifier = Modifier.size(20.dp)
                                         )
                                     }
+                                }
 
-                                    Spacer(modifier = Modifier.width(6.dp))
-
-                                    Column {
-                                        Text(titleText, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold), maxLines = 1)
-                                        Text("${activeDisplayFiles.size} items", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
-                                    }
-                                }                   }
-
-                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                    FilterChip(
-                                        selected = sortOption == FileSortOption.DATE,
-                                        onClick = { triggerHapticFeedback(context, haptic); sortOption = FileSortOption.DATE },
-                                        label = { Text("Date", style = MaterialTheme.typography.labelSmall) }
-                                    )
-                                    FilterChip(
-                                        selected = sortOption == FileSortOption.NAME,
-                                        onClick = { triggerHapticFeedback(context, haptic); sortOption = FileSortOption.NAME },
-                                        label = { Text("Name", style = MaterialTheme.typography.labelSmall) }
-                                    )
-                                    FilterChip(
-                                        selected = sortOption == FileSortOption.SIZE,
-                                        onClick = { triggerHapticFeedback(context, haptic); sortOption = FileSortOption.SIZE },
-                                        label = { Text("Size", style = MaterialTheme.typography.labelSmall) }
-                                    )
-
+                                var showSortDropdown by remember { mutableStateOf(false) }
+                                Box {
                                     IconButton(
                                         onClick = {
                                             triggerHapticFeedback(context, haptic)
-                                            val folName = selectedCategoryTitle ?: File(currentFolderDirectoryPath).name
-                                            scope.launch {
-                                                Toast.makeText(context, "📦 Compressing '$folName' into ZIP archive...", Toast.LENGTH_SHORT).show()
-                                                val filesInFol = activeDisplayFiles
-                                                val zip = FolderZipDownloader.downloadFolderAsZip(context, folName, filesInFol) { _, _, _ -> }
-                                                withContext(Dispatchers.Main) {
-                                                    if (zip != null) {
-                                                        Toast.makeText(context, "✓ Saved ${zip.name} in Downloads/TelegramBackup_Zips!", Toast.LENGTH_LONG).show()
-                                                    } else {
-                                                        Toast.makeText(context, "Could not create ZIP", Toast.LENGTH_SHORT).show()
-                                                    }
+                                            showSortDropdown = true
+                                        },
+                                        modifier = Modifier.size(36.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Sort,
+                                            contentDescription = "Sort",
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
+                                    DropdownMenu(
+                                        expanded = showSortDropdown,
+                                        onDismissRequest = { showSortDropdown = false }
+                                    ) {
+                                        DropdownMenuItem(
+                                            text = { Text("Date" + if (sortOption == FileSortOption.DATE) " ✓" else "") },
+                                            onClick = {
+                                                triggerHapticFeedback(context, haptic)
+                                                sortOption = FileSortOption.DATE
+                                                showSortDropdown = false
+                                            }
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text("Name" + if (sortOption == FileSortOption.NAME) " ✓" else "") },
+                                            onClick = {
+                                                triggerHapticFeedback(context, haptic)
+                                                sortOption = FileSortOption.NAME
+                                                showSortDropdown = false
+                                            }
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text("Size" + if (sortOption == FileSortOption.SIZE) " ✓" else "") },
+                                            onClick = {
+                                                triggerHapticFeedback(context, haptic)
+                                                sortOption = FileSortOption.SIZE
+                                                showSortDropdown = false
+                                            }
+                                        )
+                                    }
+                                }
+
+                                IconButton(
+                                    onClick = {
+                                        triggerHapticFeedback(context, haptic)
+                                        val folName = selectedCategoryTitle ?: File(currentFolderDirectoryPath).name
+                                        scope.launch {
+                                            Toast.makeText(context, "📦 Compressing '$folName' into ZIP archive...", Toast.LENGTH_SHORT).show()
+                                            val filesInFol = activeDisplayFiles
+                                            val zip = FolderZipDownloader.downloadFolderAsZip(context, folName, filesInFol) { _, _, _ -> }
+                                            withContext(Dispatchers.Main) {
+                                                if (zip != null) {
+                                                    Toast.makeText(context, "✓ Saved ${zip.name} in Downloads/TelegramBackup_Zips!", Toast.LENGTH_LONG).show()
+                                                } else {
+                                                    Toast.makeText(context, "Could not create ZIP", Toast.LENGTH_SHORT).show()
                                                 }
                                             }
                                         }
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Archive,
-                                            contentDescription = "Download as ZIP",
-                                            tint = TelegramEmerald
-                                        )
-                                    }
+                                    },
+                                    modifier = Modifier.size(36.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Archive,
+                                        contentDescription = "Download as ZIP",
+                                        tint = TelegramEmerald,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
 
-                                    IconButton(
-                                        onClick = {
-                                            triggerHapticFeedback(context, haptic)
-                                            selectedViewMode = (selectedViewMode + 1) % 3
-                                        }
-                                    ) {
-                                        Icon(
-                                            imageVector = when (selectedViewMode) {
-                                                0 -> Icons.Default.GridView
-                                                1 -> Icons.Default.GridOn
-                                                else -> Icons.AutoMirrored.Filled.List
-                                            },
-                                            contentDescription = "Toggle View Mode",
-                                            tint = TelegramBlue
-                                        )
-                                    }
+                                IconButton(
+                                    onClick = {
+                                        triggerHapticFeedback(context, haptic)
+                                        selectedViewMode = (selectedViewMode + 1) % 3
+                                    },
+                                    modifier = Modifier.size(36.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = when (selectedViewMode) {
+                                            0 -> Icons.Default.GridView
+                                            1 -> Icons.Default.GridOn
+                                            else -> Icons.AutoMirrored.Filled.List
+                                        },
+                                        contentDescription = "Toggle View Mode",
+                                        tint = TelegramBlue,
+                                        modifier = Modifier.size(20.dp)
+                                    )
                                 }
                             }
                         }
@@ -1332,8 +1482,12 @@ fun BackupExplorerScreen(
                                         },
                                         onLongClick = {
                                             triggerHapticFeedback(context, haptic)
-                                            isSelectionModeActive = true
-                                            if (!isSelected) selectedFilesList.add(cloudFile)
+                                            if (isSelectionModeActive || selectedFilesList.isNotEmpty()) {
+                                                isSelectionModeActive = true
+                                                if (!isSelected) selectedFilesList.add(cloudFile)
+                                            } else {
+                                                actionMenuFile = cloudFile
+                                            }
                                         },
                                         onMoreOptions = {
                                             triggerHapticFeedback(context, haptic)
@@ -1378,8 +1532,12 @@ fun BackupExplorerScreen(
                                         },
                                         onLongClick = {
                                             triggerHapticFeedback(context, haptic)
-                                            isSelectionModeActive = true
-                                            if (!isSelected) selectedFilesList.add(cloudFile)
+                                            if (isSelectionModeActive || selectedFilesList.isNotEmpty()) {
+                                                isSelectionModeActive = true
+                                                if (!isSelected) selectedFilesList.add(cloudFile)
+                                            } else {
+                                                actionMenuFile = cloudFile
+                                            }
                                         },
                                         onMoreOptions = {
                                             triggerHapticFeedback(context, haptic)
@@ -1391,9 +1549,36 @@ fun BackupExplorerScreen(
                         }
                     }
                 }
+
+                if (!isSelectionModeActive && selectedFilesList.isEmpty()) {
+                    FloatingActionButton(
+                        onClick = {
+                            triggerHapticFeedback(context, haptic)
+                            if (isSafeVault) {
+                                safeFolderUploadLauncher.launch("*/*")
+                            } else {
+                                personalFileUploadLauncher.launch("*/*")
+                            }
+                        },
+                        containerColor = TelegramBlue,
+                        contentColor = Color.White,
+                        shape = CircleShape,
+                        elevation = FloatingActionButtonDefaults.elevation(4.dp),
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .padding(bottom = 20.dp, end = 16.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Add,
+                            contentDescription = if (isSafeVault) "Add to Safe Folder" else "Upload Files",
+                            modifier = Modifier.size(26.dp)
+                        )
+                    }
+                }
             }
         }
     }
+}
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -1450,23 +1635,6 @@ private fun GridCloudMediaCard(
                             Icon(Icons.Default.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(12.dp))
                         }
                     }
-                } else {
-                    IconButton(
-                        onClick = onMoreOptions,
-                        modifier = Modifier
-                            .padding(4.dp)
-                            .size(26.dp)
-                            .align(Alignment.TopEnd)
-                            .clip(CircleShape)
-                            .background(Color.Black.copy(alpha = 0.45f))
-                    ) {
-                        Icon(
-                            Icons.Default.MoreVert,
-                            contentDescription = "Options",
-                            tint = Color.White,
-                            modifier = Modifier.size(16.dp)
-                        )
-                    }
                 }
             }
 
@@ -1474,19 +1642,39 @@ private fun GridCloudMediaCard(
                 color = MaterialTheme.colorScheme.surfaceContainer,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Column(modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp)) {
-                    Text(
-                        text = cloudFile.fileName,
-                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    Text(
-                        text = formatFileSize(cloudFile.size),
-                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-                        color = MaterialTheme.colorScheme.outline
-                    )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 6.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = cloudFile.fileName,
+                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = formatFileSize(cloudFile.size),
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                            color = MaterialTheme.colorScheme.outline
+                        )
+                    }
+
+                    IconButton(
+                        onClick = onMoreOptions,
+                        modifier = Modifier.size(22.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.MoreVert,
+                            contentDescription = "Options",
+                            tint = MaterialTheme.colorScheme.outline,
+                            modifier = Modifier.size(14.dp)
+                        )
+                    }
                 }
             }
         }

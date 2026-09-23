@@ -27,6 +27,92 @@ object VersionChangelogProvider {
 
     private val releases = listOf(
         VersionRelease(
+            versionName = "2.2.1",
+            versionCode = 104,
+            releaseDate = "September 2026",
+            highlights = "Modern M3 Navigation by Default, Zero-Lag Tab Switching, Chronological Activity Log, M3 Dialog Polish & Modern Notifications",
+            entries = listOf(
+                ChangelogEntry(
+                    Icons.Default.Navigation,
+                    TelegramBlue,
+                    "Modern M3 Bottom Nav by Default",
+                    "Defaulted navigation bar to modern Google M3 4-tab layout (Clean, Browse, Drive, Settings) with fixed position stability and zero jumping.",
+                    "NAVBAR"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Speed,
+                    TelegramEmerald,
+                    "Instant Zero-Lag Tab Switching",
+                    "Eliminated 3-4 second lag and freezes when switching tabs by removing heavy synchronous cloud indexing on tab change.",
+                    "PERFORMANCE"
+                ),
+                ChangelogEntry(
+                    Icons.Default.History,
+                    Color(0xFF8B5CF6),
+                    "Newest First Activity Logs",
+                    "Activity feed now chronologically sorts uploads, deletions, and system events with real numeric timestamps so latest actions appear at the top.",
+                    "ACTIVITY"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Layers,
+                    Color(0xFFF59E0B),
+                    "Google M3 Minimal Dialogs",
+                    "Overhauled app popups with 28dp rounded corners, clutter-free content, past updates viewer, and eliminated awkward button text wrapping.",
+                    "UI/UX"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Notifications,
+                    TelegramBlue,
+                    "Modern Status Notifications",
+                    "Refreshed notification styling with Telegram Blue tint, BigTextStyle expansions, subtext status badges, and clean single-line action buttons.",
+                    "NOTIFICATIONS"
+                )
+            )
+        ),
+        VersionRelease(
+            versionName = "2.2.00",
+            versionCode = 103,
+            releaseDate = "September 2026",
+            highlights = "Safe Folder Vault Isolation, Customizable Bottom Navigation Bar, Material 3 Minimal FAB & 85%+ Content Viewport",
+            entries = listOf(
+                ChangelogEntry(
+                    Icons.Default.Lock,
+                    TelegramBlue,
+                    "Safe Folder Vault & Starred Separation",
+                    "Completely separated Safe Folder encrypted vault files from Starred favorites with biometric/PIN access, one-tap instant lock, and auto-lock on exit.",
+                    "SECURITY"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Navigation,
+                    TelegramEmerald,
+                    "Customizable Material 3 Bottom Nav",
+                    "Full settings subpage with live interactive preview to customize visible tabs, label visibility (Always, Selected, Never), density height (80dp, 64dp, 54dp), pill indicators, and haptic feedback.",
+                    "NEW"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Add,
+                    TelegramBlue,
+                    "Minimal Material 3 Circular FAB",
+                    "Replaced screen-hogging multi-pill speed dials with a sleek circular + FAB that opens a clean Material 3 modal bottom sheet for creating folders and uploading content.",
+                    "NEW"
+                ),
+                ChangelogEntry(
+                    Icons.Default.AspectRatio,
+                    Color(0xFF8B5CF6),
+                    "85%+ Usable Content Viewport",
+                    "Eliminated duplicate top app bars on drilldown, added collapsible 42dp storage stats pill saving ~140dp, and streamlined file headers into a compact 48dp single row.",
+                    "IMPROVEMENT"
+                ),
+                ChangelogEntry(
+                    Icons.Default.GridView,
+                    Color(0xFFF59E0B),
+                    "Clean Google Files Grid Previews",
+                    "Removed floating 3-dots badges covering photo/video thumbnails, replacing them with long-press action menu and unobtrusive metadata footer actions.",
+                    "UI"
+                )
+            )
+        ),
+        VersionRelease(
             versionName = "2.1.99",
             versionCode = 102,
             releaseDate = "September 2026",
