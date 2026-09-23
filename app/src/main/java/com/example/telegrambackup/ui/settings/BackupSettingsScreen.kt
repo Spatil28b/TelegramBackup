@@ -134,27 +134,33 @@ fun BackupSettingsScreen(
     var isRecoveryOtpSent by remember { mutableStateOf(false) }
 
     var userAvatarUri by remember {
-        mutableStateOf<Uri?>(if (prefs.profilePictureUri.isNotEmpty()) Uri.parse(prefs.profilePictureUri) else null)
+        mutableStateOf<Uri?>(com.example.telegrambackup.utils.ProfileManager.getAvatarUri(context))
     }
 
     val avatarPickerLauncher = rememberLauncherForActivityResult(contract = ActivityResultContracts.GetContent()) { uri: Uri? ->
         if (uri != null) {
-            try {
-                context.contentResolver.takePersistableUriPermission(
-                    uri, Intent.FLAG_GRANT_READ_URI_PERMISSION
-                )
-            } catch (_: Exception) {}
-            prefs.profilePictureUri = uri.toString()
-            userAvatarUri = uri
-            scope.launch {
-                SettingsDbManager.saveCategorySettings(
-                    context,
-                    "Profile Picture",
-                    mapOf("profile_picture_uri" to uri.toString()),
-                    showToast = false
-                )
+            val savedUri = com.example.telegrambackup.utils.ProfileManager.saveAvatarFromUri(context, uri)
+            if (savedUri != null) {
+                userAvatarUri = savedUri
+                prefs.profilePictureUri = savedUri.toString()
+                prefs.profileUpdatedAt = System.currentTimeMillis()
+                scope.launch {
+                    SettingsDbManager.saveCategorySettings(
+                        context,
+                        "Profile Picture",
+                        mapOf(
+                            "profile_picture_uri" to savedUri.toString(),
+                            "display_name" to userNameInput.trim()
+                        ),
+                        showToast = false
+                    )
+                    com.example.telegrambackup.utils.CloudProfileSyncManager.syncLocalConfigToCloud(context)
+                }
+                onNameUpdated(userNameInput.trim())
+                Toast.makeText(context, "✓ Profile Photo Saved & Synced!", Toast.LENGTH_SHORT).show()
+            } else {
+                Toast.makeText(context, "Failed to load selected photo", Toast.LENGTH_SHORT).show()
             }
-            Toast.makeText(context, "Profile Photo Saved to Database!", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -1001,9 +1007,12 @@ fun BackupSettingsScreen(
     fun saveAllSettings(silent: Boolean = false) {
         triggerHapticFeedback(context, haptic)
         // 1. Profile
-        prefs.displayName = userNameInput.trim()
+        val cleanName = userNameInput.trim().ifEmpty { "My Cloud Account" }
+        prefs.displayName = cleanName
         prefs.recoveryEmail = recoveryEmailInput.trim()
         if (userAvatarUri != null) prefs.profilePictureUri = userAvatarUri.toString()
+        prefs.profileUpdatedAt = System.currentTimeMillis()
+        onNameUpdated(cleanName)
 
         // 2. Telegram Credentials
         if (tempBotToken.isNotEmpty()) {
@@ -1051,8 +1060,9 @@ fun BackupSettingsScreen(
                 context,
                 "All Settings",
                 mapOf(
-                    "display_name" to userNameInput.trim(),
+                    "display_name" to cleanName,
                     "recovery_email" to recoveryEmailInput.trim(),
+                    "profile_picture_uri" to (userAvatarUri?.toString() ?: prefs.profilePictureUri),
                     "smart_backup_mode" to smartBackupMode.toString(),
                     "wifi_only" to backupOverWifi.toString(),
                     "app_theme" to selectedTheme.toString(),
@@ -1061,6 +1071,7 @@ fun BackupSettingsScreen(
                 ),
                 showToast = false
             )
+            com.example.telegrambackup.utils.CloudProfileSyncManager.syncLocalConfigToCloud(context)
         }
 
         if (!silent) {
@@ -1634,17 +1645,45 @@ fun BackupSettingsScreen(
                                 }
                                 Spacer(modifier = Modifier.width(16.dp))
                                 Column {
-                                    Button(
-                                        onClick = { avatarPickerLauncher.launch("image/*") },
-                                        colors = ButtonDefaults.buttonColors(containerColor = TelegramBlue),
-                                        shape = RoundedCornerShape(12.dp)
-                                    ) {
-                                        Icon(Icons.Default.PhotoCamera, contentDescription = null, modifier = Modifier.size(16.dp))
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Text("Change Photo")
+                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                        Button(
+                                            onClick = { avatarPickerLauncher.launch("image/*") },
+                                            colors = ButtonDefaults.buttonColors(containerColor = TelegramBlue),
+                                            shape = RoundedCornerShape(12.dp)
+                                        ) {
+                                            Icon(Icons.Default.PhotoCamera, contentDescription = null, modifier = Modifier.size(16.dp))
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text("Change Photo")
+                                        }
+
+                                        if (userAvatarUri != null) {
+                                            OutlinedButton(
+                                                onClick = {
+                                                    com.example.telegrambackup.utils.ProfileManager.removeAvatar(context)
+                                                    userAvatarUri = null
+                                                    prefs.profilePictureUri = ""
+                                                    prefs.profileUpdatedAt = System.currentTimeMillis()
+                                                    scope.launch {
+                                                        SettingsDbManager.saveCategorySettings(
+                                                            context,
+                                                            "Profile Picture",
+                                                            mapOf("profile_picture_uri" to ""),
+                                                            showToast = false
+                                                        )
+                                                        com.example.telegrambackup.utils.CloudProfileSyncManager.syncLocalConfigToCloud(context)
+                                                    }
+                                                    Toast.makeText(context, "Profile Photo Removed", Toast.LENGTH_SHORT).show()
+                                                },
+                                                shape = RoundedCornerShape(12.dp)
+                                            ) {
+                                                Icon(Icons.Default.DeleteOutline, contentDescription = null, modifier = Modifier.size(16.dp))
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Text("Remove")
+                                            }
+                                        }
                                     }
                                     Spacer(modifier = Modifier.height(4.dp))
-                                    Text("JPG, PNG or WEBP", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+                                    Text("JPG, PNG or WEBP (Saved to permanent storage)", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
                                 }
                             }
 
@@ -1656,6 +1695,36 @@ fun BackupSettingsScreen(
                                 shape = RoundedCornerShape(12.dp),
                                 modifier = Modifier.fillMaxWidth()
                             )
+
+                            Button(
+                                onClick = {
+                                    val trimmedName = userNameInput.trim().ifEmpty { "My Cloud Account" }
+                                    prefs.displayName = trimmedName
+                                    prefs.recoveryEmail = recoveryEmailInput.trim()
+                                    prefs.profileUpdatedAt = System.currentTimeMillis()
+                                    onNameUpdated(trimmedName)
+                                    scope.launch {
+                                        SettingsDbManager.saveCategorySettings(
+                                            context,
+                                            "Profile",
+                                            mapOf(
+                                                "display_name" to trimmedName,
+                                                "recovery_email" to recoveryEmailInput.trim(),
+                                                "profile_picture_uri" to (userAvatarUri?.toString() ?: prefs.profilePictureUri)
+                                            ),
+                                            showToast = true
+                                        )
+                                        com.example.telegrambackup.utils.CloudProfileSyncManager.syncLocalConfigToCloud(context)
+                                    }
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = TelegramBlue),
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier.fillMaxWidth().height(48.dp)
+                            ) {
+                                Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Save Profile Changes", fontWeight = FontWeight.Bold)
+                            }
 
                             Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surface, modifier = Modifier.fillMaxWidth()) {
                                 Row(modifier = Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {

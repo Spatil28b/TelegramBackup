@@ -60,8 +60,13 @@ object SettingsDbManager {
                     val settingsMap = savedSettings.associate { it.key to it.value }
 
                     settingsMap["recovery_email"]?.let { prefs.recoveryEmail = it }
-                    settingsMap["profile_picture_uri"]?.let { prefs.profilePictureUri = it }
-                    settingsMap["display_name"]?.let { prefs.displayName = it }
+                    settingsMap["profile_picture_uri"]?.takeIf { it.isNotBlank() }?.let { prefs.profilePictureUri = it }
+                    settingsMap["display_name"]?.takeIf { it.isNotBlank() }?.let { dbName ->
+                        val isCurrentDefault = prefs.displayName.isBlank() || prefs.displayName == "My Cloud Account"
+                        if (dbName != "My Cloud Account" || isCurrentDefault) {
+                            prefs.displayName = dbName
+                        }
+                    }
                     settingsMap["bot_token"]?.let { prefs.botToken = it }
                     settingsMap["chat_id"]?.let { prefs.chatId = it }
                     settingsMap["auto_backup_enabled"]?.let { prefs.autoBackupEnabled = it.toBoolean() }
@@ -214,8 +219,14 @@ object SettingsDbManager {
                 dao.saveSettings(entities)
 
                 // Sync keys to AppPrefs immediately
-                settingsMap["profile_picture_uri"]?.let { prefs.profilePictureUri = it }
-                settingsMap["display_name"]?.let { prefs.displayName = it }
+                settingsMap["profile_picture_uri"]?.let {
+                    prefs.profilePictureUri = it
+                    prefs.profileUpdatedAt = now
+                }
+                settingsMap["display_name"]?.let {
+                    prefs.displayName = it
+                    prefs.profileUpdatedAt = now
+                }
                 settingsMap["recovery_email"]?.let { prefs.recoveryEmail = it }
                 settingsMap["bot_token"]?.let { prefs.botToken = it }
                 settingsMap["chat_id"]?.let { prefs.chatId = it }

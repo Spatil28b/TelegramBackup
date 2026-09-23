@@ -47,6 +47,11 @@ object CloudProfileSyncManager {
             put("user_email", prefs.userEmail)
             put("recovery_email", prefs.recoveryEmail)
             put("profile_picture_uri", prefs.profilePictureUri)
+            put("profile_updated_at", prefs.profileUpdatedAt)
+            val avatarBase64 = ProfileManager.getAvatarBase64(context)
+            if (!avatarBase64.isNullOrBlank()) {
+                put("profile_avatar_base64", avatarBase64)
+            }
         }
         root.put("profile", profileJson)
 
@@ -147,10 +152,39 @@ object CloudProfileSyncManager {
             val prefs = AppPrefs(context)
             val db = AppDatabase.getDatabase(context)
 
-            // 1. Restore Profile
+            val manifestTimestamp = root.optLong("timestamp", 0L)
+
+            // 1. Restore Profile with Timestamp & Anti-Reset Checks
             root.optJSONObject("profile")?.let { prof ->
-                prof.optString("display_name", "").takeIf { it.isNotEmpty() }?.let { prefs.displayName = it }
-                prof.optString("profile_picture_uri", "").takeIf { it.isNotEmpty() }?.let { prefs.profilePictureUri = it }
+                val profileUpdatedAtCloud = prof.optLong("profile_updated_at", manifestTimestamp)
+                val localUpdatedAt = prefs.profileUpdatedAt
+                val isCloudNewer = profileUpdatedAtCloud >= localUpdatedAt
+
+                val cloudName = prof.optString("display_name", "").trim()
+                if (cloudName.isNotEmpty()) {
+                    val isCurrentDefault = prefs.displayName.isBlank() || prefs.displayName == "My Cloud Account"
+                    if ((isCloudNewer || isCurrentDefault) && (cloudName != "My Cloud Account" || isCurrentDefault)) {
+                        prefs.displayName = cloudName
+                    }
+                }
+
+                // Restore avatar Base64 if available
+                val avatarBase64 = prof.optString("profile_avatar_base64", "")
+                if (avatarBase64.isNotEmpty()) {
+                    val localAvatarFile = ProfileManager.getAvatarFile(context)
+                    if (!localAvatarFile.exists() || isCloudNewer) {
+                        ProfileManager.restoreAvatarFromBase64(context, avatarBase64)
+                    }
+                } else {
+                    val cloudUri = prof.optString("profile_picture_uri", "").trim()
+                    if (cloudUri.isNotEmpty()) {
+                        val localAvatarFile = ProfileManager.getAvatarFile(context)
+                        if (!localAvatarFile.exists() && isCloudNewer) {
+                            prefs.profilePictureUri = cloudUri
+                        }
+                    }
+                }
+
                 prof.optString("recovery_email", "").takeIf { it.isNotEmpty() }?.let { prefs.recoveryEmail = it }
                 prof.optString("user_email", "").takeIf { it.isNotEmpty() }?.let { prefs.userEmail = it }
             }

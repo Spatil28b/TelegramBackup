@@ -80,13 +80,29 @@ class AppPrefs(private val context: Context) {
             authPrefs.edit().putString("user_email", value).apply()
         }
 
+    var profileUpdatedAt: Long
+        get() = prefs.getLong("profile_updated_at", 0L)
+        set(value) = prefs.edit().putLong("profile_updated_at", value).apply()
+
     var profilePictureUri: String
-        get() = prefs.getString("profile_picture_uri", "") ?: ""
+        get() {
+            val file = java.io.File(context.filesDir, "user_profile_avatar.jpg")
+            if (file.exists() && file.length() > 0) {
+                return android.net.Uri.fromFile(file).toString()
+            }
+            return prefs.getString("profile_picture_uri", "") ?: ""
+        }
         set(value) = prefs.edit().putString("profile_picture_uri", value).apply()
 
     var displayName: String
-        get() = prefs.getString("display_name", "My Cloud Account") ?: "My Cloud Account"
-        set(value) = prefs.edit().putString("display_name", value).apply()
+        get() {
+            val stored = prefs.getString("display_name", "My Cloud Account") ?: "My Cloud Account"
+            return if (stored.isBlank()) "My Cloud Account" else stored
+        }
+        set(value) {
+            val cleaned = value.trim()
+            prefs.edit().putString("display_name", if (cleaned.isBlank()) "My Cloud Account" else cleaned).apply()
+        }
 
     var backupExceptions: Set<String>
         get() = prefs.getStringSet("backup_exceptions", emptySet()) ?: emptySet()

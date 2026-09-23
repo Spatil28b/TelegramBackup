@@ -191,6 +191,7 @@ fun MainApp(
     val database = remember { AppDatabase.getDatabase(context) }
     val liveUploadedFiles by database.uploadedFileDao().getAllFilesFlow().collectAsState(initial = emptyList())
     var displayUserName by remember(prefs.displayName) { mutableStateOf(prefs.displayName) }
+    var displayUserAvatarUri by remember { mutableStateOf(com.example.telegrambackup.utils.ProfileManager.getAvatarUri(context)?.toString() ?: prefs.profilePictureUri) }
     val userEmail = session.email.ifEmpty { "user@mybackup.cloud" }
 
     var appUpdateInfo by remember { mutableStateOf<com.example.telegrambackup.ui.update.AppVersionInfo?>(null) }
@@ -401,14 +402,15 @@ fun MainApp(
                 requestPermissionsDirectly()
             }
             displayUserName = prefs.displayName
+            displayUserAvatarUri = com.example.telegrambackup.utils.ProfileManager.getAvatarUri(context)?.toString() ?: prefs.profilePictureUri
             scope.launch(Dispatchers.IO) {
-                try { com.example.telegrambackup.utils.CloudProfileSyncManager.autoRestoreConfigFromCloud(context) } catch (_: Exception) {}
-                try { SettingsDbManager.restoreCloudFileIndexToRoom(context) } catch (_: Exception) {}
                 try { SettingsDbManager.fetchAndSyncSettingsOnAppOpen(context) } catch (_: Exception) {}
+                try { SettingsDbManager.restoreCloudFileIndexToRoom(context) } catch (_: Exception) {}
                 try { com.example.telegrambackup.network.BotFleetManager.ensureInitialized(context, force = true) } catch (_: Exception) {}
                 try { BackupProgressTracker.hydrateRecentCompleted(context) } catch (_: Exception) {}
                 withContext(Dispatchers.Main) {
                     displayUserName = prefs.displayName
+                    displayUserAvatarUri = com.example.telegrambackup.utils.ProfileManager.getAvatarUri(context)?.toString() ?: prefs.profilePictureUri
                 }
                 if (prefs.autoBackupEnabled && !prefs.stopAllBackups) {
                     try {
@@ -504,28 +506,57 @@ fun MainApp(
                     Spacer(modifier = Modifier.height(24.dp))
 
                     Row(
-                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp)
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(Color.White.copy(alpha = 0.06f))
+                            .clickable {
+                                triggerHapticFeedback(context, haptic)
+                                selectedTab = MainTab.PROFILE
+                                scope.launch { drawerState.close() }
+                            }
+                            .padding(12.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Box(
                             modifier = Modifier
-                                .size(44.dp)
+                                .size(46.dp)
                                 .clip(CircleShape)
-                                .background(TelegramBlue.copy(alpha = 0.25f)),
+                                .background(TelegramBlue),
                             contentAlignment = Alignment.Center
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.CloudQueue,
-                                contentDescription = "Logo",
-                                tint = TelegramBlue,
-                                modifier = Modifier.size(26.dp)
+                            val avatarFile = remember(displayUserAvatarUri) { com.example.telegrambackup.utils.ProfileManager.getAvatarFile(context) }
+                            if (avatarFile.exists() && avatarFile.length() > 0) {
+                                coil.compose.AsyncImage(
+                                    model = avatarFile,
+                                    contentDescription = "Avatar",
+                                    contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                            } else {
+                                Text(
+                                    displayUserName.take(1).uppercase(),
+                                    style = MaterialTheme.typography.titleMedium.copy(color = Color.White, fontWeight = FontWeight.Bold)
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                displayUserName,
+                                style = MaterialTheme.typography.bodyMedium.copy(color = Color.White, fontWeight = FontWeight.Bold),
+                                maxLines = 1,
+                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                            )
+                            Text(
+                                userEmail,
+                                style = MaterialTheme.typography.labelSmall.copy(color = Color.White.copy(alpha = 0.6f)),
+                                maxLines = 1,
+                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                             )
                         }
-                        Spacer(modifier = Modifier.width(14.dp))
-                        Column {
-                            val drawerVersion = remember { try { context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "2.1.64" } catch (_: Exception) { "2.1.64" } }
-                            Text("Cloud Sync Engine v$drawerVersion", style = MaterialTheme.typography.labelSmall.copy(color = TelegramBlue))
-                        }
+                        Icon(Icons.Default.ChevronRight, contentDescription = null, tint = Color.White.copy(alpha = 0.5f), modifier = Modifier.size(16.dp))
                     }
 
                     HorizontalDivider(modifier = Modifier.padding(vertical = 10.dp), color = Color.White.copy(alpha = 0.1f))
@@ -976,12 +1007,19 @@ fun MainApp(
                         MainTab.SETTINGS -> BackupSettingsScreen(
                             onThemeChanged = onThemeChanged,
                             onLogout = { authRepository.logout() },
-                            onNameUpdated = { newName -> displayUserName = newName }
+                            onNameUpdated = { newName ->
+                                displayUserName = newName
+                                displayUserAvatarUri = com.example.telegrambackup.utils.ProfileManager.getAvatarUri(context)?.toString() ?: prefs.profilePictureUri
+                            }
                         )
                         MainTab.PROFILE -> ProfileScreen(
                             userName = displayUserName,
                             userEmail = userEmail,
-                            onLogout = { authRepository.logout() }
+                            onLogout = { authRepository.logout() },
+                            onProfileUpdated = { newName, newAvatar ->
+                                displayUserName = newName
+                                displayUserAvatarUri = newAvatar
+                            }
                         )
                     }
 
