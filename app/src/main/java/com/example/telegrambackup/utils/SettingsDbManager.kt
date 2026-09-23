@@ -40,6 +40,20 @@ object SettingsDbManager {
                         AppSettingEntity("smart_scan_interval_hours", prefs.smartScanIntervalHours.toString()),
                         AppSettingEntity("min_file_size_mb", prefs.minFileSizeMB.toString()),
                         AppSettingEntity("max_file_size_mb", prefs.maxFileSizeMB.toString()),
+                        AppSettingEntity("max_photos_size_mb", prefs.maxPhotosSizeMB.toString()),
+                        AppSettingEntity("min_photos_size_mb", prefs.minPhotosSizeMB.toString()),
+                        AppSettingEntity("max_videos_size_mb", prefs.maxVideosSizeMB.toString()),
+                        AppSettingEntity("min_videos_size_mb", prefs.minVideosSizeMB.toString()),
+                        AppSettingEntity("max_docs_size_mb", prefs.maxDocsSizeMB.toString()),
+                        AppSettingEntity("min_docs_size_mb", prefs.minDocsSizeMB.toString()),
+                        AppSettingEntity("max_audio_size_mb", prefs.maxAudioSizeMB.toString()),
+                        AppSettingEntity("min_audio_size_mb", prefs.minAudioSizeMB.toString()),
+                        AppSettingEntity("max_archives_size_mb", prefs.maxArchivesSizeMB.toString()),
+                        AppSettingEntity("min_archives_size_mb", prefs.minArchivesSizeMB.toString()),
+                        AppSettingEntity("max_apks_size_mb", prefs.maxApksSizeMB.toString()),
+                        AppSettingEntity("min_apks_size_mb", prefs.minApksSizeMB.toString()),
+                        AppSettingEntity("max_other_size_mb", prefs.maxOtherSizeMB.toString()),
+                        AppSettingEntity("min_other_size_mb", prefs.minOtherSizeMB.toString()),
                         AppSettingEntity("backup_camera", prefs.backupCamera.toString()),
                         AppSettingEntity("backup_downloads", prefs.backupDownloads.toString()),
                         AppSettingEntity("backup_documents", prefs.backupDocuments.toString()),
@@ -75,6 +89,20 @@ object SettingsDbManager {
                     settingsMap["smart_scan_interval_hours"]?.let { prefs.smartScanIntervalHours = it.toIntOrNull() ?: 1 }
                     settingsMap["min_file_size_mb"]?.let { prefs.minFileSizeMB = it.toDoubleOrNull() ?: 0.0 }
                     settingsMap["max_file_size_mb"]?.let { prefs.maxFileSizeMB = it.toDoubleOrNull() ?: 2000.0 }
+                    settingsMap["max_photos_size_mb"]?.let { prefs.maxPhotosSizeMB = it.toDoubleOrNull() ?: 0.0 }
+                    settingsMap["min_photos_size_mb"]?.let { prefs.minPhotosSizeMB = it.toDoubleOrNull() ?: 0.0 }
+                    settingsMap["max_videos_size_mb"]?.let { prefs.maxVideosSizeMB = it.toDoubleOrNull() ?: 0.0 }
+                    settingsMap["min_videos_size_mb"]?.let { prefs.minVideosSizeMB = it.toDoubleOrNull() ?: 0.0 }
+                    settingsMap["max_docs_size_mb"]?.let { prefs.maxDocsSizeMB = it.toDoubleOrNull() ?: 0.0 }
+                    settingsMap["min_docs_size_mb"]?.let { prefs.minDocsSizeMB = it.toDoubleOrNull() ?: 0.0 }
+                    settingsMap["max_audio_size_mb"]?.let { prefs.maxAudioSizeMB = it.toDoubleOrNull() ?: 0.0 }
+                    settingsMap["min_audio_size_mb"]?.let { prefs.minAudioSizeMB = it.toDoubleOrNull() ?: 0.0 }
+                    settingsMap["max_archives_size_mb"]?.let { prefs.maxArchivesSizeMB = it.toDoubleOrNull() ?: 0.0 }
+                    settingsMap["min_archives_size_mb"]?.let { prefs.minArchivesSizeMB = it.toDoubleOrNull() ?: 0.0 }
+                    settingsMap["max_apks_size_mb"]?.let { prefs.maxApksSizeMB = it.toDoubleOrNull() ?: 0.0 }
+                    settingsMap["min_apks_size_mb"]?.let { prefs.minApksSizeMB = it.toDoubleOrNull() ?: 0.0 }
+                    settingsMap["max_other_size_mb"]?.let { prefs.maxOtherSizeMB = it.toDoubleOrNull() ?: 0.0 }
+                    settingsMap["min_other_size_mb"]?.let { prefs.minOtherSizeMB = it.toDoubleOrNull() ?: 0.0 }
                     settingsMap["backup_camera"]?.let { prefs.backupCamera = it.toBoolean() }
                     settingsMap["backup_downloads"]?.let { prefs.backupDownloads = it.toBoolean() }
                     settingsMap["backup_documents"]?.let { prefs.backupDocuments = it.toBoolean() }
@@ -236,6 +264,20 @@ object SettingsDbManager {
                 settingsMap["smart_scan_interval_hours"]?.let { prefs.smartScanIntervalHours = it.toIntOrNull() ?: 1 }
                 settingsMap["min_file_size_mb"]?.let { prefs.minFileSizeMB = it.toDoubleOrNull() ?: 0.0 }
                 settingsMap["max_file_size_mb"]?.let { prefs.maxFileSizeMB = it.toDoubleOrNull() ?: 2000.0 }
+                settingsMap["max_photos_size_mb"]?.let { prefs.maxPhotosSizeMB = it.toDoubleOrNull() ?: 0.0 }
+                settingsMap["min_photos_size_mb"]?.let { prefs.minPhotosSizeMB = it.toDoubleOrNull() ?: 0.0 }
+                settingsMap["max_videos_size_mb"]?.let { prefs.maxVideosSizeMB = it.toDoubleOrNull() ?: 0.0 }
+                settingsMap["min_videos_size_mb"]?.let { prefs.minVideosSizeMB = it.toDoubleOrNull() ?: 0.0 }
+                settingsMap["max_docs_size_mb"]?.let { prefs.maxDocsSizeMB = it.toDoubleOrNull() ?: 0.0 }
+                settingsMap["min_docs_size_mb"]?.let { prefs.minDocsSizeMB = it.toDoubleOrNull() ?: 0.0 }
+                settingsMap["max_audio_size_mb"]?.let { prefs.maxAudioSizeMB = it.toDoubleOrNull() ?: 0.0 }
+                settingsMap["min_audio_size_mb"]?.let { prefs.minAudioSizeMB = it.toDoubleOrNull() ?: 0.0 }
+                settingsMap["max_archives_size_mb"]?.let { prefs.maxArchivesSizeMB = it.toDoubleOrNull() ?: 0.0 }
+                settingsMap["min_archives_size_mb"]?.let { prefs.minArchivesSizeMB = it.toDoubleOrNull() ?: 0.0 }
+                settingsMap["max_apks_size_mb"]?.let { prefs.maxApksSizeMB = it.toDoubleOrNull() ?: 0.0 }
+                settingsMap["min_apks_size_mb"]?.let { prefs.minApksSizeMB = it.toDoubleOrNull() ?: 0.0 }
+                settingsMap["max_other_size_mb"]?.let { prefs.maxOtherSizeMB = it.toDoubleOrNull() ?: 0.0 }
+                settingsMap["min_other_size_mb"]?.let { prefs.minOtherSizeMB = it.toDoubleOrNull() ?: 0.0 }
 
                 // Trigger complete cloud profile, fleet, and settings manifest synchronization
                 CloudProfileSyncManager.syncLocalConfigToCloud(context)

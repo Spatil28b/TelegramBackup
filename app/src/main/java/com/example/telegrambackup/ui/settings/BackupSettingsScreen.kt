@@ -17,6 +17,9 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.ui.graphics.asImageBitmap
@@ -56,9 +59,11 @@ import com.example.telegrambackup.data.AuthRepository
 import com.example.telegrambackup.network.ServerApi
 import com.example.telegrambackup.utils.AppCacheManager
 import com.example.telegrambackup.utils.CloudProfileSyncManager
+import com.example.telegrambackup.theme.AppThemeMode
 import com.example.telegrambackup.theme.TelegramBlue
 import com.example.telegrambackup.theme.TelegramEmerald
 import com.example.telegrambackup.utils.AppPrefs
+import com.example.telegrambackup.utils.BackupFileType
 import com.example.telegrambackup.utils.SettingsDbManager
 import com.example.telegrambackup.utils.TelegramBotTester
 import com.example.telegrambackup.worker.BackupWorker
@@ -241,6 +246,21 @@ fun BackupSettingsScreen(
     var includeAllOther by remember { mutableStateOf(prefs.backupAllOther) }
     var minFileSizeMBState by remember { mutableDoubleStateOf(prefs.minFileSizeMB) }
     var maxFileSizeMBState by remember { mutableDoubleStateOf(prefs.maxFileSizeMB) }
+    var maxPhotosSizeMBState by remember { mutableDoubleStateOf(prefs.maxPhotosSizeMB) }
+    var minPhotosSizeMBState by remember { mutableDoubleStateOf(prefs.minPhotosSizeMB) }
+    var maxVideosSizeMBState by remember { mutableDoubleStateOf(prefs.maxVideosSizeMB) }
+    var minVideosSizeMBState by remember { mutableDoubleStateOf(prefs.minVideosSizeMB) }
+    var maxDocsSizeMBState by remember { mutableDoubleStateOf(prefs.maxDocsSizeMB) }
+    var minDocsSizeMBState by remember { mutableDoubleStateOf(prefs.minDocsSizeMB) }
+    var maxAudioSizeMBState by remember { mutableDoubleStateOf(prefs.maxAudioSizeMB) }
+    var minAudioSizeMBState by remember { mutableDoubleStateOf(prefs.minAudioSizeMB) }
+    var maxArchivesSizeMBState by remember { mutableDoubleStateOf(prefs.maxArchivesSizeMB) }
+    var minArchivesSizeMBState by remember { mutableDoubleStateOf(prefs.minArchivesSizeMB) }
+    var maxApksSizeMBState by remember { mutableDoubleStateOf(prefs.maxApksSizeMB) }
+    var minApksSizeMBState by remember { mutableDoubleStateOf(prefs.minApksSizeMB) }
+    var maxOtherSizeMBState by remember { mutableDoubleStateOf(prefs.maxOtherSizeMB) }
+    var minOtherSizeMBState by remember { mutableDoubleStateOf(prefs.minOtherSizeMB) }
+    var selectedCategoryForSizeCondition by remember { mutableStateOf<BackupFileType?>(null) }
     var smartScanInterval by remember { mutableIntStateOf(prefs.smartScanIntervalHours) }
     var nightBackupHour by remember { mutableIntStateOf(prefs.nightBackupHour) }
     var showHiddenFiles by remember { mutableStateOf(prefs.showHiddenFiles) }
@@ -733,7 +753,11 @@ fun BackupSettingsScreen(
         includeCamera, includeVideos, includeDocs, includeAudio, includeDownloads,
         includeArchives, includeApks, includeAllOther, showHiddenFiles,
         maxFileSizeMBState, dailyDataLimitMBState, backupOverWifi, enableDataCompression, selectedTheme,
-        trashAutoCleanDays, stopAllBackup, biometricLock, zeroKnowledgeActive
+        trashAutoCleanDays, stopAllBackup, biometricLock, zeroKnowledgeActive,
+        maxPhotosSizeMBState, minPhotosSizeMBState, maxVideosSizeMBState, minVideosSizeMBState,
+        maxDocsSizeMBState, minDocsSizeMBState, maxAudioSizeMBState, minAudioSizeMBState,
+        maxArchivesSizeMBState, minArchivesSizeMBState, maxApksSizeMBState, minApksSizeMBState,
+        maxOtherSizeMBState, minOtherSizeMBState
     ) {
         prefs.autoBackupEnabled = autoBackup
         prefs.smartBackupMode = smartBackupMode
@@ -749,6 +773,20 @@ fun BackupSettingsScreen(
         prefs.backupAllOther = includeAllOther
         prefs.showHiddenFiles = showHiddenFiles
         prefs.maxFileSizeMB = maxFileSizeMBState
+        prefs.maxPhotosSizeMB = maxPhotosSizeMBState
+        prefs.minPhotosSizeMB = minPhotosSizeMBState
+        prefs.maxVideosSizeMB = maxVideosSizeMBState
+        prefs.minVideosSizeMB = minVideosSizeMBState
+        prefs.maxDocsSizeMB = maxDocsSizeMBState
+        prefs.minDocsSizeMB = minDocsSizeMBState
+        prefs.maxAudioSizeMB = maxAudioSizeMBState
+        prefs.minAudioSizeMB = minAudioSizeMBState
+        prefs.maxArchivesSizeMB = maxArchivesSizeMBState
+        prefs.minArchivesSizeMB = minArchivesSizeMBState
+        prefs.maxApksSizeMB = maxApksSizeMBState
+        prefs.minApksSizeMB = minApksSizeMBState
+        prefs.maxOtherSizeMB = maxOtherSizeMBState
+        prefs.minOtherSizeMB = minOtherSizeMBState
         prefs.dailyDataLimitMB = dailyDataLimitMBState
         prefs.wifiOnly = backupOverWifi
         prefs.enableDataCompression = enableDataCompression
@@ -781,6 +819,20 @@ fun BackupSettingsScreen(
                     AppSettingEntity("backup_all_other", includeAllOther.toString()),
                     AppSettingEntity("show_hidden_files", showHiddenFiles.toString()),
                     AppSettingEntity("max_file_size_mb", maxFileSizeMBState.toString()),
+                    AppSettingEntity("max_photos_size_mb", maxPhotosSizeMBState.toString()),
+                    AppSettingEntity("min_photos_size_mb", minPhotosSizeMBState.toString()),
+                    AppSettingEntity("max_videos_size_mb", maxVideosSizeMBState.toString()),
+                    AppSettingEntity("min_videos_size_mb", minVideosSizeMBState.toString()),
+                    AppSettingEntity("max_docs_size_mb", maxDocsSizeMBState.toString()),
+                    AppSettingEntity("min_docs_size_mb", minDocsSizeMBState.toString()),
+                    AppSettingEntity("max_audio_size_mb", maxAudioSizeMBState.toString()),
+                    AppSettingEntity("min_audio_size_mb", minAudioSizeMBState.toString()),
+                    AppSettingEntity("max_archives_size_mb", maxArchivesSizeMBState.toString()),
+                    AppSettingEntity("min_archives_size_mb", minArchivesSizeMBState.toString()),
+                    AppSettingEntity("max_apks_size_mb", maxApksSizeMBState.toString()),
+                    AppSettingEntity("min_apks_size_mb", minApksSizeMBState.toString()),
+                    AppSettingEntity("max_other_size_mb", maxOtherSizeMBState.toString()),
+                    AppSettingEntity("min_other_size_mb", minOtherSizeMBState.toString()),
                     AppSettingEntity("daily_data_limit_mb", dailyDataLimitMBState.toString()),
                     AppSettingEntity("wifi_only", backupOverWifi.toString()),
                     AppSettingEntity("enable_data_compression", enableDataCompression.toString()),
@@ -921,6 +973,189 @@ fun BackupSettingsScreen(
         )
     }
 
+    // INDIVIDUAL CATEGORY SIZE CONDITION MODAL
+    if (selectedCategoryForSizeCondition != null) {
+        val cat = selectedCategoryForSizeCondition!!
+        var catMinInput by remember(cat) {
+            val (min, _) = when (cat) {
+                BackupFileType.PHOTOS -> minPhotosSizeMBState to maxPhotosSizeMBState
+                BackupFileType.VIDEOS -> minVideosSizeMBState to maxVideosSizeMBState
+                BackupFileType.DOCUMENTS -> minDocsSizeMBState to maxDocsSizeMBState
+                BackupFileType.AUDIO -> minAudioSizeMBState to maxAudioSizeMBState
+                BackupFileType.ARCHIVES -> minArchivesSizeMBState to maxArchivesSizeMBState
+                BackupFileType.APKS -> minApksSizeMBState to maxApksSizeMBState
+                BackupFileType.OTHER -> minOtherSizeMBState to maxOtherSizeMBState
+            }
+            mutableStateOf(if (min > 0.0) (if (min < 1.0) min.toString() else min.toInt().toString()) else "")
+        }
+        var catMaxInput by remember(cat) {
+            val (_, max) = when (cat) {
+                BackupFileType.PHOTOS -> minPhotosSizeMBState to maxPhotosSizeMBState
+                BackupFileType.VIDEOS -> minVideosSizeMBState to maxVideosSizeMBState
+                BackupFileType.DOCUMENTS -> minDocsSizeMBState to maxDocsSizeMBState
+                BackupFileType.AUDIO -> minAudioSizeMBState to maxAudioSizeMBState
+                BackupFileType.ARCHIVES -> minArchivesSizeMBState to maxArchivesSizeMBState
+                BackupFileType.APKS -> minApksSizeMBState to maxApksSizeMBState
+                BackupFileType.OTHER -> minOtherSizeMBState to maxOtherSizeMBState
+            }
+            mutableStateOf(if (max > 0.0) max.toInt().toString() else "")
+        }
+
+        AlertDialog(
+            onDismissRequest = { selectedCategoryForSizeCondition = null },
+            icon = { Icon(Icons.Default.Tune, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(32.dp)) },
+            title = {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(cat.title, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+                    Text("Individual Size Condition", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                }
+            },
+            text = {
+                Column(
+                    modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text(
+                        "Set custom file size filters specifically for ${cat.title}. If left at 0, files follow the Global Limit.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    // 1. Max Size Limit Section
+                    Text("Max File Size (MB)", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold))
+                    OptIn(ExperimentalLayoutApi::class)
+                    FlowRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        val maxPresets = when (cat) {
+                            BackupFileType.PHOTOS -> listOf(0.0 to "Default", 10.0 to "10MB", 25.0 to "25MB", 50.0 to "50MB", 100.0 to "100MB")
+                            BackupFileType.VIDEOS -> listOf(0.0 to "Default", 100.0 to "100MB", 500.0 to "500MB", 1000.0 to "1GB", 2000.0 to "2GB")
+                            BackupFileType.DOCUMENTS -> listOf(0.0 to "Default", 25.0 to "25MB", 50.0 to "50MB", 100.0 to "100MB", 250.0 to "250MB")
+                            BackupFileType.AUDIO -> listOf(0.0 to "Default", 15.0 to "15MB", 30.0 to "30MB", 50.0 to "50MB", 100.0 to "100MB")
+                            BackupFileType.ARCHIVES -> listOf(0.0 to "Default", 100.0 to "100MB", 500.0 to "500MB", 1000.0 to "1GB", 2000.0 to "2GB")
+                            BackupFileType.APKS -> listOf(0.0 to "Default", 30.0 to "30MB", 50.0 to "50MB", 100.0 to "100MB", 200.0 to "200MB")
+                            BackupFileType.OTHER -> listOf(0.0 to "Default", 25.0 to "25MB", 50.0 to "50MB", 100.0 to "100MB", 500.0 to "500MB")
+                        }
+                        maxPresets.forEach { (mb, label) ->
+                            val currentMax = catMaxInput.toDoubleOrNull() ?: 0.0
+                            FilterChip(
+                                selected = (mb == 0.0 && currentMax == 0.0) || (mb > 0.0 && currentMax == mb),
+                                onClick = {
+                                    catMaxInput = if (mb == 0.0) "" else mb.toInt().toString()
+                                },
+                                label = { Text(label, style = MaterialTheme.typography.labelSmall) }
+                            )
+                        }
+                    }
+
+                    OutlinedTextField(
+                        value = catMaxInput,
+                        onValueChange = { catMaxInput = it.filter { ch -> ch.isDigit() || ch == '.' } },
+                        label = { Text("Max Size (MB, 0 = Global Limit)") },
+                        placeholder = { Text("0 for Global Limit") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+
+                    // 2. Min Size Limit Section (Ignore smaller files)
+                    Text("Min File Size (MB) — Ignore smaller", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold))
+                    OptIn(ExperimentalLayoutApi::class)
+                    FlowRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        listOf(0.0 to "None (0)", 0.1 to "100KB", 0.5 to "500KB", 1.0 to "1MB", 5.0 to "5MB", 10.0 to "10MB").forEach { (mb, label) ->
+                            val currentMin = catMinInput.toDoubleOrNull() ?: 0.0
+                            FilterChip(
+                                selected = (mb == 0.0 && currentMin == 0.0) || (mb > 0.0 && kotlin.math.abs(currentMin - mb) < 0.01),
+                                onClick = {
+                                    catMinInput = if (mb == 0.0) "" else mb.toString()
+                                },
+                                label = { Text(label, style = MaterialTheme.typography.labelSmall) }
+                            )
+                        }
+                    }
+
+                    OutlinedTextField(
+                        value = catMinInput,
+                        onValueChange = { catMinInput = it.filter { ch -> ch.isDigit() || ch == '.' } },
+                        label = { Text("Min Size (MB, 0 = No Min)") },
+                        placeholder = { Text("0 for no minimum") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    // 3. Informational Summary Banner
+                    val parsedMin = catMinInput.toDoubleOrNull() ?: 0.0
+                    val parsedMax = catMaxInput.toDoubleOrNull() ?: 0.0
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(modifier = Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Info, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            val summary = when {
+                                parsedMin == 0.0 && parsedMax == 0.0 -> "Using Global Limit (${if (maxFileSizeMBState <= 0) "Unlimited" else "${maxFileSizeMBState.toInt()} MB"}). No special restrictions."
+                                parsedMin > 0.0 && parsedMax > 0.0 -> "Only ${cat.title.lowercase()} between ${if (parsedMin < 1.0) "${(parsedMin * 1024).toInt()} KB" else "$parsedMin MB"} and $parsedMax MB will be backed up."
+                                parsedMin > 0.0 -> "Only ${cat.title.lowercase()} larger than ${if (parsedMin < 1.0) "${(parsedMin * 1024).toInt()} KB" else "$parsedMin MB"} will be backed up (Global Max: ${if (maxFileSizeMBState <= 0) "Unlimited" else "${maxFileSizeMBState.toInt()} MB"})."
+                                else -> "Only ${cat.title.lowercase()} up to $parsedMax MB will be backed up."
+                            }
+                            Text(summary, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val parsedMin = catMinInput.toDoubleOrNull() ?: 0.0
+                        val parsedMax = catMaxInput.toDoubleOrNull() ?: 0.0
+                        when (cat) {
+                            BackupFileType.PHOTOS -> { minPhotosSizeMBState = parsedMin; maxPhotosSizeMBState = parsedMax }
+                            BackupFileType.VIDEOS -> { minVideosSizeMBState = parsedMin; maxVideosSizeMBState = parsedMax }
+                            BackupFileType.DOCUMENTS -> { minDocsSizeMBState = parsedMin; maxDocsSizeMBState = parsedMax }
+                            BackupFileType.AUDIO -> { minAudioSizeMBState = parsedMin; maxAudioSizeMBState = parsedMax }
+                            BackupFileType.ARCHIVES -> { minArchivesSizeMBState = parsedMin; maxArchivesSizeMBState = parsedMax }
+                            BackupFileType.APKS -> { minApksSizeMBState = parsedMin; maxApksSizeMBState = parsedMax }
+                            BackupFileType.OTHER -> { minOtherSizeMBState = parsedMin; maxOtherSizeMBState = parsedMax }
+                        }
+                        prefs.setCategorySizeLimits(cat, parsedMin, parsedMax)
+                        selectedCategoryForSizeCondition = null
+                        triggerHapticFeedback(context, haptic)
+                        Toast.makeText(context, "Saved size condition for ${cat.title}", Toast.LENGTH_SHORT).show()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                ) { Text("Save Condition") }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        when (cat) {
+                            BackupFileType.PHOTOS -> { minPhotosSizeMBState = 0.0; maxPhotosSizeMBState = 0.0 }
+                            BackupFileType.VIDEOS -> { minVideosSizeMBState = 0.0; maxVideosSizeMBState = 0.0 }
+                            BackupFileType.DOCUMENTS -> { minDocsSizeMBState = 0.0; maxDocsSizeMBState = 0.0 }
+                            BackupFileType.AUDIO -> { minAudioSizeMBState = 0.0; maxAudioSizeMBState = 0.0 }
+                            BackupFileType.ARCHIVES -> { minArchivesSizeMBState = 0.0; maxArchivesSizeMBState = 0.0 }
+                            BackupFileType.APKS -> { minApksSizeMBState = 0.0; maxApksSizeMBState = 0.0 }
+                            BackupFileType.OTHER -> { minOtherSizeMBState = 0.0; maxOtherSizeMBState = 0.0 }
+                        }
+                        prefs.setCategorySizeLimits(cat, 0.0, 0.0)
+                        selectedCategoryForSizeCondition = null
+                        triggerHapticFeedback(context, haptic)
+                        Toast.makeText(context, "Reset ${cat.title} to Global Limit", Toast.LENGTH_SHORT).show()
+                    }
+                ) { Text("Reset") }
+            }
+        )
+    }
+
     // CLEAR ALL DATA DIALOG — Production (no dev OTP)
     if (showClearAllDataDialog) {
         AlertDialog(
@@ -1034,6 +1269,20 @@ fun BackupSettingsScreen(
         prefs.backupAllOther = includeAllOther
         prefs.showHiddenFiles = showHiddenFiles
         prefs.maxFileSizeMB = maxFileSizeMBState
+        prefs.maxPhotosSizeMB = maxPhotosSizeMBState
+        prefs.minPhotosSizeMB = minPhotosSizeMBState
+        prefs.maxVideosSizeMB = maxVideosSizeMBState
+        prefs.minVideosSizeMB = minVideosSizeMBState
+        prefs.maxDocsSizeMB = maxDocsSizeMBState
+        prefs.minDocsSizeMB = minDocsSizeMBState
+        prefs.maxAudioSizeMB = maxAudioSizeMBState
+        prefs.minAudioSizeMB = minAudioSizeMBState
+        prefs.maxArchivesSizeMB = maxArchivesSizeMBState
+        prefs.minArchivesSizeMB = minArchivesSizeMBState
+        prefs.maxApksSizeMB = maxApksSizeMBState
+        prefs.minApksSizeMB = minApksSizeMBState
+        prefs.maxOtherSizeMB = maxOtherSizeMBState
+        prefs.minOtherSizeMB = minOtherSizeMBState
 
         // 4. Network & Performance
         prefs.wifiOnly = backupOverWifi
@@ -1067,7 +1316,22 @@ fun BackupSettingsScreen(
                     "wifi_only" to backupOverWifi.toString(),
                     "app_theme" to selectedTheme.toString(),
                     "biometric_lock" to biometricLock.toString(),
-                    "trash_auto_clean_days" to trashAutoCleanDays.toString()
+                    "trash_auto_clean_days" to trashAutoCleanDays.toString(),
+                    "max_file_size_mb" to maxFileSizeMBState.toString(),
+                    "max_photos_size_mb" to maxPhotosSizeMBState.toString(),
+                    "min_photos_size_mb" to minPhotosSizeMBState.toString(),
+                    "max_videos_size_mb" to maxVideosSizeMBState.toString(),
+                    "min_videos_size_mb" to minVideosSizeMBState.toString(),
+                    "max_docs_size_mb" to maxDocsSizeMBState.toString(),
+                    "min_docs_size_mb" to minDocsSizeMBState.toString(),
+                    "max_audio_size_mb" to maxAudioSizeMBState.toString(),
+                    "min_audio_size_mb" to minAudioSizeMBState.toString(),
+                    "max_archives_size_mb" to maxArchivesSizeMBState.toString(),
+                    "min_archives_size_mb" to minArchivesSizeMBState.toString(),
+                    "max_apks_size_mb" to maxApksSizeMBState.toString(),
+                    "min_apks_size_mb" to minApksSizeMBState.toString(),
+                    "max_other_size_mb" to maxOtherSizeMBState.toString(),
+                    "min_other_size_mb" to minOtherSizeMBState.toString()
                 ),
                 showToast = false
             )
@@ -1483,15 +1747,11 @@ fun BackupSettingsScreen(
 
                                 if (matchSearch("appearance", "theme", "dark", "light", "system", "mode", "color", "look")) {
                                     HorizontalDivider(modifier = Modifier.padding(start = 68.dp, end = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
-                                    val themeLabel = when (selectedTheme) {
-                                        1 -> "Light"
-                                        2 -> "Dark"
-                                        else -> "System"
-                                    }
+                                    val themeLabel = AppThemeMode.fromId(selectedTheme).title
                                     MinimalSettingRow(
                                         icon = Icons.Default.Palette,
-                                        title = "Appearance",
-                                        subtitle = "Theme & dark mode preferences",
+                                        title = "Appearance & Themes",
+                                        subtitle = "10 premium styles & AMOLED black",
                                         value = themeLabel,
                                         iconColor = Color(0xFFF59E0B)
                                     ) {
@@ -2173,24 +2433,91 @@ fun BackupSettingsScreen(
                     Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.40f), modifier = Modifier.fillMaxWidth()) {
                         Column {
                             Text("File Types & Sources", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold), modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp))
-                            OptionValueRowWithInfo("Max File Size Limit", if (maxFileSizeMBState <= 0) "Unlimited" else "${maxFileSizeMBState.toInt()} MB", { showCustomMaxLimitDialog = true }, { featureInfoTitle = "Size Limit"; featureInfoDesc = "Files exceeding this limit are skipped." })
+                            OptionValueRowWithInfo("Max File Size Limit (Global)", if (maxFileSizeMBState <= 0) "Unlimited" else "${maxFileSizeMBState.toInt()} MB", { showCustomMaxLimitDialog = true }, { featureInfoTitle = "Global Size Limit"; featureInfoDesc = "Files exceeding this limit are skipped unless an individual condition is specified." })
                             HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
+                            
+                            // Photos
                             SwitchRowWithInfo("Backup Photos (JPG, PNG, HEIC)", includeCamera, { includeCamera = it; prefs.backupCamera = it }, { featureInfoTitle = "Photos"; featureInfoDesc = "Backs up image files." })
+                            CategorySizeConditionBadge(
+                                category = BackupFileType.PHOTOS,
+                                minMB = minPhotosSizeMBState,
+                                maxMB = maxPhotosSizeMBState,
+                                globalMaxMB = maxFileSizeMBState,
+                                onClick = { selectedCategoryForSizeCondition = BackupFileType.PHOTOS }
+                            )
                             HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
+                            
+                            // Videos
                             SwitchRowWithInfo("Backup Videos (MP4, MKV, MOV)", includeVideos, { includeVideos = it; prefs.backupVideos = it }, { featureInfoTitle = "Videos"; featureInfoDesc = "Backs up video recordings." })
+                            CategorySizeConditionBadge(
+                                category = BackupFileType.VIDEOS,
+                                minMB = minVideosSizeMBState,
+                                maxMB = maxVideosSizeMBState,
+                                globalMaxMB = maxFileSizeMBState,
+                                onClick = { selectedCategoryForSizeCondition = BackupFileType.VIDEOS }
+                            )
                             HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
+                            
+                            // Documents
                             SwitchRowWithInfo("Backup Documents (PDF, DOCX, XLSX)", includeDocs, { includeDocs = it; prefs.backupDocuments = it }, { featureInfoTitle = "Documents"; featureInfoDesc = "Backs up office files." })
+                            CategorySizeConditionBadge(
+                                category = BackupFileType.DOCUMENTS,
+                                minMB = minDocsSizeMBState,
+                                maxMB = maxDocsSizeMBState,
+                                globalMaxMB = maxFileSizeMBState,
+                                onClick = { selectedCategoryForSizeCondition = BackupFileType.DOCUMENTS }
+                            )
                             HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
+                            
+                            // Audio
                             SwitchRowWithInfo("Backup Audio (MP3, WAV, FLAC)", includeAudio, { includeAudio = it; prefs.backupAudio = it }, { featureInfoTitle = "Audio"; featureInfoDesc = "Backs up audio recordings." })
+                            CategorySizeConditionBadge(
+                                category = BackupFileType.AUDIO,
+                                minMB = minAudioSizeMBState,
+                                maxMB = maxAudioSizeMBState,
+                                globalMaxMB = maxFileSizeMBState,
+                                onClick = { selectedCategoryForSizeCondition = BackupFileType.AUDIO }
+                            )
                             HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
+                            
+                            // Downloads Folder
                             SwitchRowWithInfo("Backup Downloads Folder", includeDownloads, { includeDownloads = it; prefs.backupDownloads = it }, { featureInfoTitle = "Downloads"; featureInfoDesc = "Backs up device download folder." })
                             HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
+                            
+                            // Archives
                             SwitchRowWithInfo("Backup Archives (ZIP, RAR, 7Z)", includeArchives, { includeArchives = it; prefs.backupArchives = it }, { featureInfoTitle = "Archives"; featureInfoDesc = "Backs up zip/rar archives." })
+                            CategorySizeConditionBadge(
+                                category = BackupFileType.ARCHIVES,
+                                minMB = minArchivesSizeMBState,
+                                maxMB = maxArchivesSizeMBState,
+                                globalMaxMB = maxFileSizeMBState,
+                                onClick = { selectedCategoryForSizeCondition = BackupFileType.ARCHIVES }
+                            )
                             HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
+                            
+                            // APK Packages
                             SwitchRowWithInfo("Backup APK Packages (.apk)", includeApks, { includeApks = it; prefs.backupApks = it }, { featureInfoTitle = "APKs"; featureInfoDesc = "Backs up installer APKs." })
+                            CategorySizeConditionBadge(
+                                category = BackupFileType.APKS,
+                                minMB = minApksSizeMBState,
+                                maxMB = maxApksSizeMBState,
+                                globalMaxMB = maxFileSizeMBState,
+                                onClick = { selectedCategoryForSizeCondition = BackupFileType.APKS }
+                            )
                             HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
+                            
+                            // Other Files
                             SwitchRowWithInfo("Backup All Other Files", includeAllOther, { includeAllOther = it; prefs.backupAllOther = it }, { featureInfoTitle = "Other"; featureInfoDesc = "Backs up all other recognized files." })
+                            CategorySizeConditionBadge(
+                                category = BackupFileType.OTHER,
+                                minMB = minOtherSizeMBState,
+                                maxMB = maxOtherSizeMBState,
+                                globalMaxMB = maxFileSizeMBState,
+                                onClick = { selectedCategoryForSizeCondition = BackupFileType.OTHER }
+                            )
                             HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
+                            
+                            // Hidden Files
                             SwitchRowWithInfo("Show Hidden & Dot Files", showHiddenFiles, { showHiddenFiles = it; prefs.showHiddenFiles = it }, { featureInfoTitle = "Hidden"; featureInfoDesc = "Shows dot/hidden files." })
                         }
                     }
@@ -2485,21 +2812,68 @@ fun BackupSettingsScreen(
                         Text("Appearance & Theme", style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold), maxLines = 1)
                     }
 
+                    Text(
+                        "CHOOSE YOUR THEME (10 PREMIUM STYLES)",
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, letterSpacing = 0.8.sp)
+                    )
+
                     Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.40f), modifier = Modifier.fillMaxWidth()) {
-                        Column {
-                            listOf("System Default", "Light Mode", "Dark Mode").forEachIndexed { index, label ->
+                        Column(modifier = Modifier.padding(vertical = 4.dp)) {
+                            AppThemeMode.entries.forEachIndexed { index, themeMode ->
+                                val isSelected = selectedTheme == themeMode.id
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .clickable { selectedTheme = index; prefs.appTheme = index; onThemeChanged(index) }
-                                        .padding(16.dp),
+                                        .clickable {
+                                            selectedTheme = themeMode.id
+                                            prefs.appTheme = themeMode.id
+                                            onThemeChanged(themeMode.id)
+                                            triggerHapticFeedback(context, haptic)
+                                        }
+                                        .padding(horizontal = 16.dp, vertical = 12.dp),
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text(label, style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium))
-                                    RadioButton(selected = selectedTheme == index, onClick = { selectedTheme = index; prefs.appTheme = index; onThemeChanged(index) })
+                                    Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
+                                        Text(
+                                            themeMode.title,
+                                            style = MaterialTheme.typography.bodyLarge.copy(
+                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                                color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                                            )
+                                        )
+                                        Text(
+                                            themeMode.description,
+                                            style = MaterialTheme.typography.bodySmall.copy(color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        )
+                                        Spacer(modifier = Modifier.height(6.dp))
+                                        // Color Preview Palette Dots
+                                        Row(
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Box(modifier = Modifier.size(16.dp).clip(CircleShape).background(themeMode.backgroundColor).border(1.dp, Color.Gray.copy(alpha = 0.4f), CircleShape))
+                                            Box(modifier = Modifier.size(16.dp).clip(CircleShape).background(themeMode.surfaceColor).border(1.dp, Color.Gray.copy(alpha = 0.4f), CircleShape))
+                                            Box(modifier = Modifier.size(16.dp).clip(CircleShape).background(themeMode.primaryColor))
+                                            Box(modifier = Modifier.size(16.dp).clip(CircleShape).background(themeMode.secondaryColor))
+                                        }
+                                    }
+                                    RadioButton(
+                                        selected = isSelected,
+                                        onClick = {
+                                            selectedTheme = themeMode.id
+                                            prefs.appTheme = themeMode.id
+                                            onThemeChanged(themeMode.id)
+                                            triggerHapticFeedback(context, haptic)
+                                        }
+                                    )
                                 }
-                                if (index < 2) HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
+                                if (index < AppThemeMode.entries.size - 1) {
+                                    HorizontalDivider(
+                                        modifier = Modifier.padding(horizontal = 16.dp),
+                                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)
+                                    )
+                                }
                             }
                         }
                     }
@@ -2792,6 +3166,58 @@ private fun SwitchRowWithInfo(title: String, checked: Boolean, onCheckedChange: 
             }
         }
         Switch(checked = checked, onCheckedChange = onCheckedChange)
+    }
+}
+
+@Composable
+private fun CategorySizeConditionBadge(
+    category: BackupFileType,
+    minMB: Double,
+    maxMB: Double,
+    globalMaxMB: Double,
+    onClick: () -> Unit
+) {
+    val hasCustom = maxMB > 0.0 || minMB > 0.0
+    val label = if (!hasCustom) {
+        "Rule: Global Limit (${if (globalMaxMB <= 0) "Unlimited" else "${globalMaxMB.toInt()} MB"})"
+    } else {
+        val minStr = if (minMB > 0.0) {
+            val formatted = if (minMB < 1.0) "${(minMB * 1024).toInt()} KB" else "${minMB.toInt()} MB"
+            "Min: $formatted • "
+        } else ""
+        val maxStr = if (maxMB > 0.0) "Max: ${maxMB.toInt()} MB" else "Max: Unlimited"
+        "Rule: $minStr$maxStr"
+    }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 14.dp, end = 14.dp, bottom = 8.dp),
+        horizontalArrangement = Arrangement.Start
+    ) {
+        Surface(
+            shape = RoundedCornerShape(8.dp),
+            color = if (hasCustom) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+            modifier = Modifier.clickable { onClick() }
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Icon(
+                    Icons.Default.Tune,
+                    contentDescription = null,
+                    modifier = Modifier.size(13.dp),
+                    tint = if (hasCustom) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
+                )
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = if (hasCustom) FontWeight.Bold else FontWeight.Medium),
+                    color = if (hasCustom) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
+                )
+            }
+        }
     }
 }
 

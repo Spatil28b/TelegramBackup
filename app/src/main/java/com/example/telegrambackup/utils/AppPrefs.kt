@@ -120,6 +120,106 @@ class AppPrefs(private val context: Context) {
         get() = prefs.getFloat("max_file_size_mb", 2000.0f).toDouble()
         set(value) = prefs.edit().putFloat("max_file_size_mb", value.toFloat()).apply()
 
+    // --- Individual File Size Conditions (MB, 0.0 = Use Global Limit or No Limit) ---
+    var maxPhotosSizeMB: Double
+        get() = prefs.getFloat("max_photos_size_mb", 0.0f).toDouble()
+        set(value) = prefs.edit().putFloat("max_photos_size_mb", value.toFloat()).apply()
+
+    var minPhotosSizeMB: Double
+        get() = prefs.getFloat("min_photos_size_mb", 0.0f).toDouble()
+        set(value) = prefs.edit().putFloat("min_photos_size_mb", value.toFloat()).apply()
+
+    var maxVideosSizeMB: Double
+        get() = prefs.getFloat("max_videos_size_mb", 0.0f).toDouble()
+        set(value) = prefs.edit().putFloat("max_videos_size_mb", value.toFloat()).apply()
+
+    var minVideosSizeMB: Double
+        get() = prefs.getFloat("min_videos_size_mb", 0.0f).toDouble()
+        set(value) = prefs.edit().putFloat("min_videos_size_mb", value.toFloat()).apply()
+
+    var maxDocsSizeMB: Double
+        get() = prefs.getFloat("max_docs_size_mb", 0.0f).toDouble()
+        set(value) = prefs.edit().putFloat("max_docs_size_mb", value.toFloat()).apply()
+
+    var minDocsSizeMB: Double
+        get() = prefs.getFloat("min_docs_size_mb", 0.0f).toDouble()
+        set(value) = prefs.edit().putFloat("min_docs_size_mb", value.toFloat()).apply()
+
+    var maxAudioSizeMB: Double
+        get() = prefs.getFloat("max_audio_size_mb", 0.0f).toDouble()
+        set(value) = prefs.edit().putFloat("max_audio_size_mb", value.toFloat()).apply()
+
+    var minAudioSizeMB: Double
+        get() = prefs.getFloat("min_audio_size_mb", 0.0f).toDouble()
+        set(value) = prefs.edit().putFloat("min_audio_size_mb", value.toFloat()).apply()
+
+    var maxArchivesSizeMB: Double
+        get() = prefs.getFloat("max_archives_size_mb", 0.0f).toDouble()
+        set(value) = prefs.edit().putFloat("max_archives_size_mb", value.toFloat()).apply()
+
+    var minArchivesSizeMB: Double
+        get() = prefs.getFloat("min_archives_size_mb", 0.0f).toDouble()
+        set(value) = prefs.edit().putFloat("min_archives_size_mb", value.toFloat()).apply()
+
+    var maxApksSizeMB: Double
+        get() = prefs.getFloat("max_apks_size_mb", 0.0f).toDouble()
+        set(value) = prefs.edit().putFloat("max_apks_size_mb", value.toFloat()).apply()
+
+    var minApksSizeMB: Double
+        get() = prefs.getFloat("min_apks_size_mb", 0.0f).toDouble()
+        set(value) = prefs.edit().putFloat("min_apks_size_mb", value.toFloat()).apply()
+
+    var maxOtherSizeMB: Double
+        get() = prefs.getFloat("max_other_size_mb", 0.0f).toDouble()
+        set(value) = prefs.edit().putFloat("max_other_size_mb", value.toFloat()).apply()
+
+    var minOtherSizeMB: Double
+        get() = prefs.getFloat("min_other_size_mb", 0.0f).toDouble()
+        set(value) = prefs.edit().putFloat("min_other_size_mb", value.toFloat()).apply()
+
+    fun getCategorySizeLimits(type: BackupFileType): Pair<Double, Double> = when (type) {
+        BackupFileType.PHOTOS -> minPhotosSizeMB to maxPhotosSizeMB
+        BackupFileType.VIDEOS -> minVideosSizeMB to maxVideosSizeMB
+        BackupFileType.DOCUMENTS -> minDocsSizeMB to maxDocsSizeMB
+        BackupFileType.AUDIO -> minAudioSizeMB to maxAudioSizeMB
+        BackupFileType.ARCHIVES -> minArchivesSizeMB to maxArchivesSizeMB
+        BackupFileType.APKS -> minApksSizeMB to maxApksSizeMB
+        BackupFileType.OTHER -> minOtherSizeMB to maxOtherSizeMB
+    }
+
+    fun setCategorySizeLimits(type: BackupFileType, minMB: Double, maxMB: Double) {
+        when (type) {
+            BackupFileType.PHOTOS -> { minPhotosSizeMB = minMB; maxPhotosSizeMB = maxMB }
+            BackupFileType.VIDEOS -> { minVideosSizeMB = minMB; maxVideosSizeMB = maxMB }
+            BackupFileType.DOCUMENTS -> { minDocsSizeMB = minMB; maxDocsSizeMB = maxMB }
+            BackupFileType.AUDIO -> { minAudioSizeMB = minMB; maxAudioSizeMB = maxMB }
+            BackupFileType.ARCHIVES -> { minArchivesSizeMB = minMB; maxArchivesSizeMB = maxMB }
+            BackupFileType.APKS -> { minApksSizeMB = minMB; maxApksSizeMB = maxMB }
+            BackupFileType.OTHER -> { minOtherSizeMB = minMB; maxOtherSizeMB = maxMB }
+        }
+    }
+
+    fun isCategoryEnabled(type: BackupFileType): Boolean = when (type) {
+        BackupFileType.PHOTOS -> backupCamera || backupPictures
+        BackupFileType.VIDEOS -> backupVideos
+        BackupFileType.DOCUMENTS -> backupDocuments
+        BackupFileType.AUDIO -> backupAudio
+        BackupFileType.ARCHIVES -> backupArchives
+        BackupFileType.APKS -> backupApks
+        BackupFileType.OTHER -> backupAllOther
+    }
+
+    fun getEffectiveByteRange(type: BackupFileType): LongRange {
+        val (typeMinMB, typeMaxMB) = getCategorySizeLimits(type)
+        val globalMin = (minFileSizeMB * 1024.0 * 1024.0).toLong()
+        val globalMax = if (maxFileSizeMB <= 0) Long.MAX_VALUE else (maxFileSizeMB * 1024.0 * 1024.0).toLong()
+
+        val effectiveMin = if (typeMinMB > 0) (typeMinMB * 1024.0 * 1024.0).toLong() else globalMin
+        val effectiveMax = if (typeMaxMB > 0) (typeMaxMB * 1024.0 * 1024.0).toLong() else globalMax
+
+        return effectiveMin..effectiveMax
+    }
+
     var botToken: String
         get() = prefs.getString("bot_token", "") ?: ""
         set(value) = prefs.edit().putString("bot_token", value).apply()
@@ -391,3 +491,69 @@ class AppPrefs(private val context: Context) {
         get() = prefs.getBoolean("biometric_lock_for_safe", true)
         set(value) = prefs.edit().putBoolean("biometric_lock_for_safe", value).apply()
 }
+
+enum class BackupFileType(
+    val key: String,
+    val title: String,
+    val subtitle: String,
+    val extensions: Set<String>
+) {
+    PHOTOS(
+        key = "photos",
+        title = "Photos & Images",
+        subtitle = "JPG, PNG, WEBP, GIF, HEIC, RAW, SVG",
+        extensions = setOf("jpg", "jpeg", "png", "webp", "gif", "bmp", "heic", "raw", "svg", "tiff", "dng")
+    ),
+    VIDEOS(
+        key = "videos",
+        title = "Videos & Recordings",
+        subtitle = "MP4, MKV, AVI, MOV, WEBM, 3GP, FLV, WMV",
+        extensions = setOf("mp4", "mkv", "avi", "mov", "webm", "3gp", "flv", "wmv", "m4v", "ts")
+    ),
+    DOCUMENTS(
+        key = "documents",
+        title = "Documents & PDFs",
+        subtitle = "PDF, DOCX, XLSX, PPTX, TXT, CSV, EPUB",
+        extensions = setOf("pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt", "csv", "epub", "rtf", "odt", "ods")
+    ),
+    AUDIO(
+        key = "audio",
+        title = "Audio & Music",
+        subtitle = "MP3, FLAC, WAV, AAC, OGG, M4A, OPUS",
+        extensions = setOf("mp3", "flac", "wav", "aac", "ogg", "m4a", "opus", "wma", "amr", "mid")
+    ),
+    ARCHIVES(
+        key = "archives",
+        title = "Archives & Compressed",
+        subtitle = "ZIP, RAR, 7Z, TAR, GZ, ISO, BZ2, XZ",
+        extensions = setOf("zip", "rar", "7z", "tar", "gz", "iso", "bz2", "xz")
+    ),
+    APKS(
+        key = "apks",
+        title = "APK Installers",
+        subtitle = "APK, XAPK, APKS",
+        extensions = setOf("apk", "xapk", "apks")
+    ),
+    OTHER(
+        key = "other",
+        title = "Other Recognized Files",
+        subtitle = "All other non-excluded file formats",
+        extensions = emptySet()
+    );
+
+    companion object {
+        fun fromExtension(ext: String): BackupFileType {
+            val lower = ext.lowercase()
+            return when {
+                lower in PHOTOS.extensions -> PHOTOS
+                lower in VIDEOS.extensions -> VIDEOS
+                lower in AUDIO.extensions -> AUDIO
+                lower in DOCUMENTS.extensions -> DOCUMENTS
+                lower in ARCHIVES.extensions -> ARCHIVES
+                lower in APKS.extensions -> APKS
+                else -> OTHER
+            }
+        }
+    }
+}
+

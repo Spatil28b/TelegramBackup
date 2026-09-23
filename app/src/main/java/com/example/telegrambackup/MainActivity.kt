@@ -138,14 +138,8 @@ class MainActivity : FragmentActivity() {
             }
 
             val systemDark = isSystemInDarkTheme()
-            val isDark = when (currentThemeMode) {
-                0 -> systemDark // 0 = System Default
-                1 -> false      // 1 = Light Mode
-                2 -> true       // 2 = Dark Mode
-                else -> systemDark
-            }
 
-            TelegramBackupTheme(darkTheme = isDark) {
+            TelegramBackupTheme(themeMode = currentThemeMode, darkTheme = systemDark) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background

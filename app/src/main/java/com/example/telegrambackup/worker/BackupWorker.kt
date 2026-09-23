@@ -20,6 +20,7 @@ import com.example.telegrambackup.network.ServerApi
 import com.example.telegrambackup.utils.AppCacheManager
 import com.example.telegrambackup.utils.AppNotificationHelper
 import com.example.telegrambackup.utils.AppPrefs
+import com.example.telegrambackup.utils.BackupFileType
 import com.example.telegrambackup.utils.BackupProgressTracker
 import com.example.telegrambackup.utils.FileChunker
 import com.example.telegrambackup.utils.FileEncryptor
@@ -223,27 +224,16 @@ class BackupWorker(
                             .forEach { file ->
                                 try {
                                     val fileLength = file.length()
-                                    if (fileLength > 0 && fileLength in minBytes..maxBytes) {
+                                    if (fileLength > 0) {
                                         val ext = file.extension.lowercase()
-                                        val isImg = ext in setOf("jpg", "jpeg", "png", "webp", "gif", "bmp", "heic", "raw", "svg", "tiff", "dng")
-                                        val isVid = ext in setOf("mp4", "mkv", "avi", "mov", "webm", "3gp", "flv", "wmv", "m4v", "ts")
-                                        val isAud = ext in setOf("mp3", "flac", "wav", "aac", "ogg", "m4a", "opus", "wma", "amr", "mid")
-                                        val isDoc = ext in setOf("pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt", "csv", "epub", "rtf", "odt", "ods")
-                                        val isZip = ext in setOf("zip", "rar", "7z", "tar", "gz", "iso", "bz2", "xz")
-                                        val isApk = ext in setOf("apk", "xapk", "apks")
+                                        val type = BackupFileType.fromExtension(ext)
 
-                                        val allowed = when {
-                                            isImg -> prefs.backupCamera || prefs.backupPictures
-                                            isVid -> prefs.backupVideos
-                                            isAud -> prefs.backupAudio
-                                            isDoc -> prefs.backupDocuments
-                                            isZip -> prefs.backupArchives
-                                            isApk -> prefs.backupApks
-                                            else -> prefs.backupAllOther
-                                        }
-
-                                        if (allowed) {
-                                            candidateFilesMap[file.absolutePath] = file
+                                        if (prefs.isCategoryEnabled(type)) {
+                                            // Individual file size condition for each specific file type
+                                            val effectiveRange = prefs.getEffectiveByteRange(type)
+                                            if (fileLength in effectiveRange) {
+                                                candidateFilesMap[file.absolutePath] = file
+                                            }
                                         }
                                     }
                                 } catch (e: Exception) { }
