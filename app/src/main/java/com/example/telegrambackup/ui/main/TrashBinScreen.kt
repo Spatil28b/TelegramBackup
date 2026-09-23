@@ -64,6 +64,7 @@ fun TrashBinScreen() {
     var fileToDeletePermanently by remember { mutableStateOf<UploadedFile?>(null) }
     var showBatchDeleteDialog by remember { mutableStateOf(false) }
     var showPolicyDialog by remember { mutableStateOf(false) }
+    var fileForMenu by remember { mutableStateOf<UploadedFile?>(null) }
 
     BackHandler(enabled = isSelectionMode) {
         selectedPaths = emptySet()
@@ -807,6 +808,16 @@ fun TrashBinScreen() {
                                             tint = MaterialTheme.colorScheme.error
                                         )
                                     }
+
+                                    IconButton(
+                                        onClick = { fileForMenu = file }
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.MoreVert,
+                                            contentDescription = "More Options",
+                                            tint = MaterialTheme.colorScheme.outline
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -814,6 +825,22 @@ fun TrashBinScreen() {
                 }
             }
         }
+    }
+
+    if (fileForMenu != null) {
+        com.example.telegrambackup.ui.common.FileActionMenuModal(
+            file = fileForMenu!!,
+            isTrashItem = true,
+            onDismiss = { fileForMenu = null },
+            onFileDeleted = { delFile ->
+                selectedPaths = selectedPaths - delFile.path
+                fileForMenu = null
+            },
+            onFileRestored = { resFile ->
+                selectedPaths = selectedPaths - resFile.path
+                fileForMenu = null
+            }
+        )
     }
 }
 

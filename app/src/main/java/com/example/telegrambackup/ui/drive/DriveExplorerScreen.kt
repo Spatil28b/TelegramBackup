@@ -617,146 +617,19 @@ fun DriveExplorerScreen(
         )
     }
 
-    // ITEM OPTIONS MODAL
+    // ITEM OPTIONS MODAL (MATERIAL 3 UNIFIED ACTIONS MODAL)
     if (itemOptionsFile != null) {
-        val file = itemOptionsFile!!
-        val isFolder = file.telegramFileId == "DIR_MARKER"
-
-        AlertDialog(
-            onDismissRequest = { itemOptionsFile = null; showDetailedMetadataDialog = false },
-            title = { Text(file.fileName, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-            text = {
-                Column {
-                    if (showDetailedMetadataDialog) {
-                        Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
-                            Column(modifier = Modifier.padding(12.dp)) {
-                                Text("Cloud Item Properties", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold))
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text("Path: ${file.path}", style = MaterialTheme.typography.labelSmall)
-                                Text("Type: ${if (isFolder) "Directory Folder" else "Personal Cloud File"}", style = MaterialTheme.typography.labelSmall)
-                                if (!isFolder) Text("File Size: ${formatFileSize(file.size)}", style = MaterialTheme.typography.labelSmall)
-                                Text("Status: Dedicated Personal Cloud Storage", style = MaterialTheme.typography.labelSmall, color = TelegramEmerald)
-                            }
-                        }
-                    }
-
-                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Row(modifier = Modifier.fillMaxWidth().clickable { showDetailedMetadataDialog = !showDetailedMetadataDialog }.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Info, contentDescription = null, tint = TelegramBlue, modifier = Modifier.size(22.dp))
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Text("View Properties & Info", style = MaterialTheme.typography.bodyMedium)
-                        }
-                        HorizontalDivider()
-
-                        Row(modifier = Modifier.fillMaxWidth().clickable {
-                            triggerHapticFeedback(context, haptic)
-                            scope.launch(Dispatchers.IO) {
-                                if (isFolder) {
-                                    val filesInFolder = AppDatabase.getDatabase(context).uploadedFileDao().getDriveFiles().filter { it.path.startsWith("${file.path}/") && it.telegramFileId != "DIR_MARKER" }
-                                    if (filesInFolder.isNotEmpty()) {
-                                        ZipBackupDownloader.downloadFilesAsZip(context, filesInFolder, file.fileName)
-                                    } else {
-                                        withContext(Dispatchers.Main) {
-                                            Toast.makeText(context, "Folder '${file.fileName}' has no files to download", Toast.LENGTH_SHORT).show()
-                                        }
-                                    }
-                                } else {
-                                    withContext(Dispatchers.Main) {
-                                        Toast.makeText(context, "Downloading ${file.fileName} to device...", Toast.LENGTH_SHORT).show()
-                                    }
-                                    try {
-                                        val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-                                        val targetDir = File(downloadsDir, "TelegramBackup")
-                                        if (!targetDir.exists()) targetDir.mkdirs()
-                                        val targetFile = File(targetDir, file.fileName)
-                                        val success = TelegramMediaResolver.restoreFileToTarget(context, file, targetFile)
-                                        withContext(Dispatchers.Main) {
-                                            if (success && targetFile.exists()) {
-                                                Toast.makeText(context, "✅ Downloaded to Downloads/TelegramBackup/${targetFile.name}", Toast.LENGTH_LONG).show()
-                                            } else {
-                                                Toast.makeText(context, "Failed to download ${file.fileName}", Toast.LENGTH_SHORT).show()
-                                            }
-                                        }
-                                    } catch (e: Exception) {
-                                        withContext(Dispatchers.Main) {
-                                            Toast.makeText(context, "Download error: ${e.message}", Toast.LENGTH_SHORT).show()
-                                        }
-                                    }
-                                }
-                            }
-                            itemOptionsFile = null
-                        }.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Download, contentDescription = null, tint = TelegramEmerald, modifier = Modifier.size(22.dp))
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Text(if (isFolder) "Download Folder as ZIP" else "Download File to Device", style = MaterialTheme.typography.bodyMedium)
-                        }
-                        if (!isFolder) {
-                            HorizontalDivider()
-                            Row(modifier = Modifier.fillMaxWidth().clickable {
-                                triggerHapticFeedback(context, haptic)
-                                shareModalFile = file
-                                itemOptionsFile = null
-                            }.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Default.Share, contentDescription = null, tint = TelegramBlue, modifier = Modifier.size(22.dp))
-                                Spacer(modifier = Modifier.width(12.dp))
-                                Text("Generate Fast Share Link & PIN", style = MaterialTheme.typography.bodyMedium)
-                            }
-                        }
-
-                        HorizontalDivider()
-
-                        Row(modifier = Modifier.fillMaxWidth().clickable {
-                            triggerHapticFeedback(context, haptic)
-                            renameInputName = file.fileName
-                            selectedDriveItems.clear()
-                            selectedDriveItems.add(file)
-                            itemOptionsFile = null
-                            showRenameDialog = true
-                        }.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Edit, contentDescription = null, tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(22.dp))
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Text("Rename Item", style = MaterialTheme.typography.bodyMedium)
-                        }
-                        HorizontalDivider()
-
-                        Row(modifier = Modifier.fillMaxWidth().clickable {
-                            triggerHapticFeedback(context, haptic)
-                            scope.launch(Dispatchers.IO) {
-                                val dao = AppDatabase.getDatabase(context).uploadedFileDao()
-                                val now = System.currentTimeMillis()
-                                val userEmail = AppPrefs(context).userEmail
-                                val serverUrl = AppPrefs(context).serverUrl
-                                val serverApi = ServerApi()
-
-                                if (isFolder) {
-                                    val filesInFol = dao.getDriveFiles().filter { it.path.startsWith("${file.path}/") }
-                                    filesInFol.forEach {
-                                        dao.softDelete(it.path, it.telegramFileId, now)
-                                        if (userEmail.isNotEmpty() && it.telegramFileId.isNotEmpty()) {
-                                            try { serverApi.deleteFile(serverUrl, userEmail, it.telegramFileId, it.path) } catch (_: Exception) {}
-                                        }
-                                    }
-                                    dao.softDelete(file.path, file.telegramFileId, now)
-                                } else {
-                                    dao.softDelete(file.path, file.telegramFileId, now)
-                                    if (userEmail.isNotEmpty() && file.telegramFileId.isNotEmpty()) {
-                                        try { serverApi.deleteFile(serverUrl, userEmail, file.telegramFileId, file.path) } catch (_: Exception) {}
-                                    }
-                                }
-                                withContext(Dispatchers.Main) {
-                                    Toast.makeText(context, "Moved to Trash Bin", Toast.LENGTH_SHORT).show()
-                                    itemOptionsFile = null
-                                }
-                            }
-                        }.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(22.dp))
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Text("Move to Trash Bin", style = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.error))
-                        }
-                    }
-                }
+        FileActionMenuModal(
+            file = itemOptionsFile!!,
+            onDismiss = { itemOptionsFile = null },
+            onFileRenamed = { _, _, _ ->
+                selectedDriveItems.clear()
+                itemOptionsFile = null
             },
-            confirmButton = { TextButton(onClick = { itemOptionsFile = null; showDetailedMetadataDialog = false }) { Text("Close") } }
+            onFileDeleted = { delFile ->
+                selectedDriveItems.removeAll { it.path == delFile.path }
+                itemOptionsFile = null
+            }
         )
     }
 

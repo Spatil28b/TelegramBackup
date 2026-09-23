@@ -72,6 +72,7 @@ fun MonthlyArchiveScreen() {
 
     // Expanded months
     var expandedMonths by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var fileForMenu by remember { mutableStateOf<UploadedFile?>(null) }
     val itemDateFormat = remember { SimpleDateFormat("dd MMM, hh:mm a", Locale.getDefault()) }
 
     var activeAudioPlayerItem by remember { mutableStateOf<Pair<String, String>?>(null) }
@@ -466,6 +467,20 @@ fun MonthlyArchiveScreen() {
                                                             color = MaterialTheme.colorScheme.outline
                                                         )
                                                     }
+
+                                                    if (!isSelectionMode) {
+                                                        IconButton(
+                                                            onClick = { fileForMenu = file },
+                                                            modifier = Modifier.size(32.dp)
+                                                        ) {
+                                                            Icon(
+                                                                imageVector = Icons.Default.MoreVert,
+                                                                contentDescription = "Options",
+                                                                tint = MaterialTheme.colorScheme.outline,
+                                                                modifier = Modifier.size(18.dp)
+                                                            )
+                                                        }
+                                                    }
                                                 }
                                             }
                                         }
@@ -479,6 +494,22 @@ fun MonthlyArchiveScreen() {
                 }
             }
         }
+    }
+
+    if (fileForMenu != null) {
+        com.example.telegrambackup.ui.common.FileActionMenuModal(
+            file = fileForMenu!!,
+            onDismiss = { fileForMenu = null },
+            onFileRenamed = { _, _, _ ->
+                fileForMenu = null
+                loadFiles()
+            },
+            onFileDeleted = { delFile ->
+                selectedPaths = selectedPaths - delFile.path
+                fileForMenu = null
+                loadFiles()
+            }
+        )
     }
 }
 

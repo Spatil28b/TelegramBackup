@@ -27,6 +27,49 @@ object VersionChangelogProvider {
 
     private val releases = listOf(
         VersionRelease(
+            versionName = "2.1.95",
+            versionCode = 98,
+            releaseDate = "September 2026",
+            highlights = "Ubiquitous 3-Dots File Actions, Share, Rename, Technical Properties & System Chooser",
+            entries = listOf(
+                ChangelogEntry(
+                    Icons.Default.MoreVert,
+                    TelegramBlue,
+                    "Ubiquitous 3-Dots Menu",
+                    "3-dots overflow action button added to all file cards across the entire app: Cloud Explorer (Grid & List), Drive Explorer, Home Recent Files, Trash Bin, Monthly Archive, and Local Storage.",
+                    "NEW"
+                ),
+                ChangelogEntry(
+                    Icons.Default.MenuOpen,
+                    Color(0xFF8B5CF6),
+                    "Unified Material 3 Action Sheet",
+                    "New bottom sheet modal offering 1-tap Preview/Open, Cloud Share Link & PIN, System Share, Download to Device, Rename, Properties, and Move to Trash.",
+                    "FEATURE"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Share,
+                    Color(0xFF6366F1),
+                    "Native Android App Sharing",
+                    "Send files directly to WhatsApp, Telegram, Gmail, Bluetooth with automatic FileProvider URI granting and on-demand cloud retrieval.",
+                    "SHARE"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Edit,
+                    TelegramEmerald,
+                    "In-App File Renaming",
+                    "Rename files and folders instantly with synchronized updates across local Room DB, chunk progress tracker, and PostgreSQL cloud index.",
+                    "MANAGEMENT"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Info,
+                    Color(0xFF3B82F6),
+                    "Technical Properties & Metadata",
+                    "Inspect exact file size in bytes, complete storage path, Telegram File ID, Message ID, chunk breakdown, and AES-256-GCM encryption with 1-tap copy buttons.",
+                    "INSPECTOR"
+                )
+            )
+        ),
+        VersionRelease(
             versionName = "2.1.94",
             versionCode = 97,
             releaseDate = "September 2026",

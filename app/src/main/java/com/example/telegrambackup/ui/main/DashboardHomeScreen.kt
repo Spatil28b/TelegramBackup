@@ -62,6 +62,7 @@ fun DashboardHomeScreen(
     val scope = rememberCoroutineScope()
     var selectedPaths by remember { mutableStateOf<Set<String>>(emptySet()) }
     var isSelectionMode by remember { mutableStateOf(false) }
+    var fileForMenu by remember { mutableStateOf<UploadedFile?>(null) }
 
     BackHandler(enabled = isSelectionMode) {
         selectedPaths = emptySet()
@@ -542,9 +543,38 @@ fun DashboardHomeScreen(
                                 color = MaterialTheme.colorScheme.outline
                             )
                         }
+
+                        if (!isSelectionMode) {
+                            IconButton(
+                                onClick = { fileForMenu = file },
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.MoreVert,
+                                    contentDescription = "Options",
+                                    tint = MaterialTheme.colorScheme.outline
+                                )
+                            }
+                        }
                     }
                 }
             }
         }
+    }
+
+    if (fileForMenu != null) {
+        com.example.telegrambackup.ui.common.FileActionMenuModal(
+            file = fileForMenu!!,
+            onDismiss = { fileForMenu = null },
+            onFileRenamed = { _, _, _ ->
+                fileForMenu = null
+                onRefresh()
+            },
+            onFileDeleted = { delFile ->
+                selectedPaths = selectedPaths - delFile.path
+                fileForMenu = null
+                onRefresh()
+            }
+        )
     }
 }

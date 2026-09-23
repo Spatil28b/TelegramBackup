@@ -36,6 +36,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import com.example.telegrambackup.ui.common.OsFolderIcon
 import com.example.telegrambackup.ui.common.OsFileIcon
 import com.example.telegrambackup.ui.common.FileThumbnailView
+import com.example.telegrambackup.ui.common.FileActionMenuModal
 import com.example.telegrambackup.ui.common.FolderType
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
@@ -167,6 +168,7 @@ fun BackupExplorerScreen(
 
     var showDuplicateCleaner by remember { mutableStateOf(false) }
     var shareModalFile by remember { mutableStateOf<UploadedFile?>(null) }
+    var actionMenuFile by remember { mutableStateOf<UploadedFile?>(null) }
     var isZippingFolder by remember { mutableStateOf(false) }
 
     fun refreshCloudData() {
@@ -187,6 +189,18 @@ fun BackupExplorerScreen(
 
     LaunchedEffect(Unit) {
         refreshCloudData()
+    }
+
+    if (actionMenuFile != null) {
+        FileActionMenuModal(
+            file = actionMenuFile!!,
+            onDismiss = { actionMenuFile = null },
+            onFileRenamed = { _, _, _ -> refreshCloudData() },
+            onFileDeleted = { delFile ->
+                selectedFilesList.removeAll { it.path == delFile.path }
+                refreshCloudData()
+            }
+        )
     }
 
     if (showDuplicateCleaner) {
@@ -1074,6 +1088,10 @@ fun BackupExplorerScreen(
                                             triggerHapticFeedback(context, haptic)
                                             isSelectionModeActive = true
                                             if (!isSelected) selectedFilesList.add(cloudFile)
+                                        },
+                                        onMoreOptions = {
+                                            triggerHapticFeedback(context, haptic)
+                                            actionMenuFile = cloudFile
                                         }
                                     )
                                 }
@@ -1116,6 +1134,10 @@ fun BackupExplorerScreen(
                                             triggerHapticFeedback(context, haptic)
                                             isSelectionModeActive = true
                                             if (!isSelected) selectedFilesList.add(cloudFile)
+                                        },
+                                        onMoreOptions = {
+                                            triggerHapticFeedback(context, haptic)
+                                            actionMenuFile = cloudFile
                                         }
                                     )
                                 }
@@ -1136,7 +1158,8 @@ private fun GridCloudMediaCard(
     isSelectionMode: Boolean,
     isBigGrid: Boolean,
     onClick: () -> Unit,
-    onLongClick: () -> Unit
+    onLongClick: () -> Unit,
+    onMoreOptions: () -> Unit
 ) {
     Surface(
         shape = RoundedCornerShape(if (isBigGrid) 14.dp else 10.dp),
@@ -1182,6 +1205,23 @@ private fun GridCloudMediaCard(
                             Icon(Icons.Default.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(12.dp))
                         }
                     }
+                } else {
+                    IconButton(
+                        onClick = onMoreOptions,
+                        modifier = Modifier
+                            .padding(4.dp)
+                            .size(26.dp)
+                            .align(Alignment.TopEnd)
+                            .clip(CircleShape)
+                            .background(Color.Black.copy(alpha = 0.45f))
+                    ) {
+                        Icon(
+                            Icons.Default.MoreVert,
+                            contentDescription = "Options",
+                            tint = Color.White,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
                 }
             }
 
@@ -1215,7 +1255,8 @@ private fun ListCloudFileCard(
     isSelected: Boolean,
     isSelectionMode: Boolean,
     onClick: () -> Unit,
-    onLongClick: () -> Unit
+    onLongClick: () -> Unit,
+    onMoreOptions: () -> Unit
 ) {
     val ext = cloudFile.fileName.substringAfterLast('.', "").uppercase()
 
@@ -1262,6 +1303,19 @@ private fun ListCloudFileCard(
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.outline
                 )
+            }
+
+            if (!isSelectionMode) {
+                IconButton(
+                    onClick = onMoreOptions,
+                    modifier = Modifier.size(36.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.MoreVert,
+                        contentDescription = "File Options",
+                        tint = MaterialTheme.colorScheme.outline
+                    )
+                }
             }
         }
     }

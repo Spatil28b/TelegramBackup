@@ -10,6 +10,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import com.example.telegrambackup.data.UploadedFile
 
 object FileViewerHelper {
 
@@ -209,6 +210,113 @@ object FileViewerHelper {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             })
+        }
+    }
+
+    /**
+     * Shares a file to other apps (WhatsApp, Telegram, Gmail, etc.) using system ACTION_SEND intent.
+     * Supports local files, cloud preview cache, and on-demand cloud retrieval.
+     */
+    fun shareFile(context: Context, file: UploadedFile) {
+        val fileName = file.fileName
+        val filePath = file.path
+        val telegramFileId = file.telegramFileId
+
+        val localFile = File(filePath)
+        if (localFile.exists() && localFile.length() > 0) {
+            launchShareIntent(context, localFile, fileName)
+            return
+        }
+
+        // Check in Cloud Preview Cache
+        val cacheDir = File(context.cacheDir, "cloud_preview_cache")
+        if (cacheDir.exists()) {
+            val safeName = fileName.replace(Regex("[^a-zA-Z0-9._-]"), "_").ifBlank { "file" }
+            val cachedMatches = cacheDir.listFiles { f ->
+                f.name.endsWith(safeName) || (telegramFileId.isNotBlank() && f.name.startsWith("${telegramFileId.hashCode()}"))
+            }
+            val found = cachedMatches?.firstOrNull { it.exists() && it.length() > 0 }
+            if (found != null) {
+                launchShareIntent(context, found, fileName)
+                return
+            }
+        }
+
+        // On-demand fetch from cloud
+        if (telegramFileId.isNotBlank() && telegramFileId != "DIR_MARKER") {
+            Toast.makeText(context, "Preparing $fileName to share...", Toast.LENGTH_SHORT).show()
+            CoroutineScope(Dispatchers.IO).launch {
+                val downloaded = TelegramMediaResolver.fetchToTempCache(context, telegramFileId, fileName)
+                if (downloaded != null && downloaded.exists()) {
+                    FileEncryptor.ensureDecrypted(downloaded, context, fileName)
+                }
+                withContext(Dispatchers.Main) {
+                    if (downloaded != null && downloaded.exists()) {
+                        launchShareIntent(context, downloaded, fileName)
+                    } else {
+                        Toast.makeText(context, "Could not load $fileName from cloud to share", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+            return
+        }
+
+        Toast.makeText(context, "File unavailable to share: $fileName", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun launchShareIntent(context: Context, file: File, fileName: String) {
+        val sharedDir = File(context.cacheDir, "shared_provider_cache").apply { if (!exists()) mkdirs() }
+        val sharedFile = File(sharedDir, fileName)
+        val fileForUri = try {
+            file.copyTo(sharedFile, overwrite = true)
+            FileEncryptor.ensureDecrypted(sharedFile, context, fileName)
+            if (sharedFile.exists() && sharedFile.length() > 0) sharedFile else file
+        } catch (_: Exception) {
+            FileEncryptor.ensureDecrypted(file, context, fileName)
+            file
+        }
+
+        val uri: Uri = try {
+            FileProvider.getUriForFile(
+                context,
+                "${context.packageName}.fileprovider",
+                fileForUri
+            )
+        } catch (e: Exception) {
+            FileProvider.getUriForFile(
+                context,
+                "${context.packageName}.fileprovider",
+                file
+            )
+        }
+
+        val mimeType = getMimeType(fileName)
+        val clip = android.content.ClipData.newRawUri(fileName, uri)
+        val sendIntent = Intent(Intent.ACTION_SEND).apply {
+            type = mimeType
+            putExtra(Intent.EXTRA_STREAM, uri)
+            clipData = clip
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+
+        try {
+            val resInfoList = context.packageManager.queryIntentActivities(sendIntent, android.content.pm.PackageManager.MATCH_DEFAULT_ONLY)
+            for (resolveInfo in resInfoList) {
+                val packageName = resolveInfo.activityInfo.packageName
+                context.grantUriPermission(packageName, uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+        } catch (_: Exception) {}
+
+        val chooser = Intent.createChooser(sendIntent, "Send $fileName").apply {
+            clipData = clip
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        try {
+            context.startActivity(chooser)
+        } catch (e: Exception) {
+            Toast.makeText(context, "Cannot share file: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
         }
     }
 

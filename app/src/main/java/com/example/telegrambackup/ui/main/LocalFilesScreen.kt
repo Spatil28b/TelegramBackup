@@ -103,6 +103,7 @@ fun LocalFilesScreen() {
 
     var activeAudioPlayerItem by remember { mutableStateOf<Pair<String, String>?>(null) }
     var activeVideoPlayerItem by remember { mutableStateOf<Pair<String, String>?>(null) }
+    var fileForMenu by remember { mutableStateOf<UploadedFile?>(null) }
 
     if (activeAudioPlayerItem != null) {
         com.example.telegrambackup.ui.player.ModernAudioPlayerSheet(
@@ -408,6 +409,14 @@ fun LocalFilesScreen() {
                                 isSelectionMode = true
                                 selectedPaths.add(item.path)
                             }
+                        },
+                        onMoreOptions = { item ->
+                            fileForMenu = UploadedFile(
+                                path = item.path,
+                                fileName = item.name,
+                                size = item.size,
+                                timestamp = item.file.lastModified()
+                            )
                         }
                     )
                 } else {
@@ -442,21 +451,43 @@ fun LocalFilesScreen() {
                                 isSelectionMode = true
                                 selectedPaths.add(item.path)
                             }
+                        },
+                        onMoreOptions = { item ->
+                            fileForMenu = UploadedFile(
+                                path = item.path,
+                                fileName = item.name,
+                                size = item.size,
+                                timestamp = item.file.lastModified()
+                            )
                         }
                     )
                 }
             }
         }
     }
-}
 
-@Composable
+    if (fileForMenu != null) {
+        com.example.telegrambackup.ui.common.FileActionMenuModal(
+            file = fileForMenu!!,
+            onDismiss = { fileForMenu = null },
+            onFileRenamed = { _, _, _ ->
+                fileForMenu = null
+            },
+            onFileDeleted = { delFile ->
+                selectedPaths.remove(delFile.path)
+                fileForMenu = null
+                unbackedFilesList = unbackedFilesList.filter { it.path != delFile.path }
+            }
+        )
+    }
+}@Composable
 private fun CategoryWiseView(
     files: List<LocalFileItem>,
     selectedPaths: List<String>,
     isSelectionMode: Boolean,
     onFileClick: (LocalFileItem) -> Unit,
-    onFileLongClick: (LocalFileItem) -> Unit
+    onFileLongClick: (LocalFileItem) -> Unit,
+    onMoreOptions: (LocalFileItem) -> Unit
 ) {
     val categoryGroups = remember(files) {
         files.groupBy { it.category }
@@ -548,6 +579,19 @@ private fun CategoryWiseView(
                                         overflow = TextOverflow.Ellipsis
                                     )
                                 }
+                                if (!isSelectionMode) {
+                                    IconButton(
+                                        onClick = { onMoreOptions(item) },
+                                        modifier = Modifier.size(32.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.MoreVert,
+                                            contentDescription = "Options",
+                                            tint = MaterialTheme.colorScheme.outline,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
@@ -566,7 +610,8 @@ private fun FolderWiseView(
     selectedPaths: List<String>,
     isSelectionMode: Boolean,
     onFileClick: (LocalFileItem) -> Unit,
-    onFileLongClick: (LocalFileItem) -> Unit
+    onFileLongClick: (LocalFileItem) -> Unit,
+    onMoreOptions: (LocalFileItem) -> Unit
 ) {
     val rootStorage = Environment.getExternalStorageDirectory() ?: File("/sdcard")
     val activeDir = currentDir ?: rootStorage
@@ -670,6 +715,19 @@ private fun FolderWiseView(
                         Column(modifier = Modifier.weight(1f)) {
                             Text(item.name, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             Text(formatFileSize(item.size), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+                        }
+                        if (!isSelectionMode) {
+                            IconButton(
+                                onClick = { onMoreOptions(item) },
+                                modifier = Modifier.size(32.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.MoreVert,
+                                    contentDescription = "Options",
+                                    tint = MaterialTheme.colorScheme.outline,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
                         }
                     }
                 }
