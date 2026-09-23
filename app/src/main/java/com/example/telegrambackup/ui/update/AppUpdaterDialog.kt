@@ -74,10 +74,7 @@ fun AppUpdaterDialog(
     var showWhatsNewModal by remember { mutableStateOf(false) }
 
     val currentInstalledVersion = remember {
-        try {
-            val pkg = context.packageManager.getPackageInfo(context.packageName, 0)
-            pkg.versionName ?: "2.2.0"
-        } catch (_: Exception) { "2.2.0" }
+        com.example.telegrambackup.utils.AppVersionHelper.currentVersionName
     }
 
     if (showWhatsNewModal) {

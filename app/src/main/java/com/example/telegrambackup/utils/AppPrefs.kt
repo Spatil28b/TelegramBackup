@@ -402,7 +402,7 @@ class AppPrefs(private val context: Context) {
         set(value) = prefs.edit().putString("backup_schedule_time", value).apply()
 
     var appVersionStr: String
-        get() = prefs.getString("app_version_str", "2.1.81") ?: "2.1.81"
+        get() = prefs.getString("app_version_str", AppVersionHelper.currentVersionName) ?: AppVersionHelper.currentVersionName
         set(value) = prefs.edit().putString("app_version_str", value).apply()
 
     var lastSeenWhatsNewVersion: String

@@ -216,7 +216,7 @@ fun MainApp(
     var appUpdateInfo by remember { mutableStateOf<com.example.telegrambackup.ui.update.AppVersionInfo?>(null) }
     var showWhatsNewDialog by remember { mutableStateOf(false) }
     val currentInstalledVersionName = remember {
-        try { context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "2.1.81" } catch (_: Exception) { "2.1.81" }
+        com.example.telegrambackup.utils.AppVersionHelper.currentVersionName
     }
 
     LaunchedEffect(Unit) {
@@ -230,19 +230,14 @@ fun MainApp(
             try {
                 val serverUrl = prefs.serverUrl.ifEmpty { "https://telegram-backup-backend.vercel.app" }
                 val versionInfo = com.example.telegrambackup.network.ServerApi().getLatestAppVersion(serverUrl)
-                val currentPkg = try {
-                    context.packageManager.getPackageInfo(context.packageName, 0)
-                } catch (_: Exception) { null }
 
-                val currentVersionName = currentPkg?.versionName ?: "1.0.0"
-                val currentVersionCode = if (currentPkg != null) {
-                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) currentPkg.longVersionCode.toInt() else @Suppress("DEPRECATION") currentPkg.versionCode
-                } else 1
+                val isUpdateAvailable = com.example.telegrambackup.utils.AppVersionHelper.isUpdateAvailable(
+                    serverVersionName = versionInfo.versionName,
+                    serverVersionCode = versionInfo.versionCode,
+                    context = context
+                )
 
-                val isNewerVersionCode = versionInfo.versionCode > currentVersionCode
-                val isNewerSemVer = com.example.telegrambackup.utils.SemVerUtils.isServerVersionNewer(versionInfo.versionName, currentVersionName)
-
-                if (versionInfo.success && (isNewerVersionCode || isNewerSemVer) && versionInfo.downloadUrl.isNotEmpty()) {
+                if (versionInfo.success && isUpdateAvailable && versionInfo.downloadUrl.isNotEmpty()) {
                     withContext(Dispatchers.Main) {
                         appUpdateInfo = versionInfo
                     }

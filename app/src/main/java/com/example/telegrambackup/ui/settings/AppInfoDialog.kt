@@ -47,11 +47,7 @@ fun AppInfoDialog(
     var showWhatsNewModal by remember { mutableStateOf(false) }
 
     val currentAppInfo = remember {
-        try {
-            val pkg = context.packageManager.getPackageInfo(context.packageName, 0)
-            val code = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) pkg.longVersionCode.toInt() else @Suppress("DEPRECATION") pkg.versionCode
-            Pair(pkg.versionName ?: "2.2.1", if (code > 0) code else 104)
-        } catch (_: Exception) { Pair("2.2.1", 104) }
+        com.example.telegrambackup.utils.AppVersionHelper.getInstalledVersion(context)
     }
 
     if (showWhatsNewModal) {
@@ -240,9 +236,12 @@ fun AppInfoDialog(
                         val versionInfo = ServerApi().getLatestAppVersion(serverUrl)
                         withContext(Dispatchers.Main) {
                             isCheckingUpdate = false
-                            val isNewerVersionCode = versionInfo.versionCode > currentAppInfo.second
-                            val isNewerSemVer = com.example.telegrambackup.utils.SemVerUtils.isServerVersionNewer(versionInfo.versionName, currentAppInfo.first)
-                            if (versionInfo.success && (isNewerVersionCode || isNewerSemVer) && versionInfo.downloadUrl.isNotEmpty()) {
+                            val isUpdateAvailable = com.example.telegrambackup.utils.AppVersionHelper.isUpdateAvailable(
+                                serverVersionName = versionInfo.versionName,
+                                serverVersionCode = versionInfo.versionCode,
+                                context = context
+                            )
+                            if (versionInfo.success && isUpdateAvailable && versionInfo.downloadUrl.isNotEmpty()) {
                                 updateInfoAvailable = versionInfo
                                 upToDateText = ""
                             } else {

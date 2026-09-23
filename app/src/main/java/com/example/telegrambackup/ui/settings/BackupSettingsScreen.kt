@@ -1801,7 +1801,7 @@ fun BackupSettingsScreen(
 
                         SpotiSettingsGroup {
                             if (matchSearch("about", "update", "version", "specs", "changelog", "release")) {
-                                val currentVersion = remember { try { context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "2.1.95" } catch (_: Exception) { "2.1.95" } }
+                                val currentVersion = remember { com.example.telegrambackup.utils.AppVersionHelper.currentVersionName }
                                 SpotiSettingsItem(
                                     icon = Icons.Default.SystemUpdate,
                                     title = "About & Updates",
