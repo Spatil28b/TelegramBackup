@@ -383,239 +383,157 @@ fun TrashBinScreen() {
     ) {
         Spacer(modifier = Modifier.height(12.dp))
 
-        // Trash Info Header Card with Material 3 styling
+        // Minimal Modern Trash Header
         Surface(
-            shape = RoundedCornerShape(18.dp),
-            color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.35f),
+            shape = RoundedCornerShape(16.dp),
+            color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.7f),
+            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)),
             modifier = Modifier.fillMaxWidth()
         ) {
-            Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(34.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.error.copy(alpha = 0.15f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.DeleteSweep,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Column {
+                        Text(
+                            text = "${trashFiles.size} items • ${formatFileSize(totalTrashSize)}",
+                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold)
+                        )
+                        val policyLabel = if (prefs.trashAutoCleanDays > 0) "${prefs.trashAutoCleanDays}d Auto-clean" else "Manual retention"
+                        Text(
+                            text = policyLabel,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.outline
+                        )
+                    }
+                }
+
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-                        Box(
-                            modifier = Modifier
-                                .size(44.dp)
-                                .clip(CircleShape)
-                                .background(MaterialTheme.colorScheme.error.copy(alpha = 0.18f)),
-                            contentAlignment = Alignment.Center
+                    // Quick Policy Selector Chip
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                        modifier = Modifier.clickable { showPolicyDialog = true }
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.DeleteSweep,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.error,
-                                modifier = Modifier.size(26.dp)
-                            )
-                        }
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column {
+                            Icon(Icons.Default.AccessTime, contentDescription = null, tint = TelegramBlue, modifier = Modifier.size(13.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
                             Text(
-                                text = "Recycle Storage",
-                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                                color = MaterialTheme.colorScheme.onErrorContainer
-                            )
-                            Text(
-                                text = "${trashFiles.size} items • ${formatFileSize(totalTrashSize)}",
-                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
-                                color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.85f)
+                                text = if (prefs.trashAutoCleanDays > 0) "${prefs.trashAutoCleanDays}d" else "Off",
+                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, color = TelegramBlue)
                             )
                         }
                     }
 
-                    // Action buttons
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        // Purge unlisted
-                        OutlinedButton(
-                            onClick = {
-                                val token = prefs.botToken
-                                val chat = prefs.chatId
-                                if (token.isEmpty() || chat.isEmpty()) {
-                                    Toast.makeText(context, "Telegram Bot Token & Chat ID required!", Toast.LENGTH_SHORT).show()
-                                    return@OutlinedButton
-                                }
-                                DynamicProcessTracker.startProcess(
-                                    title = "Purging Telegram Channel",
-                                    subtitle = "Inspecting Telegram channel & permissions...",
-                                    icon = Icons.Default.CleaningServices
-                                )
-                                scope.launch(Dispatchers.IO) {
-                                    try {
-                                        val serverApi = ServerApi()
-                                        val chatInfo = serverApi.getTelegramChatInfo(token, chat)
+                    // Deep Clean / Purge Telegram channel button
+                    OutlinedButton(
+                        onClick = {
+                            val token = prefs.botToken
+                            val chat = prefs.chatId
+                            if (token.isEmpty() || chat.isEmpty()) {
+                                Toast.makeText(context, "Telegram Bot Token & Chat ID required!", Toast.LENGTH_SHORT).show()
+                                return@OutlinedButton
+                            }
+                            DynamicProcessTracker.startProcess(
+                                title = "Purging Telegram Channel",
+                                subtitle = "Inspecting Telegram channel & permissions...",
+                                icon = Icons.Default.CleaningServices
+                            )
+                            scope.launch(Dispatchers.IO) {
+                                try {
+                                    val serverApi = ServerApi()
+                                    val chatInfo = serverApi.getTelegramChatInfo(token, chat)
 
-                                        if (!chatInfo.success) {
-                                            withContext(Dispatchers.Main) {
-                                                DynamicProcessTracker.finishProcess()
-                                                Toast.makeText(context, "Telegram Error: ${chatInfo.errorMessage}", Toast.LENGTH_LONG).show()
-                                            }
-                                            return@launch
-                                        }
-
-                                        if (chatInfo.isBotAdmin && !chatInfo.canDeleteMessages) {
-                                            withContext(Dispatchers.Main) {
-                                                Toast.makeText(context, "⚠️ Please give the bot 'Delete Messages' permission in channel '${chatInfo.title}'", Toast.LENGTH_LONG).show()
-                                            }
-                                        }
-
-                                        val max1 = db.uploadedFileDao().getMaxMessageId() ?: 0L
-                                        val max2 = db.chunkProgressDao().getMaxMessageId() ?: 0L
-                                        val knownMax = maxOf(max1, max2)
-
-                                        val targetChatId = if (chatInfo.canonicalId != null) chatInfo.canonicalId.toString() else chat
-
-                                        val result = serverApi.deepPurgeTelegramChatStorage(
-                                            token,
-                                            targetChatId,
-                                            knownMaxId = knownMax,
-                                            onProgress = { currentBatch, totalBatches, count ->
-                                                val fraction = if (totalBatches > 0) currentBatch.toFloat() / totalBatches.toFloat() else 0f
-                                                DynamicProcessTracker.updateProgress(
-                                                    progress = fraction,
-                                                    subtitle = "Scanning '${chatInfo.title}': $count purged ($currentBatch/$totalBatches)"
-                                                )
-                                            }
-                                        )
+                                    if (!chatInfo.success) {
                                         withContext(Dispatchers.Main) {
                                             DynamicProcessTracker.finishProcess()
-                                            if (result.first == -1) {
-                                                Toast.makeText(context, "🚫 Bot CANNOT delete messages! Make bot Admin with 'Delete Messages' permission in channel '${chatInfo.title}'", Toast.LENGTH_LONG).show()
-                                            } else if (result.first > 0) {
-                                                Toast.makeText(context, "✅ Purged ${result.first} messages from Telegram channel '${chatInfo.title}' (${result.second} scanned)", Toast.LENGTH_LONG).show()
-                                            } else {
-                                                Toast.makeText(context, "Channel '${chatInfo.title}' is clean — 0 messages found", Toast.LENGTH_LONG).show()
-                                            }
+                                            Toast.makeText(context, "Telegram Error: ${chatInfo.errorMessage}", Toast.LENGTH_LONG).show()
                                         }
-                                    } catch (e: Exception) {
+                                        return@launch
+                                    }
+
+                                    if (chatInfo.isBotAdmin && !chatInfo.canDeleteMessages) {
                                         withContext(Dispatchers.Main) {
-                                            DynamicProcessTracker.finishProcess()
-                                            Toast.makeText(context, "Deep Clean failed: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
+                                            Toast.makeText(context, "⚠️ Please give the bot 'Delete Messages' permission in channel '${chatInfo.title}'", Toast.LENGTH_LONG).show()
                                         }
                                     }
+
+                                    val max1 = db.uploadedFileDao().getMaxMessageId() ?: 0L
+                                    val max2 = db.chunkProgressDao().getMaxMessageId() ?: 0L
+                                    val knownMax = maxOf(max1, max2)
+
+                                    val targetChatId = if (chatInfo.canonicalId != null) chatInfo.canonicalId.toString() else chat
+
+                                    val result = serverApi.deepPurgeTelegramChatStorage(
+                                        token,
+                                        targetChatId,
+                                        knownMaxId = knownMax,
+                                        onProgress = { currentBatch, totalBatches, count ->
+                                            val fraction = if (totalBatches > 0) currentBatch.toFloat() / totalBatches.toFloat() else 0f
+                                            DynamicProcessTracker.updateProgress(
+                                                progress = fraction,
+                                                subtitle = "Scanning '${chatInfo.title}': $count purged ($currentBatch/$totalBatches)"
+                                            )
+                                        }
+                                    )
+                                    withContext(Dispatchers.Main) {
+                                        DynamicProcessTracker.finishProcess()
+                                        if (result.first == -1) {
+                                            Toast.makeText(context, "🚫 Bot CANNOT delete messages! Make bot Admin with 'Delete Messages' permission in channel '${chatInfo.title}'", Toast.LENGTH_LONG).show()
+                                        } else if (result.first > 0) {
+                                            Toast.makeText(context, "✅ Purged ${result.first} messages from Telegram channel '${chatInfo.title}' (${result.second} scanned)", Toast.LENGTH_LONG).show()
+                                        } else {
+                                            Toast.makeText(context, "Channel '${chatInfo.title}' is clean — 0 messages found", Toast.LENGTH_LONG).show()
+                                        }
+                                    }
+                                } catch (e: Exception) {
+                                    withContext(Dispatchers.Main) {
+                                        DynamicProcessTracker.finishProcess()
+                                        Toast.makeText(context, "Deep Clean failed: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
+                                    }
                                 }
-                            },
-                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-                            shape = RoundedCornerShape(8.dp)
-                        ) {
-                            Text("🧹 Deep Clean", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold))
-                        }
-
-                        // Empty Trash
-                        if (trashFiles.isNotEmpty()) {
-                            Button(
-                                onClick = { showEmptyTrashDialog = true },
-                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
-                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                                shape = RoundedCornerShape(8.dp)
-                            ) {
-                                Text("Empty Trash", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold))
                             }
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(10.dp))
-
-                // Auto-clean Policy Chip (Clickable to change policy)
-                Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.7f),
-                    modifier = Modifier
-                        .clickable { showPolicyDialog = true }
-                        .fillMaxWidth()
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
+                        },
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                        shape = RoundedCornerShape(8.dp)
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.AccessTime, contentDescription = null, tint = TelegramBlue, modifier = Modifier.size(14.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            val policyText = if (prefs.trashAutoCleanDays > 0) "Auto-cleans after ${prefs.trashAutoCleanDays} days" else "Auto-clean: Never (Manual only)"
-                            Text(
-                                text = policyText,
-                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Medium),
-                                color = TelegramBlue
-                            )
-                        }
-                        Text(
-                            text = "Change ⚙️",
-                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                            color = TelegramBlue
-                        )
+                        Text("🧹 Purge", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold))
                     }
-                }
-            }
-        }
 
-        // Multi-select action bar
-        if (isSelectionMode && selectedPaths.isNotEmpty()) {
-            Spacer(modifier = Modifier.height(8.dp))
-            Surface(
-                shape = RoundedCornerShape(14.dp),
-                color = TelegramBlue.copy(alpha = 0.12f),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        val allSelected = selectedPaths.size == filteredTrashFiles.size && filteredTrashFiles.isNotEmpty()
-                        Checkbox(
-                            checked = allSelected,
-                            onCheckedChange = { checked ->
-                                selectedPaths = if (checked) filteredTrashFiles.map { it.path }.toSet() else emptySet()
-                                if (!checked) isSelectionMode = false
-                            },
-                            modifier = Modifier.size(20.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            "${selectedPaths.size}/${filteredTrashFiles.size} selected",
-                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold, color = TelegramBlue)
-                        )
-                    }
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        // Restore Selected
+                    // Empty Trash
+                    if (trashFiles.isNotEmpty()) {
                         Button(
-                            onClick = {
-                                val filesToRestore = trashFiles.filter { selectedPaths.contains(it.path) }
-                                restoreFiles(filesToRestore)
-                            },
-                            colors = ButtonDefaults.buttonColors(containerColor = TelegramEmerald),
-                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                            shape = RoundedCornerShape(8.dp)
-                        ) {
-                            Icon(Icons.Default.Restore, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("Restore", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold))
-                        }
-
-                        // Delete Permanently
-                        Button(
-                            onClick = { showBatchDeleteDialog = true },
+                            onClick = { showEmptyTrashDialog = true },
                             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
                             contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
                             shape = RoundedCornerShape(8.dp)
                         ) {
-                            Icon(Icons.Default.DeleteForever, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("Delete", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold))
-                        }
-
-                        TextButton(
-                            onClick = {
-                                selectedPaths = emptySet()
-                                isSelectionMode = false
-                            },
-                            contentPadding = PaddingValues(horizontal = 8.dp)
-                        ) {
-                            Text("Cancel", style = MaterialTheme.typography.labelSmall)
+                            Text("Empty", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold))
                         }
                     }
                 }
@@ -624,25 +542,25 @@ fun TrashBinScreen() {
 
         // Search Bar (Shown when items exist in trash)
         if (trashFiles.isNotEmpty()) {
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(8.dp))
             OutlinedTextField(
                 value = searchQuery,
                 onValueChange = { searchQuery = it },
-                modifier = Modifier.fillMaxWidth(),
-                placeholder = { Text("Search trash items...", style = MaterialTheme.typography.bodyMedium) },
-                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = MaterialTheme.colorScheme.outline) },
+                modifier = Modifier.fillMaxWidth().height(48.dp),
+                placeholder = { Text("Search trash items...", style = MaterialTheme.typography.bodySmall) },
+                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = MaterialTheme.colorScheme.outline, modifier = Modifier.size(18.dp)) },
                 trailingIcon = {
                     if (searchQuery.isNotEmpty()) {
                         IconButton(onClick = { searchQuery = "" }) {
-                            Icon(Icons.Default.Close, contentDescription = "Clear")
+                            Icon(Icons.Default.Close, contentDescription = "Clear", modifier = Modifier.size(16.dp))
                         }
                     }
                 },
                 singleLine = true,
-                shape = RoundedCornerShape(12.dp),
+                shape = CircleShape,
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedBorderColor = TelegramBlue,
-                    unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
+                    unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
                 )
             )
         }

@@ -24,128 +24,169 @@ import androidx.compose.ui.unit.dp
 import com.example.telegrambackup.theme.TelegramBlue
 import com.example.telegrambackup.theme.TelegramEmerald
 
-data class GuideSection(
+import androidx.compose.material.icons.automirrored.filled.Chat
+
+data class GuideStepItem(
     val icon: ImageVector,
     val iconTint: Color,
     val title: String,
-    val steps: List<String>
+    val subtitle: String,
+    val details: List<String>
 )
 
 @Composable
 fun GuideScreen() {
-    val sections = remember {
+    var activeTab by remember { mutableIntStateOf(0) } // 0 = Setup Guide, 1 = User Manual & Features
+
+    val setupSteps = remember {
         listOf(
-            GuideSection(
-                Icons.Default.SmartToy, TelegramBlue,
-                "Step 1: Create a Telegram Bot",
-                listOf(
+            GuideStepItem(
+                icon = Icons.Default.SmartToy,
+                iconTint = TelegramBlue,
+                title = "Step 1: Create a Telegram Bot",
+                subtitle = "Takes ~30 seconds in Telegram",
+                details = listOf(
                     "1. Open Telegram and search for @BotFather",
-                    "2. Start a chat and send the command /newbot",
-                    "3. Give your bot a display name (e.g., 'My Backup Bot')",
-                    "4. Give your bot a username ending in 'bot' (e.g., 'mybackup_bot')",
+                    "2. Start the chat and send the command: /newbot",
+                    "3. Enter a display name for your bot (e.g., 'My Cloud Backup')",
+                    "4. Enter a unique username ending in 'bot' (e.g., 'my_cloud_backup_bot')",
                     "5. BotFather will reply with your Bot API Token — copy it!",
-                    "6. IMPORTANT: Keep this token private. Anyone with it can control your bot."
+                    "6. 🔒 Keep your token private. Anyone with it can control your bot."
                 )
             ),
-            GuideSection(
-                Icons.Default.Chat, TelegramEmerald,
-                "Step 2: Get Your Chat ID (Instant & Easy)",
-                listOf(
+            GuideStepItem(
+                icon = Icons.AutoMirrored.Filled.Chat,
+                iconTint = TelegramEmerald,
+                title = "Step 2: Get Your Chat ID or Channel ID",
+                subtitle = "Two quick options available",
+                details = listOf(
                     "Option A — Direct Chat ID (Easiest in 5 seconds):",
-                    "   1. Open Telegram and search for @userinfobot or @getmyid_bot",
-                    "   2. Tap 'Start' or send /start",
-                    "   3. The bot will instantly reply with your Chat ID (e.g. 123456789) — copy it!",
+                    "   1. Search for @userinfobot or @getmyid_bot in Telegram",
+                    "   2. Send /start",
+                    "   3. Copy the numeric ID (e.g. 123456789)",
                     "",
-                    "Option B — Private Backup Channel (Best for organized storage):",
-                    "   1. Create a new Private Channel in Telegram (e.g. 'My Cloud Backup')",
-                    "   2. Add your Bot as Administrator with 'Post Messages' & 'Delete Messages' enabled",
-                    "   3. Send any text message in your new channel",
-                    "   4. Forward that message to @userinfobot or @getmyid_bot",
-                    "   5. The bot will reply with your Channel ID starting with '-100' (e.g. -1001234567890) — copy it!"
+                    "Option B — Private Channel (Best for organized cloud vault):",
+                    "   1. Create a new Private Channel in Telegram",
+                    "   2. Add your Bot as Administrator (Enable 'Post' & 'Delete' permissions)",
+                    "   3. Send any message in the channel and forward it to @userinfobot",
+                    "   4. Copy the channel ID starting with -100 (e.g. -1001234567890)"
                 )
             ),
-            GuideSection(
-                Icons.Default.Key, Color(0xFFF59E0B),
-                "Step 3: Set Up Credentials in App",
-                listOf(
-                    "1. Open Settings → Telegram Cloud Credentials",
-                    "2. Paste your Bot API Token in the first field",
-                    "3. Paste your Chat ID in the second field",
-                    "4. Tap 'Verify Credentials Now' to test the connection",
-                    "5. If verification succeeds, tap 'Save & Lock Credentials'",
-                    "6. After saving, credentials are locked — you'll need OTP to modify them later"
+            GuideStepItem(
+                icon = Icons.Default.Key,
+                iconTint = Color(0xFFF59E0B),
+                title = "Step 3: Connect Credentials in App",
+                subtitle = "Save and test your cloud storage connection",
+                details = listOf(
+                    "1. Go to Settings → Telegram Cloud Credentials",
+                    "2. Paste your Bot API Token and Chat ID",
+                    "3. Tap 'Verify Credentials Now' to test connection",
+                    "4. Tap 'Save & Lock Credentials' to secure them",
+                    "5. 🛡️ Credentials are cryptographically locked on your device"
                 )
             ),
-            GuideSection(
-                Icons.Default.CloudSync, Color(0xFF8B5CF6),
-                "Step 4: How Smart Backup Works",
-                listOf(
-                    "1. Go to Settings → Smart Backup Engine",
-                    "2. Enable 'Smart Backup' toggle",
-                    "3. Choose your backup mode:",
-                    "   • 🔄 Continuous — Checks every 15 min automatically",
-                    "   • ⏰ Custom — Pick interval (1h, 3h, 6h, 12h, 24h)",
-                    "   • 🌙 Night Express — Runs at 1-5 AM with max speed",
-                    "4. Set file size filters (Min/Max) to control what gets backed up",
-                    "5. Toggle folder sources ON/OFF (Camera, Downloads, Documents, etc.)",
-                    "6. Backup runs in the background even when the app is closed!"
-                )
-            ),
-            GuideSection(
-                Icons.Default.Security, Color(0xFFEC4899),
-                "Step 5: Encryption & Security",
-                listOf(
-                    "1. Every file is encrypted with AES-256 before leaving your device",
-                    "2. Your unique Master Key is generated once and never changes",
-                    "3. Go to Settings → Security to see your Master Key",
-                    "4. Tap 'Email Encryption Key to Me' to receive a backup via email",
-                    "5. Store the key safely — without it, files cannot be decrypted!",
-                    "6. Enable Biometric Lock for extra app security",
-                    "7. IMPORTANT: No one (not even us) can read your encrypted files"
-                )
-            ),
-            GuideSection(
-                Icons.Default.CalendarMonth, Color(0xFF06B6D4),
-                "Step 6: Monthly Archive",
-                listOf(
-                    "1. Open the sidebar → Monthly Archive",
-                    "2. Files are grouped by month (e.g., 'August 2026 — 15 files')",
-                    "3. Use the filter icon to select a specific month/year",
-                    "4. Tap a month header to expand and see individual files",
-                    "5. Tap the download icon on a month to get the entire month as ZIP",
-                    "6. Long-press files to select multiple → Download as ZIP",
-                    "7. Each month starts fresh — perfect for organized backups!"
-                )
-            ),
-            GuideSection(
-                Icons.Default.DeleteSweep, Color(0xFFEF4444),
-                "Step 7: Trash Bin & Auto-Clean",
-                listOf(
-                    "1. Deleted files go to the Trash Bin (sidebar → Trash Bin)",
-                    "2. You can restore or permanently delete items from trash",
-                    "3. Go to Settings → Danger Zone → Trash Auto-Clean Policy",
-                    "4. Choose auto-clean interval: Never, 7, 14, 30, 60, or 90 days",
-                    "5. Items older than the policy are auto-deleted when you open Trash",
-                    "6. The Trash header shows remaining days for each item"
-                )
-            ),
-            GuideSection(
-                Icons.Default.BugReport, Color(0xFF64748B),
-                "Step 8: Troubleshooting",
-                listOf(
-                    "1. OTP not received? Check spam folder and wait 2 minutes",
-                    "2. Bot not sending messages? Verify bot is Admin in the channel",
-                    "3. Backup not working? Check: Wi-Fi only toggle, Stop Backup toggle",
-                    "4. Files not showing? Pull down to refresh on any screen",
-                    "5. Encryption key lost? Check your email for the key backup",
-                    "6. App crashing? Clear app data in Android Settings (last resort)",
-                    "7. Need to change credentials? Settings → Credentials → OTP unlock"
+            GuideStepItem(
+                icon = Icons.Default.CheckCircle,
+                iconTint = Color(0xFF8B5CF6),
+                title = "Step 4: Grant Permissions & Start",
+                subtitle = "All Files Access & Notifications",
+                details = listOf(
+                    "1. Grant 'All files access' when prompted so the app can scan your files",
+                    "2. Enable Notifications to view live upload speeds and progress meters",
+                    "3. Tap 'Manual Sync' anytime or turn on Smart Auto-Backup",
+                    "4. Files are encrypted with AES-256 before leaving your device"
                 )
             )
         )
     }
 
-    var expandedIndex by remember { mutableIntStateOf(-1) }
+    val manualFeatures = remember {
+        listOf(
+            GuideStepItem(
+                icon = Icons.Default.CloudQueue,
+                iconTint = TelegramBlue,
+                title = "Cloud Drive & Instant Streaming",
+                subtitle = "Browse, search, and stream without downloading",
+                details = listOf(
+                    "• Browse your complete file hierarchy in real time",
+                    "• Direct Video & Audio Streaming: tap any video or music file to stream instantly without saving to phone memory",
+                    "• Full-text search by file name, extension, or folder path",
+                    "• Chunked 2GB support: large files are split into secure chunks and reassembled on demand"
+                )
+            ),
+            GuideStepItem(
+                icon = Icons.Default.Lock,
+                iconTint = Color(0xFFEC4899),
+                title = "Safe Folder & Master Key Encryption",
+                subtitle = "Military-grade AES-256-GCM zero-knowledge vault",
+                details = listOf(
+                    "• Every file is encrypted using AES-256-GCM with PBKDF2 key derivation",
+                    "• Your Master Key is generated once and stored in Android Keystore",
+                    "• Safe Folder: hide sensitive documents behind Biometric/PIN lock",
+                    "• Tap 'Email Encryption Key to Me' in Settings to keep a secure backup"
+                )
+            ),
+            GuideStepItem(
+                icon = Icons.Default.Share,
+                iconTint = Color(0xFF06B6D4),
+                title = "Direct Cloud Share Links",
+                subtitle = "Share any backed-up file with anyone via URL",
+                details = listOf(
+                    "• Open any file in Cloud Drive and tap 'Generate Share Link'",
+                    "• Share links allow anyone with the link to download the file directly via high-speed CDN",
+                    "• Set expiration limits or revoke shared links anytime in Settings"
+                )
+            ),
+            GuideStepItem(
+                icon = Icons.Default.CalendarMonth,
+                iconTint = Color(0xFF10B981),
+                title = "Monthly Archives & ZIP Exporter",
+                subtitle = "Auto-organized monthly backups",
+                details = listOf(
+                    "• Files are automatically partitioned into chronological monthly folders",
+                    "• One-tap ZIP export: download any entire month as a consolidated ZIP file",
+                    "• View cumulative storage used per month at a glance"
+                )
+            ),
+            GuideStepItem(
+                icon = Icons.Default.Bolt,
+                iconTint = Color(0xFFF59E0B),
+                title = "Multi-Bot Fleet & Turbo Concurrency",
+                subtitle = "Parallelize uploads for 5x transfer speed",
+                details = listOf(
+                    "• Add secondary bot tokens in Settings → Bot Fleet Manager",
+                    "• Uploads are split across multiple bots simultaneously, bypassing Telegram per-bot rate limits",
+                    "• Automatic failover if any bot token experiences network timeout"
+                )
+            ),
+            GuideStepItem(
+                icon = Icons.Default.DeleteSweep,
+                iconTint = Color(0xFFEF4444),
+                title = "Smart Trash Bin & Retention Policies",
+                subtitle = "Two-stage deletion with Telegram channel purge",
+                details = listOf(
+                    "• Deleted files stay in Recycle Bin for 7 to 90 days before automatic purge",
+                    "• 1-tap Restore: return any trashed item back into active Cloud Drive",
+                    "• Deep Purge: scan and delete orphaned messages directly from your Telegram channel"
+                )
+            ),
+            GuideStepItem(
+                icon = Icons.Default.Build,
+                iconTint = Color(0xFF64748B),
+                title = "Diagnostics & Troubleshooting",
+                subtitle = "Quick fixes for common issues",
+                details = listOf(
+                    "• Bot Not Uploading: Ensure bot is Admin in the channel with 'Post Messages' permission",
+                    "• Sync Paused: Check if 'Wi-Fi Only' or 'Stop All Backups' toggle is enabled in Settings",
+                    "• Storage Full on Device: Use the Clean tab to delete local copies of files already verified in Cloud",
+                    "• Need to Change Credentials: Go to Settings → Credentials → Request OTP unlock"
+                )
+            )
+        )
+    }
+
+    var expandedSetupIndex by remember { mutableIntStateOf(-1) }
+    var expandedManualIndex by remember { mutableIntStateOf(-1) }
 
     Column(
         modifier = Modifier
@@ -153,149 +194,206 @@ fun GuideScreen() {
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 16.dp)
     ) {
-        Spacer(modifier = Modifier.height(12.dp))
+        Spacer(modifier = Modifier.height(10.dp))
 
-        // Header Card
+        // Modern Segmented Tab Bar Switcher
         Surface(
-            shape = RoundedCornerShape(18.dp),
-            color = TelegramBlue.copy(alpha = 0.1f),
+            shape = RoundedCornerShape(14.dp),
+            color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.85f),
             modifier = Modifier.fillMaxWidth()
         ) {
             Row(
-                modifier = Modifier.padding(16.dp),
-                verticalAlignment = Alignment.CenterVertically
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(4.dp)
             ) {
-                Box(
+                // Setup Guide Tab
+                val isSetup = activeTab == 0
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = if (isSetup) MaterialTheme.colorScheme.surface else Color.Transparent,
+                    shadowElevation = if (isSetup) 2.dp else 0.dp,
                     modifier = Modifier
-                        .size(48.dp)
-                        .clip(CircleShape)
-                        .background(TelegramBlue.copy(alpha = 0.2f)),
-                    contentAlignment = Alignment.Center
+                        .weight(1f)
+                        .clickable { activeTab = 0 }
                 ) {
-                    Icon(Icons.Default.MenuBook, contentDescription = null, tint = TelegramBlue, modifier = Modifier.size(26.dp))
+                    Row(
+                        modifier = Modifier.padding(vertical = 10.dp),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "🚀 Setup Guide",
+                            style = MaterialTheme.typography.bodyMedium.copy(
+                                fontWeight = if (isSetup) FontWeight.Bold else FontWeight.Medium,
+                                color = if (isSetup) TelegramBlue else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        )
+                    }
                 }
-                Spacer(modifier = Modifier.width(14.dp))
-                Column {
-                    Text(
-                        "Complete Setup Guide",
-                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
-                    )
-                    Text(
-                        "Follow these 8 steps to set up your cloud backup",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.outline
-                    )
+
+                // User Manual & Features Tab
+                val isManual = activeTab == 1
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = if (isManual) MaterialTheme.colorScheme.surface else Color.Transparent,
+                    shadowElevation = if (isManual) 2.dp else 0.dp,
+                    modifier = Modifier
+                        .weight(1f)
+                        .clickable { activeTab = 1 }
+                ) {
+                    Row(
+                        modifier = Modifier.padding(vertical = 10.dp),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "📖 Features & Manual",
+                            style = MaterialTheme.typography.bodyMedium.copy(
+                                fontWeight = if (isManual) FontWeight.Bold else FontWeight.Medium,
+                                color = if (isManual) TelegramBlue else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        )
+                    }
                 }
             }
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(14.dp))
 
-        // Accordion Sections
-        sections.forEachIndexed { index, section ->
-            val isExpanded = expandedIndex == index
+        // Content Display based on active tab
+        if (activeTab == 0) {
+            // SETUP GUIDE LIST
+            setupSteps.forEachIndexed { index, item ->
+                val isExpanded = expandedSetupIndex == index
+                GuideStepCard(
+                    item = item,
+                    isExpanded = isExpanded,
+                    onToggle = { expandedSetupIndex = if (isExpanded) -1 else index }
+                )
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
 
             Surface(
                 shape = RoundedCornerShape(14.dp),
-                color = MaterialTheme.colorScheme.surface,
-                tonalElevation = if (isExpanded) 3.dp else 1.dp,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 4.dp)
+                color = TelegramEmerald.copy(alpha = 0.12f),
+                border = androidx.compose.foundation.BorderStroke(1.dp, TelegramEmerald.copy(alpha = 0.3f)),
+                modifier = Modifier.fillMaxWidth()
             ) {
-                Column {
-                    // Section Header
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable {
-                                expandedIndex = if (isExpanded) -1 else index
-                            }
-                            .padding(14.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(40.dp)
-                                .clip(CircleShape)
-                                .background(section.iconTint.copy(alpha = 0.15f)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(section.icon, contentDescription = null, tint = section.iconTint, modifier = Modifier.size(22.dp))
-                        }
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                section.title,
-                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold)
-                            )
-                            Text(
-                                "${section.steps.size} steps",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.outline
-                            )
-                        }
-                        Icon(
-                            if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.outline
-                        )
-                    }
-
-                    // Expanded Steps
-                    AnimatedVisibility(
-                        visible = isExpanded,
-                        enter = expandVertically(),
-                        exit = shrinkVertically()
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(start = 66.dp, end = 14.dp, bottom = 14.dp),
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            section.steps.forEach { step ->
-                                Row(verticalAlignment = Alignment.Top) {
-                                    if (!step.startsWith("   ")) {
-                                        Box(
-                                            modifier = Modifier
-                                                .padding(top = 6.dp)
-                                                .size(6.dp)
-                                                .clip(CircleShape)
-                                                .background(section.iconTint)
-                                        )
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                    }
-                                    Text(
-                                        step.trimStart(),
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.85f)
-                                    )
-                                }
-                            }
-                        }
-                    }
+                Row(
+                    modifier = Modifier.padding(14.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Default.Verified, contentDescription = null, tint = TelegramEmerald, modifier = Modifier.size(22.dp))
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Text(
+                        "Once setup is complete, your cloud vault runs continuously in the background.",
+                        style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium, color = TelegramEmerald)
+                    )
                 }
             }
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // Bottom tip
-        Surface(
-            shape = RoundedCornerShape(14.dp),
-            color = TelegramEmerald.copy(alpha = 0.1f),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Row(modifier = Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.Lightbulb, contentDescription = null, tint = TelegramEmerald, modifier = Modifier.size(22.dp))
-                Spacer(modifier = Modifier.width(10.dp))
-                Text(
-                    "Tip: Once you complete setup, the app handles everything automatically in the background!",
-                    style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium),
-                    color = TelegramEmerald
+        } else {
+            // USER MANUAL & FEATURES LIST
+            manualFeatures.forEachIndexed { index, item ->
+                val isExpanded = expandedManualIndex == index
+                GuideStepCard(
+                    item = item,
+                    isExpanded = isExpanded,
+                    onToggle = { expandedManualIndex = if (isExpanded) -1 else index }
                 )
             }
         }
 
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(28.dp))
+    }
+}
+
+@Composable
+private fun GuideStepCard(
+    item: GuideStepItem,
+    isExpanded: Boolean,
+    onToggle: () -> Unit
+) {
+    Surface(
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.7f),
+        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp)
+    ) {
+        Column {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onToggle() }
+                    .padding(14.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(38.dp)
+                        .clip(CircleShape)
+                        .background(item.iconTint.copy(alpha = 0.15f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(item.icon, contentDescription = null, tint = item.iconTint, modifier = Modifier.size(20.dp))
+                }
+                Spacer(modifier = Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = item.title,
+                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold)
+                    )
+                    Text(
+                        text = item.subtitle,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.outline
+                    )
+                }
+                Icon(
+                    imageVector = if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.outline,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+
+            AnimatedVisibility(
+                visible = isExpanded,
+                enter = expandVertically(),
+                exit = shrinkVertically()
+            ) {
+                Column(
+                    modifier = Modifier.padding(start = 64.dp, end = 16.dp, bottom = 14.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    item.details.forEach { detail ->
+                        if (detail.isBlank()) {
+                            Spacer(modifier = Modifier.height(4.dp))
+                        } else {
+                            Row(verticalAlignment = Alignment.Top) {
+                                if (!detail.startsWith("   ") && !detail.startsWith("•") && !detail.startsWith("Option")) {
+                                    Box(
+                                        modifier = Modifier
+                                            .padding(top = 6.dp)
+                                            .size(5.dp)
+                                            .clip(CircleShape)
+                                            .background(item.iconTint)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                }
+                                Text(
+                                    text = detail.trimStart(),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.85f)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }

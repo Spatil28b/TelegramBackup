@@ -117,11 +117,15 @@ data class DriveStorageBreakdown(
     val docsBytes: Long = 0L
 )
 
+private fun isDriveLetterPath(path: String): Boolean {
+    return path.length >= 2 && path[0].isLetter() && path[1] == ':'
+}
+
 private fun normalizeDrivePath(path: String): String {
     var clean = path.replace("\\", "/").trim()
     if (clean.contains("storage/emulated/0")) {
         clean = clean.substringAfter("storage/emulated/0").removePrefix("/")
-    } else if (clean.matches(Regex("^[A-Za-z]:[/\\\\].*"))) {
+    } else if (isDriveLetterPath(clean)) {
         clean = clean.substring(2).removePrefix("/")
     } else if (clean.startsWith("primary:")) {
         clean = clean.removePrefix("primary:").removePrefix("/")

@@ -45,6 +45,14 @@ data class StorageCategoryUsage(
 
 object StorageStatsHelper {
 
+    @Volatile
+    var cachedStorageInfo: DeviceStorageInfo = DeviceStorageInfo(
+        128L * 1024L * 1024L * 1024L,
+        64L * 1024L * 1024L * 1024L,
+        64L * 1024L * 1024L * 1024L,
+        0.5f
+    )
+
     fun getDeviceStorageInfo(): DeviceStorageInfo {
         return try {
             val path = Environment.getDataDirectory()
@@ -58,11 +66,15 @@ object StorageStatsHelper {
             val usedBytes = (totalBytes - freeBytes).coerceAtLeast(0L)
             val percentage = if (totalBytes > 0) (usedBytes.toFloat() / totalBytes.toFloat()).coerceIn(0f, 1f) else 0f
 
-            DeviceStorageInfo(totalBytes, freeBytes, usedBytes, percentage)
+            val info = DeviceStorageInfo(totalBytes, freeBytes, usedBytes, percentage)
+            cachedStorageInfo = info
+            info
         } catch (_: Exception) {
             val total = 128L * 1024L * 1024L * 1024L
             val used = 64L * 1024L * 1024L * 1024L
-            DeviceStorageInfo(total, total - used, used, 0.5f)
+            val info = DeviceStorageInfo(total, total - used, used, 0.5f)
+            cachedStorageInfo = info
+            info
         }
     }
 

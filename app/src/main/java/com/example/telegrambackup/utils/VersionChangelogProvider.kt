@@ -1,6 +1,7 @@
 package com.example.telegrambackup.utils
 
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.*
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -26,6 +27,56 @@ data class VersionRelease(
 object VersionChangelogProvider {
 
     private val releases = listOf(
+        VersionRelease(
+            versionName = "2.2.2",
+            versionCode = 105,
+            releaseDate = "September 2026",
+            highlights = "Komi Store Floating Nav Bar, Zero-Lag Direction-Aware Transitions, Smart Scroll Auto-Hide, Symbolic Notifications & Minimal Clean UI",
+            entries = listOf(
+                ChangelogEntry(
+                    Icons.Default.Navigation,
+                    TelegramBlue,
+                    "Komi Store Floating Capsule Nav Bar",
+                    "Inspired by Komi Store: compact liquid pill bar (62dp) with spring bouncy touch animations, continuous rounded corners, and soft elevation.",
+                    "DESIGN"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Speed,
+                    TelegramEmerald,
+                    "Zero-Lag Direction-Aware Tab Transitions",
+                    "Eliminated main-thread disk I/O, regex recompilations, and 4-pass calculation loops. Added buttery horizontal slide transitions that follow navigation direction.",
+                    "PERFORMANCE"
+                ),
+                ChangelogEntry(
+                    Icons.Default.VisibilityOff,
+                    Color(0xFF8B5CF6),
+                    "Smart Scroll Auto-Hide",
+                    "Bottom navigation bar intelligently slides down out of view when scrolling down to maximize content space, and smoothly glides back up on scroll up.",
+                    "EXPERIENCE"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Notifications,
+                    Color(0xFFF59E0B),
+                    "Symbolic Minimal Notifications",
+                    "Removed verbose sentence text in notifications in favor of clean glyph icons and metrics: ☁️, ⚡, ⬆️, ⬇️, ✓, 💾, ⏱️ with direct single-tap actions.",
+                    "NOTIFICATIONS"
+                ),
+                ChangelogEntry(
+                    Icons.Default.DeleteSweep,
+                    Color(0xFFEF4444),
+                    "Minimalist Trash Bin & Local Storage",
+                    "Redesigned Trash Bin and Local Storage with compact status pills, inline search, and minimal modern spacing that eliminates visual clutter.",
+                    "CLEAN UI"
+                ),
+                ChangelogEntry(
+                    Icons.AutoMirrored.Filled.MenuBook,
+                    Color(0xFF06B6D4),
+                    "Separated Setup Guide & User Manual",
+                    "Split guides into 2 dedicated tabs: 🚀 Quick Setup Guide (4 steps) and 📖 Features & User Manual with in-depth operational breakdowns.",
+                    "GUIDES"
+                )
+            )
+        ),
         VersionRelease(
             versionName = "2.2.1",
             versionCode = 104,

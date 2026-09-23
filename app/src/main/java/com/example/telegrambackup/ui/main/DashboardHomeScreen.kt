@@ -60,8 +60,8 @@ fun DashboardHomeScreen(
     val scope = rememberCoroutineScope()
     val haptic = LocalHapticFeedback.current
 
-    // Real device storage info
-    var storageInfo by remember { mutableStateOf(StorageStatsHelper.getDeviceStorageInfo()) }
+    // Real device storage info - initialized with fast cached default to prevent UI thread I/O hang
+    var storageInfo by remember { mutableStateOf(StorageStatsHelper.cachedStorageInfo) }
     var junkCacheBytes by remember { mutableLongStateOf(0L) }
     var categoryUsage by remember { mutableStateOf(StorageCategoryUsage()) }
     var localBackedUpFiles by remember { mutableStateOf<List<UploadedFile>>(emptyList()) }
@@ -140,10 +140,31 @@ fun DashboardHomeScreen(
         )
     }
 
-    val totalCloudBytes = remember(recentFiles) { recentFiles.sumOf { it.size } }
+    // Fast single-pass calculation for cloud and large files
+    var totalCloudBytes by remember { mutableLongStateOf(0L) }
+    var largeFiles by remember { mutableStateOf<List<UploadedFile>>(emptyList()) }
+    var largeFilesBytes by remember { mutableLongStateOf(0L) }
     val localBackedUpBytes = remember(localBackedUpFiles) { localBackedUpFiles.sumOf { it.size } }
-    val largeFiles = remember(recentFiles) { recentFiles.filter { it.size > 25 * 1024 * 1024 } }
-    val largeFilesBytes = remember(largeFiles) { largeFiles.sumOf { it.size } }
+
+    LaunchedEffect(recentFiles) {
+        withContext(Dispatchers.Default) {
+            var sumBytes = 0L
+            val largeList = ArrayList<UploadedFile>()
+            var largeSum = 0L
+            for (f in recentFiles) {
+                sumBytes += f.size
+                if (f.size > 25 * 1024 * 1024) {
+                    largeList.add(f)
+                    largeSum += f.size
+                }
+            }
+            withContext(Dispatchers.Main) {
+                totalCloudBytes = sumBytes
+                largeFiles = largeList
+                largeFilesBytes = largeSum
+            }
+        }
+    }
 
     LazyColumn(
         modifier = Modifier

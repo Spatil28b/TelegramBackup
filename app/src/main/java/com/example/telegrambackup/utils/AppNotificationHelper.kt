@@ -149,22 +149,22 @@ object AppNotificationHelper {
         val stopPendingIntent = createControlPendingIntent(context, BackupControlReceiver.ACTION_STOP_BACKUP, 102)
 
         val title = when {
-            isRunning -> "Cloud Vault • Active"
-            prefs.stopAllBackups -> "Cloud Vault • Paused"
-            else -> "Cloud Vault • Protected"
+            isRunning -> "☁️ ⚡ Online"
+            prefs.stopAllBackups -> "☁️ ⏸️ Paused"
+            else -> "☁️ ✓ Ready"
         }
 
         val content = when {
             statusText.isNotBlank() -> statusText
-            isRunning -> "Syncing files to Telegram Cloud"
-            prefs.stopAllBackups -> "Backup paused by user"
-            else -> "All systems ready to sync"
+            isRunning -> "⬆️ Active • 🛡️ Safe"
+            prefs.stopAllBackups -> "⏸️ Standby"
+            else -> "✓ Protected • ☁️ Vault"
         }
 
         val builder = NotificationCompat.Builder(context, CHANNEL_ID_CONTROLLER)
             .setSmallIcon(if (isRunning) R.drawable.ic_cloud_upload else R.drawable.ic_cloud_done)
             .setColor(if (isRunning) COLOR_PRIMARY else COLOR_SUCCESS)
-            .setSubText("⚡ Cloud Vault")
+            .setSubText("☁️ • ⚡")
             .setContentTitle(title)
             .setContentText(content)
             .setOngoing(true)
@@ -175,12 +175,12 @@ object AppNotificationHelper {
             .setShowWhen(false)
 
         if (isRunning) {
-            builder.addAction(R.drawable.ic_pause, "Pause", stopPendingIntent)
-            builder.addAction(R.drawable.ic_cloud_upload, "Progress", openAppPendingIntent)
-            builder.addAction(R.drawable.ic_folder, "Drive", openDrivePendingIntent)
+            builder.addAction(R.drawable.ic_pause, "⏸️ Pause", stopPendingIntent)
+            builder.addAction(R.drawable.ic_cloud_upload, "📊 Progress", openAppPendingIntent)
+            builder.addAction(R.drawable.ic_folder, "📁 Drive", openDrivePendingIntent)
         } else {
-            builder.addAction(R.drawable.ic_play, "Start Sync", startPendingIntent)
-            builder.addAction(R.drawable.ic_folder, "Open Drive", openDrivePendingIntent)
+            builder.addAction(R.drawable.ic_play, "▶️ Sync", startPendingIntent)
+            builder.addAction(R.drawable.ic_folder, "📁 Drive", openDrivePendingIntent)
         }
 
         manager.notify(NOTIFICATION_ID_CONTROLLER, builder.build())
@@ -209,24 +209,27 @@ object AppNotificationHelper {
         val openDrivePendingIntent = createNavPendingIntent(context, "DRIVE", 202)
         val stopPendingIntent = createControlPendingIntent(context, BackupControlReceiver.ACTION_STOP_BACKUP, 201)
 
-        val displayTitle = if (totalFiles > 0) "Syncing • $completedFiles of $totalFiles files" else "Uploading to Cloud"
+        val displayTitle = if (totalFiles > 0) "⬆️ $completedFiles/$totalFiles • $progressPercent%" else "⬆️ $progressPercent%"
         val displayContent = if (fileName.isNotEmpty()) {
-            if (speedStr.isNotBlank()) "$fileName • $speedStr" else fileName
-        } else "Preparing chunks..."
+            val cleanName = if (fileName.length > 28) fileName.take(16) + "…" + fileName.takeLast(10) else fileName
+            if (speedStr.isNotBlank()) "📄 $cleanName • ⚡ $speedStr" else "📄 $cleanName"
+        } else "⏳ Processing..."
+
+        val subtextSpeed = if (speedStr.isNotBlank()) "⚡ $speedStr" else "☁️ Sync"
 
         val notification = NotificationCompat.Builder(context, CHANNEL_ID_UPLOADS)
             .setSmallIcon(R.drawable.ic_cloud_upload)
             .setColor(COLOR_PRIMARY)
-            .setSubText("⚡ $progressPercent% • Cloud Sync")
+            .setSubText(subtextSpeed)
             .setContentTitle(displayTitle)
             .setContentText(displayContent)
             .setProgress(100, progressPercent.coerceIn(0, 100), progressPercent <= 0)
             .setOngoing(true)
             .setContentIntent(openAppPendingIntent)
             .setCategory(NotificationCompat.CATEGORY_PROGRESS)
-            .addAction(R.drawable.ic_pause, "Pause", stopPendingIntent)
-            .addAction(R.drawable.ic_cloud_upload, "Progress", openAppPendingIntent)
-            .addAction(R.drawable.ic_folder, "Drive", openDrivePendingIntent)
+            .addAction(R.drawable.ic_pause, "⏸️ Pause", stopPendingIntent)
+            .addAction(R.drawable.ic_cloud_upload, "📊 Progress", openAppPendingIntent)
+            .addAction(R.drawable.ic_folder, "📁 Drive", openDrivePendingIntent)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setOnlyAlertOnce(true)
             .build()
@@ -252,19 +255,21 @@ object AppNotificationHelper {
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         val openAppPendingIntent = createNavPendingIntent(context, "DRIVE", 300)
 
-        val displayContent = if (speedStr.isNotBlank()) "$progressPercent% • $speedStr" else "$progressPercent%"
+        val cleanName = if (fileName.length > 26) fileName.take(14) + "…" + fileName.takeLast(10) else fileName
+        val displayContent = if (speedStr.isNotBlank()) "⚡ $speedStr • 💾 $progressPercent%" else "💾 $progressPercent%"
+        val subtext = if (speedStr.isNotBlank()) "⚡ $speedStr" else "⬇️ Cloud"
 
         val notification = NotificationCompat.Builder(context, CHANNEL_ID_DOWNLOADS)
             .setSmallIcon(R.drawable.ic_download)
             .setColor(COLOR_PRIMARY)
-            .setSubText("⚡ Downloads")
-            .setContentTitle("Downloading • $fileName")
+            .setSubText(subtext)
+            .setContentTitle("⬇️ $cleanName")
             .setContentText(displayContent)
             .setProgress(100, progressPercent.coerceIn(0, 100), progressPercent <= 0)
             .setOngoing(true)
             .setContentIntent(openAppPendingIntent)
             .setCategory(NotificationCompat.CATEGORY_PROGRESS)
-            .addAction(R.drawable.ic_folder, "View Drive", openAppPendingIntent)
+            .addAction(R.drawable.ic_folder, "📁 Drive", openAppPendingIntent)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setOnlyAlertOnce(true)
             .build()
@@ -336,18 +341,20 @@ object AppNotificationHelper {
 
         val openDrivePendingIntent = createNavPendingIntent(context, "DRIVE", 303)
 
+        val cleanName = if (fileName.length > 26) fileName.take(14) + "…" + fileName.takeLast(10) else fileName
+
         val notification = NotificationCompat.Builder(context, CHANNEL_ID_DOWNLOADS)
             .setSmallIcon(R.drawable.ic_cloud_done)
             .setColor(COLOR_SUCCESS)
-            .setSubText("⚡ Complete")
-            .setContentTitle("Download Complete")
-            .setContentText("$fileName saved to Downloads")
+            .setSubText("⬇️ ✓ Done")
+            .setContentTitle("✓ $cleanName")
+            .setContentText("📁 Downloads • 💾 Saved")
             .setAutoCancel(true)
             .setContentIntent(openFilePendingIntent)
             .setCategory(NotificationCompat.CATEGORY_STATUS)
-            .addAction(R.drawable.ic_play, "Open File", openFilePendingIntent)
-            .addAction(R.drawable.ic_share, "Share", sharePendingIntent)
-            .addAction(R.drawable.ic_folder, "Drive", openDrivePendingIntent)
+            .addAction(R.drawable.ic_play, "📂 Open", openFilePendingIntent)
+            .addAction(R.drawable.ic_share, "📤 Share", sharePendingIntent)
+            .addAction(R.drawable.ic_folder, "📁 Drive", openDrivePendingIntent)
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .build()
 
@@ -365,7 +372,7 @@ object AppNotificationHelper {
     fun showBackupFinishedNotification(
         context: Context,
         totalCount: Int,
-        summary: String = "All files safely backed up to Telegram Cloud!"
+        summary: String = "✓ Synced"
     ) {
         initNotificationChannels(context)
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -378,15 +385,15 @@ object AppNotificationHelper {
         val notification = NotificationCompat.Builder(context, CHANNEL_ID_ALERTS)
             .setSmallIcon(R.drawable.ic_cloud_done)
             .setColor(COLOR_SUCCESS)
-            .setSubText("☁️ Cloud Vault")
-            .setContentTitle("Backup Complete")
-            .setContentText(if (totalCount > 0) "Synced $totalCount files to Telegram Cloud" else summary)
+            .setSubText("☁️ ✓ Done")
+            .setContentTitle(if (totalCount > 0) "✓ Synced • ☁️ $totalCount Files" else "✓ Synced • ☁️ Cloud")
+            .setContentText("🛡️ Vault Updated • ⏱️ Just Now")
             .setAutoCancel(true)
             .setContentIntent(openDrivePendingIntent)
             .setCategory(NotificationCompat.CATEGORY_STATUS)
-            .addAction(R.drawable.ic_folder, "Open Drive", openDrivePendingIntent)
-            .addAction(R.drawable.ic_cloud_upload, "Free Space", openCleanPendingIntent)
-            .addAction(R.drawable.ic_play, "Sync Again", startPendingIntent)
+            .addAction(R.drawable.ic_folder, "📁 Drive", openDrivePendingIntent)
+            .addAction(R.drawable.ic_cloud_upload, "🧹 Clean", openCleanPendingIntent)
+            .addAction(R.drawable.ic_play, "▶️ Sync", startPendingIntent)
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .build()
 
@@ -406,13 +413,13 @@ object AppNotificationHelper {
             .setSmallIcon(R.drawable.ic_pause)
             .setColor(COLOR_WARNING)
             .setSubText("⏸️ Paused")
-            .setContentTitle("Backup Paused")
-            .setContentText("Uploads paused by user")
+            .setContentTitle("⏸️ Uploads Paused")
+            .setContentText("⏱️ On Standby • 🛡️ Ready")
             .setAutoCancel(true)
             .setContentIntent(openAppPendingIntent)
             .setCategory(NotificationCompat.CATEGORY_STATUS)
-            .addAction(R.drawable.ic_play, "Resume", startPendingIntent)
-            .addAction(R.drawable.ic_folder, "Drive", openDrivePendingIntent)
+            .addAction(R.drawable.ic_play, "▶️ Resume", startPendingIntent)
+            .addAction(R.drawable.ic_folder, "📁 Drive", openDrivePendingIntent)
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .build()
 
@@ -427,8 +434,8 @@ object AppNotificationHelper {
         val notification = NotificationCompat.Builder(context, CHANNEL_ID_ALERTS)
             .setSmallIcon(R.drawable.ic_cloud_upload)
             .setColor(COLOR_PRIMARY)
-            .setSubText("System Alert")
-            .setContentTitle(title)
+            .setSubText("⚠️ System")
+            .setContentTitle("⚠️ $title")
             .setContentText(message)
             .setAutoCancel(true)
             .setContentIntent(openAppPendingIntent)

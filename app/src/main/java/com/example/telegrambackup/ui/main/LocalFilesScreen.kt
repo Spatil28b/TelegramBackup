@@ -251,112 +251,172 @@ fun LocalFilesScreen() {
         }
     }
 
-    Scaffold(
-        topBar = {
-            Column {
-                Surface(
-                    color = MaterialTheme.colorScheme.surface,
-                    shadowElevation = 2.dp
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 16.dp)
+            .background(MaterialTheme.colorScheme.background)
+    ) {
+        Spacer(modifier = Modifier.height(10.dp))
+
+        // Modern Minimal Control Bar
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Unbacked status pill
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = TelegramEmerald.copy(alpha = 0.12f),
+                border = androidx.compose.foundation.BorderStroke(1.dp, TelegramEmerald.copy(alpha = 0.25f))
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+                    Box(
+                        modifier = Modifier
+                            .size(7.dp)
+                            .clip(CircleShape)
+                            .background(TelegramEmerald)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "${unbackedFilesList.size} unbacked",
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, color = TelegramEmerald)
+                    )
+                }
+            }
+
+            // Segmented Tab Switcher (Category vs Folder)
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.8f)
+            ) {
+                Row(modifier = Modifier.padding(3.dp)) {
+                    val catSelected = selectedTabState == 0
+                    Surface(
+                        shape = RoundedCornerShape(9.dp),
+                        color = if (catSelected) MaterialTheme.colorScheme.surface else Color.Transparent,
+                        shadowElevation = if (catSelected) 2.dp else 0.dp,
+                        modifier = Modifier.clickable { selectedTabState = 0 }
+                    ) {
                         Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Column {
-                                Text(
-                                    text = "Local Storage (Unbacked)",
-                                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
-                                )
-                                Text(
-                                    text = "${unbackedFilesList.size} Files Remaining to Backup",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = TelegramEmerald
-                                )
-                            }
-
-                            Row {
-                                IconButton(onClick = { loadUnbackedFiles() }) {
-                                    Icon(Icons.Default.Refresh, contentDescription = "Refresh Scan", tint = TelegramBlue)
-                                }
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(8.dp))
-
-                        // Search Bar
-                        OutlinedTextField(
-                            value = searchQuery,
-                            onValueChange = { searchQuery = it },
-                            placeholder = { Text("Filter remaining files...") },
-                            leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                            trailingIcon = if (searchQuery.isNotEmpty()) {
-                                { IconButton(onClick = { searchQuery = "" }) { Icon(Icons.Default.Close, contentDescription = null) } }
-                            } else null,
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth().height(50.dp),
-                            shape = RoundedCornerShape(12.dp)
-                        )
-
-                        Spacer(modifier = Modifier.height(8.dp))
-
-                        // Tab Bar
-                        TabRow(
-                            selectedTabIndex = selectedTabState,
-                            containerColor = Color.Transparent,
-                            contentColor = TelegramBlue
-                        ) {
-                            Tab(
-                                selected = selectedTabState == 0,
-                                onClick = { selectedTabState = 0 },
-                                text = { Text("Category Wise (${unbackedFilesList.size})", fontWeight = FontWeight.Bold) },
-                                icon = { Icon(Icons.Default.Category, contentDescription = null, modifier = Modifier.size(18.dp)) }
+                            Icon(Icons.Default.Category, contentDescription = null, modifier = Modifier.size(14.dp), tint = if (catSelected) TelegramBlue else MaterialTheme.colorScheme.onSurfaceVariant)
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                "Categories",
+                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = if (catSelected) FontWeight.Bold else FontWeight.Normal),
+                                color = if (catSelected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
                             )
-                            Tab(
-                                selected = selectedTabState == 1,
-                                onClick = { selectedTabState = 1 },
-                                text = { Text("Folder Wise (100% Internal)", fontWeight = FontWeight.Bold) },
-                                icon = { Icon(Icons.Default.FolderSpecial, contentDescription = null, modifier = Modifier.size(18.dp)) }
+                        }
+                    }
+
+                    val folderSelected = selectedTabState == 1
+                    Surface(
+                        shape = RoundedCornerShape(9.dp),
+                        color = if (folderSelected) MaterialTheme.colorScheme.surface else Color.Transparent,
+                        shadowElevation = if (folderSelected) 2.dp else 0.dp,
+                        modifier = Modifier.clickable { selectedTabState = 1 }
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.FolderSpecial, contentDescription = null, modifier = Modifier.size(14.dp), tint = if (folderSelected) TelegramBlue else MaterialTheme.colorScheme.onSurfaceVariant)
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                "Folders",
+                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = if (folderSelected) FontWeight.Bold else FontWeight.Normal),
+                                color = if (folderSelected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                     }
                 }
+            }
 
-                // Selection Action Bar
-                AnimatedVisibility(visible = isSelectionMode) {
-                    Surface(
-                        color = TelegramBlue,
-                        modifier = Modifier.fillMaxWidth()
+            // Refresh Button
+            IconButton(
+                onClick = { loadUnbackedFiles() },
+                modifier = Modifier.size(34.dp)
+            ) {
+                Icon(Icons.Default.Refresh, contentDescription = "Refresh", tint = TelegramBlue, modifier = Modifier.size(20.dp))
+            }
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // Search Bar
+        OutlinedTextField(
+            value = searchQuery,
+            onValueChange = { searchQuery = it },
+            placeholder = { Text("Search local files...", style = MaterialTheme.typography.bodySmall) },
+            leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.outline) },
+            trailingIcon = if (searchQuery.isNotEmpty()) {
+                { IconButton(onClick = { searchQuery = "" }) { Icon(Icons.Default.Close, contentDescription = null, modifier = Modifier.size(16.dp)) } }
+            } else null,
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth().height(48.dp),
+            shape = CircleShape,
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = TelegramBlue,
+                unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+            )
+        )
+
+        // Selection Action Pill Bar
+        AnimatedVisibility(visible = isSelectionMode) {
+            Column {
+                Spacer(modifier = Modifier.height(8.dp))
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = TelegramBlue,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                "${selectedPaths.size} Files Selected",
-                                color = Color.White,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Row {
-                                Button(
-                                    onClick = triggerBackupForSelected,
-                                    colors = ButtonDefaults.buttonColors(containerColor = TelegramEmerald, contentColor = Color.White)
-                                ) {
-                                    Icon(Icons.Default.CloudUpload, contentDescription = null, modifier = Modifier.size(16.dp))
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text("Backup Selected Now")
-                                }
+                        Text(
+                            "${selectedPaths.size} selected",
+                            color = Color.White,
+                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
+                        )
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Button(
+                                onClick = triggerBackupForSelected,
+                                colors = ButtonDefaults.buttonColors(containerColor = TelegramEmerald, contentColor = Color.White),
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Icon(Icons.Default.CloudUpload, contentDescription = null, modifier = Modifier.size(14.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Backup Now", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold))
+                            }
+                            TextButton(
+                                onClick = {
+                                    selectedPaths.clear()
+                                    isSelectionMode = false
+                                },
+                                contentPadding = PaddingValues(horizontal = 6.dp)
+                            ) {
+                                Text("Cancel", color = Color.White.copy(alpha = 0.8f), style = MaterialTheme.typography.labelSmall)
                             }
                         }
                     }
                 }
             }
         }
-    ) { paddingValues ->
+
+        Spacer(modifier = Modifier.height(8.dp))
+
         Box(
-            modifier = Modifier.fillMaxSize().padding(paddingValues).background(MaterialTheme.colorScheme.background)
+            modifier = Modifier.weight(1f).fillMaxWidth()
         ) {
             if (isLoading) {
                 Column(

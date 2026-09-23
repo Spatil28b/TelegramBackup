@@ -150,9 +150,14 @@ fun BackupExplorerScreen(
     }
     val isSearching = effectiveSearchQuery.trim().isNotEmpty()
 
-    var deviceStorage by remember { mutableStateOf(StorageStatsHelper.getDeviceStorageInfo()) }
+    var deviceStorage by remember { mutableStateOf(StorageStatsHelper.cachedStorageInfo) }
     LaunchedEffect(Unit) {
-        deviceStorage = StorageStatsHelper.getDeviceStorageInfo()
+        withContext(Dispatchers.IO) {
+            val fresh = StorageStatsHelper.getDeviceStorageInfo()
+            withContext(Dispatchers.Main) {
+                deviceStorage = fresh
+            }
+        }
     }
 
     LaunchedEffect(initialTab, initialCategoryTitle) {

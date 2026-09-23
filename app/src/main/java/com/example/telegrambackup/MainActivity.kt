@@ -54,6 +54,14 @@ import com.example.telegrambackup.data.AuthRepository
 import com.example.telegrambackup.data.UploadedFile
 import com.example.telegrambackup.theme.TelegramBackupTheme
 import com.example.telegrambackup.theme.TelegramBlue
+import androidx.compose.animation.*
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import com.example.telegrambackup.ui.common.KomiBottomBar
+import com.example.telegrambackup.ui.common.KomiNavItemData
+import com.example.telegrambackup.ui.common.rememberSmartScrollNavBarConnection
 import com.example.telegrambackup.ui.auth.AuthScreen
 import com.example.telegrambackup.ui.drive.DriveExplorerScreen
 import com.example.telegrambackup.ui.explorer.BackupExplorerScreen
@@ -156,6 +164,21 @@ class MainActivity : FragmentActivity() {
     }
 }
 
+private fun getTabNavigationIndex(tab: MainTab): Int = when (tab) {
+    MainTab.HOME -> 0
+    MainTab.FILES -> 1
+    MainTab.DRIVE -> 2
+    MainTab.MONTHLY_ARCHIVE -> 3
+    MainTab.LOCAL -> 4
+    MainTab.PROGRESS -> 5
+    MainTab.ACTIVITY -> 6
+    MainTab.TRASH -> 7
+    MainTab.EXCEPTIONS -> 8
+    MainTab.GUIDE -> 9
+    MainTab.SETTINGS -> 10
+    MainTab.PROFILE -> 11
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainApp(
@@ -165,6 +188,7 @@ fun MainApp(
 ) {
     val session by authRepository.session.collectAsState()
     var selectedTab by remember { mutableStateOf(MainTab.HOME) }
+    val (isNavBarVisibleState, scrollNavBarConnection) = rememberSmartScrollNavBarConnection()
     var explorerInitialTab by remember { mutableStateOf(0) }
     var targetCategoryTitle by remember { mutableStateOf<String?>(null) }
 
@@ -748,6 +772,9 @@ fun MainApp(
             }
         ) {
             Scaffold(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .nestedScroll(scrollNavBarConnection),
                 topBar = {
                     val isCleanOrBrowseRoot = (selectedTab == MainTab.HOME || selectedTab == MainTab.FILES) && targetCategoryTitle == null
 
@@ -959,110 +986,158 @@ fun MainApp(
                     }
                 },
                 bottomBar = {
-                    val visibleTabsKeys = remember(prefs.bottomNavVisibleTabs) {
-                        val parsed = prefs.bottomNavVisibleTabs.split(",").map { it.trim() }.filter { it.isNotBlank() }
-                        if (parsed.size >= 2) parsed else listOf("HOME", "FILES", "DRIVE", "MONTHLY_ARCHIVE", "SETTINGS")
+                    AnimatedVisibility(
+                        visible = isNavBarVisibleState.value,
+                        enter = slideInVertically(
+                            initialOffsetY = { it },
+                            animationSpec = spring(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessLow)
+                        ) + fadeIn(animationSpec = tween(200)),
+                        exit = slideOutVertically(
+                            targetOffsetY = { it },
+                            animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMedium)
+                        ) + fadeOut(animationSpec = tween(160))
+                    ) {
+                        val visibleTabsKeys = remember(prefs.bottomNavVisibleTabs) {
+                            val parsed = prefs.bottomNavVisibleTabs.split(",").map { it.trim() }.filter { it.isNotBlank() }
+                            if (parsed.size >= 2) parsed else listOf("HOME", "FILES", "DRIVE", "MONTHLY_ARCHIVE", "SETTINGS")
+                        }
+
+                        val navHeight = when (prefs.bottomNavHeightMode) {
+                            1 -> 58.dp
+                            2 -> 52.dp
+                            else -> 62.dp
+                        }
+
+                        val allTabsConfig = listOf(
+                            KomiNavItemData(MainTab.HOME, "HOME", "Clean", Icons.Default.CleaningServices),
+                            KomiNavItemData(MainTab.FILES, "FILES", "Browse", Icons.Default.Folder),
+                            KomiNavItemData(MainTab.DRIVE, "DRIVE", "Drive", Icons.Default.CloudQueue),
+                            KomiNavItemData(MainTab.MONTHLY_ARCHIVE, "MONTHLY_ARCHIVE", "Monthly", Icons.Default.CalendarMonth),
+                            KomiNavItemData(MainTab.PROGRESS, "PROGRESS", "Progress", Icons.Default.HourglassTop),
+                            KomiNavItemData(MainTab.SETTINGS, "SETTINGS", "Settings", Icons.Default.Settings)
+                        )
+
+                        val activeTabsToDisplay = allTabsConfig.filter { visibleTabsKeys.contains(it.key) }
+
+                        KomiBottomBar(
+                            items = activeTabsToDisplay,
+                            selectedTab = selectedTab,
+                            onTabSelected = { tab ->
+                                targetCategoryTitle = null
+                                selectedTab = tab
+                                isNavBarVisibleState.value = true
+                            },
+                            barHeight = navHeight,
+                            labelMode = prefs.bottomNavLabelMode,
+                            hapticFeedbackEnabled = prefs.bottomNavHapticFeedback
+                        )
                     }
-
-                    val navHeight = when (prefs.bottomNavHeightMode) {
-                        1 -> 62.dp
-                        2 -> 54.dp
-                        else -> 70.dp
-                    }
-
-                    val allTabsConfig = listOf(
-                        com.example.telegrambackup.ui.common.MacDockItemData(MainTab.HOME, "HOME", "Clean", Icons.Default.CleaningServices),
-                        com.example.telegrambackup.ui.common.MacDockItemData(MainTab.FILES, "FILES", "Browse", Icons.Default.Folder),
-                        com.example.telegrambackup.ui.common.MacDockItemData(MainTab.DRIVE, "DRIVE", "Drive", Icons.Default.CloudQueue),
-                        com.example.telegrambackup.ui.common.MacDockItemData(MainTab.MONTHLY_ARCHIVE, "MONTHLY_ARCHIVE", "Monthly", Icons.Default.CalendarMonth),
-                        com.example.telegrambackup.ui.common.MacDockItemData(MainTab.PROGRESS, "PROGRESS", "Progress", Icons.Default.HourglassTop),
-                        com.example.telegrambackup.ui.common.MacDockItemData(MainTab.SETTINGS, "SETTINGS", "Settings", Icons.Default.Settings)
-                    )
-
-                    val activeTabsToDisplay = allTabsConfig.filter { visibleTabsKeys.contains(it.key) }
-
-                    com.example.telegrambackup.ui.common.MacDockBottomBar(
-                        items = activeTabsToDisplay,
-                        selectedTab = selectedTab,
-                        onTabSelected = { tab ->
-                            targetCategoryTitle = null
-                            selectedTab = tab
-                        },
-                        dockHeight = navHeight,
-                        labelMode = prefs.bottomNavLabelMode,
-                        hapticFeedbackEnabled = prefs.bottomNavHapticFeedback
-                    )
                 }
             ) { paddingValues ->
-                Box(modifier = Modifier.padding(paddingValues)) {
-                    when (selectedTab) {
-                        MainTab.HOME -> DashboardHomeScreen(
-                            userName = displayUserName,
-                            recentFiles = liveUploadedFiles,
-                            onQuickActionClick = { catIndex ->
-                                if (catIndex == -1) {
-                                    selectedTab = MainTab.TRASH
-                                } else {
-                                    explorerInitialTab = 2
-                                    targetCategoryTitle = when (catIndex) {
-                                        0 -> "Images"
-                                        1 -> "Videos"
-                                        2 -> "Documents & other"
-                                        3 -> "Downloads"
-                                        4 -> "Apps"
-                                        5 -> "Audio"
-                                        else -> "Images"
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(paddingValues)
+                ) {
+                    AnimatedContent(
+                        targetState = selectedTab,
+                        transitionSpec = {
+                            val fromIndex = getTabNavigationIndex(initialState)
+                            val toIndex = getTabNavigationIndex(targetState)
+                            if (toIndex >= fromIndex) {
+                                (slideInHorizontally(
+                                    initialOffsetX = { fullWidth -> (fullWidth * 0.16f).toInt() },
+                                    animationSpec = spring(stiffness = Spring.StiffnessMediumLow, dampingRatio = Spring.DampingRatioNoBouncy)
+                                ) + fadeIn(animationSpec = tween(180))).togetherWith(
+                                    slideOutHorizontally(
+                                        targetOffsetX = { fullWidth -> -(fullWidth * 0.16f).toInt() },
+                                        animationSpec = spring(stiffness = Spring.StiffnessMediumLow, dampingRatio = Spring.DampingRatioNoBouncy)
+                                    ) + fadeOut(animationSpec = tween(140))
+                                )
+                            } else {
+                                (slideInHorizontally(
+                                    initialOffsetX = { fullWidth -> -(fullWidth * 0.16f).toInt() },
+                                    animationSpec = spring(stiffness = Spring.StiffnessMediumLow, dampingRatio = Spring.DampingRatioNoBouncy)
+                                ) + fadeIn(animationSpec = tween(180))).togetherWith(
+                                    slideOutHorizontally(
+                                        targetOffsetX = { fullWidth -> (fullWidth * 0.16f).toInt() },
+                                        animationSpec = spring(stiffness = Spring.StiffnessMediumLow, dampingRatio = Spring.DampingRatioNoBouncy)
+                                    ) + fadeOut(animationSpec = tween(140))
+                                )
+                            }.using(SizeTransform(clip = false))
+                        },
+                        label = "MainTabAnimatedContent",
+                        modifier = Modifier.fillMaxSize()
+                    ) { currentTab ->
+                        when (currentTab) {
+                            MainTab.HOME -> DashboardHomeScreen(
+                                userName = displayUserName,
+                                recentFiles = liveUploadedFiles,
+                                onQuickActionClick = { catIndex ->
+                                    if (catIndex == -1) {
+                                        selectedTab = MainTab.TRASH
+                                    } else {
+                                        explorerInitialTab = 2
+                                        targetCategoryTitle = when (catIndex) {
+                                            0 -> "Images"
+                                            1 -> "Videos"
+                                            2 -> "Documents & other"
+                                            3 -> "Downloads"
+                                            4 -> "Apps"
+                                            5 -> "Audio"
+                                            else -> "Images"
+                                        }
+                                        selectedTab = MainTab.FILES
                                     }
+                                },
+                                onViewAllClick = {
+                                    explorerInitialTab = 0
+                                    targetCategoryTitle = null
                                     selectedTab = MainTab.FILES
+                                },
+                                onFileClick = { file ->
+                                    FileViewerHelper.openFile(context, file.path, file.fileName, file.telegramFileId)
                                 }
-                            },
-                            onViewAllClick = {
-                                explorerInitialTab = 0
-                                targetCategoryTitle = null
-                                selectedTab = MainTab.FILES
-                            },
-                            onFileClick = { file ->
-                                FileViewerHelper.openFile(context, file.path, file.fileName, file.telegramFileId)
-                            }
-                        )
-                        MainTab.DRIVE -> DriveExplorerScreen(
-                            externalSearchQuery = topSearchQuery,
-                            onMenuClick = {
-                                triggerHapticFeedback(context, haptic)
-                                scope.launch { drawerState.open() }
-                            }
-                        )
-                        MainTab.LOCAL -> LocalFilesScreen()
-                        MainTab.PROGRESS -> LiveProgressScreen()
-                        MainTab.FILES -> BackupExplorerScreen(
-                            initialTab = explorerInitialTab,
-                            initialCategoryTitle = targetCategoryTitle,
-                            externalSearchQuery = topSearchQuery,
-                            onCategorySelected = { newCat -> targetCategoryTitle = newCat },
-                            onBackToCategories = { targetCategoryTitle = null }
-                        )
-                        MainTab.ACTIVITY -> ActivityScreen()
-                        MainTab.MONTHLY_ARCHIVE -> MonthlyArchiveScreen()
-                        MainTab.GUIDE -> GuideScreen()
-                        MainTab.TRASH -> TrashBinScreen()
-                        MainTab.EXCEPTIONS -> BackupExceptionsScreen(onNavigateBack = { selectedTab = MainTab.HOME })
-                        MainTab.SETTINGS -> BackupSettingsScreen(
-                            onThemeChanged = onThemeChanged,
-                            onLogout = { authRepository.logout() },
-                            onNameUpdated = { newName ->
-                                displayUserName = newName
-                                displayUserAvatarUri = com.example.telegrambackup.utils.ProfileManager.getAvatarUri(context)?.toString() ?: prefs.profilePictureUri
-                            }
-                        )
-                        MainTab.PROFILE -> ProfileScreen(
-                            userName = displayUserName,
-                            userEmail = userEmail,
-                            onLogout = { authRepository.logout() },
-                            onProfileUpdated = { newName, newAvatar ->
-                                displayUserName = newName
-                                displayUserAvatarUri = newAvatar
-                            }
-                        )
+                            )
+                            MainTab.DRIVE -> DriveExplorerScreen(
+                                externalSearchQuery = topSearchQuery,
+                                onMenuClick = {
+                                    triggerHapticFeedback(context, haptic)
+                                    scope.launch { drawerState.open() }
+                                }
+                            )
+                            MainTab.LOCAL -> LocalFilesScreen()
+                            MainTab.PROGRESS -> LiveProgressScreen()
+                            MainTab.FILES -> BackupExplorerScreen(
+                                initialTab = explorerInitialTab,
+                                initialCategoryTitle = targetCategoryTitle,
+                                externalSearchQuery = topSearchQuery,
+                                onCategorySelected = { newCat -> targetCategoryTitle = newCat },
+                                onBackToCategories = { targetCategoryTitle = null }
+                            )
+                            MainTab.ACTIVITY -> ActivityScreen()
+                            MainTab.MONTHLY_ARCHIVE -> MonthlyArchiveScreen()
+                            MainTab.GUIDE -> GuideScreen()
+                            MainTab.TRASH -> TrashBinScreen()
+                            MainTab.EXCEPTIONS -> BackupExceptionsScreen(onNavigateBack = { selectedTab = MainTab.HOME })
+                            MainTab.SETTINGS -> BackupSettingsScreen(
+                                onThemeChanged = onThemeChanged,
+                                onLogout = { authRepository.logout() },
+                                onNameUpdated = { newName ->
+                                    displayUserName = newName
+                                    displayUserAvatarUri = com.example.telegrambackup.utils.ProfileManager.getAvatarUri(context)?.toString() ?: prefs.profilePictureUri
+                                }
+                            )
+                            MainTab.PROFILE -> ProfileScreen(
+                                userName = displayUserName,
+                                userEmail = userEmail,
+                                onLogout = { authRepository.logout() },
+                                onProfileUpdated = { newName, newAvatar ->
+                                    displayUserName = newName
+                                    displayUserAvatarUri = newAvatar
+                                }
+                            )
+                        }
                     }
 
                     com.example.telegrambackup.ui.common.DynamicTopProcessBar(

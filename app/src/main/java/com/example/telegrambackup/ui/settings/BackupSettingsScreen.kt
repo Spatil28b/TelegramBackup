@@ -2942,23 +2942,23 @@ fun BackupSettingsScreen(
                             Spacer(modifier = Modifier.height(10.dp))
 
                             val allAvailableTabs = listOf(
-                                com.example.telegrambackup.ui.common.MacDockItemData("HOME", "HOME", "Clean", Icons.Default.CleaningServices),
-                                com.example.telegrambackup.ui.common.MacDockItemData("FILES", "FILES", "Browse", Icons.Default.Folder),
-                                com.example.telegrambackup.ui.common.MacDockItemData("DRIVE", "DRIVE", "Drive", Icons.Default.CloudQueue),
-                                com.example.telegrambackup.ui.common.MacDockItemData("MONTHLY_ARCHIVE", "MONTHLY_ARCHIVE", "Monthly", Icons.Default.CalendarMonth),
-                                com.example.telegrambackup.ui.common.MacDockItemData("PROGRESS", "PROGRESS", "Progress", Icons.Default.HourglassTop),
-                                com.example.telegrambackup.ui.common.MacDockItemData("SETTINGS", "SETTINGS", "Settings", Icons.Default.Settings)
+                                com.example.telegrambackup.ui.common.KomiNavItemData("HOME", "HOME", "Clean", Icons.Default.CleaningServices),
+                                com.example.telegrambackup.ui.common.KomiNavItemData("FILES", "FILES", "Browse", Icons.Default.Folder),
+                                com.example.telegrambackup.ui.common.KomiNavItemData("DRIVE", "DRIVE", "Drive", Icons.Default.CloudQueue),
+                                com.example.telegrambackup.ui.common.KomiNavItemData("MONTHLY_ARCHIVE", "MONTHLY_ARCHIVE", "Monthly", Icons.Default.CalendarMonth),
+                                com.example.telegrambackup.ui.common.KomiNavItemData("PROGRESS", "PROGRESS", "Progress", Icons.Default.HourglassTop),
+                                com.example.telegrambackup.ui.common.KomiNavItemData("SETTINGS", "SETTINGS", "Settings", Icons.Default.Settings)
                             )
 
                             val displayTabs = allAvailableTabs.filter { activeTabsList.contains(it.key) }
 
-                            com.example.telegrambackup.ui.common.MacDockBottomBar(
+                            com.example.telegrambackup.ui.common.KomiBottomBar(
                                 items = displayTabs,
                                 selectedTab = previewActiveTab,
                                 onTabSelected = { key ->
                                     previewActiveTab = key
                                 },
-                                dockHeight = previewHeightDp,
+                                barHeight = previewHeightDp,
                                 labelMode = labelModeState,
                                 hapticFeedbackEnabled = hapticState,
                                 modifier = Modifier.fillMaxWidth()
