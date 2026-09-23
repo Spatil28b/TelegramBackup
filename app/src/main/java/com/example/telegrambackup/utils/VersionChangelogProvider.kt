@@ -27,6 +27,49 @@ object VersionChangelogProvider {
 
     private val releases = listOf(
         VersionRelease(
+            versionName = "2.1.88",
+            versionCode = 91,
+            releaseDate = "September 2026",
+            highlights = "Deep Scan Cleanup, Zero-Loss Protection & Modernized Haptics",
+            entries = listOf(
+                ChangelogEntry(
+                    Icons.Default.CleaningServices,
+                    TelegramEmerald,
+                    "Code Clean & Optimization",
+                    "Eliminated 1,693 lines of dead code and obsolete prototypes under a strict triple cross-check standard.",
+                    "OPTIMIZED"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Shield,
+                    TelegramBlue,
+                    "Zero-Loss Process Protection",
+                    "Background backup jobs, workers, and active sync tasks run with uninterrupted execution and resilient lifecycle boundaries.",
+                    "STABILITY"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Vibration,
+                    Color(0xFF8B5CF6),
+                    "Modernized Haptic Engine",
+                    "Unified VibratorManager system effects with backward-compatible fallbacks, eliminating runtime deprecation.",
+                    "HAPTICS"
+                ),
+                ChangelogEntry(
+                    Icons.Default.FolderZip,
+                    Color(0xFF10B981),
+                    "Streamlined ZIP Archiving",
+                    "Enhanced ZipBackupDownloader with full multi-bot parallel chunk assembly and instant in-place AES-256 decryption.",
+                    "PERFORMANCE"
+                ),
+                ChangelogEntry(
+                    Icons.Default.NotificationsActive,
+                    Color(0xFFF59E0B),
+                    "Unified Notification Receiver",
+                    "Removed duplicate receivers; all notification quick actions now cleanly unified in BackupControlReceiver.",
+                    "FIX"
+                )
+            )
+        ),
+        VersionRelease(
             versionName = "2.1.81",
             versionCode = 84,
             releaseDate = "August 2026",
