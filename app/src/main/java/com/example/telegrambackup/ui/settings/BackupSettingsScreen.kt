@@ -2941,62 +2941,28 @@ fun BackupSettingsScreen(
                             )
                             Spacer(modifier = Modifier.height(10.dp))
 
-                            Surface(
-                                shape = RoundedCornerShape(16.dp),
-                                color = MaterialTheme.colorScheme.surfaceContainer,
-                                shadowElevation = 2.dp,
+                            val allAvailableTabs = listOf(
+                                com.example.telegrambackup.ui.common.MacDockItemData("HOME", "HOME", "Clean", Icons.Default.CleaningServices),
+                                com.example.telegrambackup.ui.common.MacDockItemData("FILES", "FILES", "Browse", Icons.Default.Folder),
+                                com.example.telegrambackup.ui.common.MacDockItemData("DRIVE", "DRIVE", "Drive", Icons.Default.CloudQueue),
+                                com.example.telegrambackup.ui.common.MacDockItemData("MONTHLY_ARCHIVE", "MONTHLY_ARCHIVE", "Monthly", Icons.Default.CalendarMonth),
+                                com.example.telegrambackup.ui.common.MacDockItemData("PROGRESS", "PROGRESS", "Progress", Icons.Default.HourglassTop),
+                                com.example.telegrambackup.ui.common.MacDockItemData("SETTINGS", "SETTINGS", "Settings", Icons.Default.Settings)
+                            )
+
+                            val displayTabs = allAvailableTabs.filter { activeTabsList.contains(it.key) }
+
+                            com.example.telegrambackup.ui.common.MacDockBottomBar(
+                                items = displayTabs,
+                                selectedTab = previewActiveTab,
+                                onTabSelected = { key ->
+                                    previewActiveTab = key
+                                },
+                                dockHeight = previewHeightDp,
+                                labelMode = labelModeState,
+                                hapticFeedbackEnabled = hapticState,
                                 modifier = Modifier.fillMaxWidth()
-                            ) {
-                                NavigationBar(
-                                    containerColor = Color.Transparent,
-                                    tonalElevation = 0.dp,
-                                    modifier = Modifier.height(previewHeightDp)
-                                ) {
-                                    val previewColors = NavigationBarItemDefaults.colors(
-                                        indicatorColor = MaterialTheme.colorScheme.secondaryContainer,
-                                        selectedIconColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                                        selectedTextColor = MaterialTheme.colorScheme.onSurface,
-                                        unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-
-                                    val allAvailableTabs = listOf(
-                                        Triple("HOME", "Clean", Icons.Default.CleaningServices),
-                                        Triple("FILES", "Browse", Icons.Default.Folder),
-                                        Triple("DRIVE", "Drive", Icons.Default.CloudQueue),
-                                        Triple("MONTHLY_ARCHIVE", "Monthly", Icons.Default.CalendarMonth),
-                                        Triple("PROGRESS", "Progress", Icons.Default.HourglassTop),
-                                        Triple("SETTINGS", "Settings", Icons.Default.Settings)
-                                    )
-
-                                    val displayTabs = allAvailableTabs.filter { activeTabsList.contains(it.first) }
-
-                                    displayTabs.forEach { (key, label, icon) ->
-                                        val isSelected = previewActiveTab == key
-                                        val showLabel = when (labelModeState) {
-                                            0 -> true
-                                            1 -> isSelected
-                                            else -> false
-                                        }
-
-                                        NavigationBarItem(
-                                            selected = isSelected,
-                                            onClick = {
-                                                previewActiveTab = key
-                                                if (hapticState) triggerHapticFeedback(context, haptic)
-                                            },
-                                            icon = {
-                                                Icon(icon, contentDescription = label)
-                                            },
-                                            label = if (showLabel) {
-                                                { Text(label, style = MaterialTheme.typography.labelSmall.copy(fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium)) }
-                                            } else null,
-                                            alwaysShowLabel = labelModeState == 0,
-                                            colors = previewColors
-                                        )
-                                    }
-                                }
-                            }
+                            )
                         }
                     }
 

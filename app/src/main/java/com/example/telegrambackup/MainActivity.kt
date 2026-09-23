@@ -965,64 +965,33 @@ fun MainApp(
                     }
 
                     val navHeight = when (prefs.bottomNavHeightMode) {
-                        1 -> 64.dp
+                        1 -> 62.dp
                         2 -> 54.dp
-                        else -> 80.dp
+                        else -> 70.dp
                     }
 
-                    val labelMode = prefs.bottomNavLabelMode
+                    val allTabsConfig = listOf(
+                        com.example.telegrambackup.ui.common.MacDockItemData(MainTab.HOME, "HOME", "Clean", Icons.Default.CleaningServices),
+                        com.example.telegrambackup.ui.common.MacDockItemData(MainTab.FILES, "FILES", "Browse", Icons.Default.Folder),
+                        com.example.telegrambackup.ui.common.MacDockItemData(MainTab.DRIVE, "DRIVE", "Drive", Icons.Default.CloudQueue),
+                        com.example.telegrambackup.ui.common.MacDockItemData(MainTab.MONTHLY_ARCHIVE, "MONTHLY_ARCHIVE", "Monthly", Icons.Default.CalendarMonth),
+                        com.example.telegrambackup.ui.common.MacDockItemData(MainTab.PROGRESS, "PROGRESS", "Progress", Icons.Default.HourglassTop),
+                        com.example.telegrambackup.ui.common.MacDockItemData(MainTab.SETTINGS, "SETTINGS", "Settings", Icons.Default.Settings)
+                    )
 
-                    NavigationBar(
-                        containerColor = MaterialTheme.colorScheme.surfaceContainer,
-                        tonalElevation = 3.dp,
-                        modifier = Modifier.height(navHeight)
-                    ) {
-                        val navItemColors = NavigationBarItemDefaults.colors(
-                            indicatorColor = MaterialTheme.colorScheme.secondaryContainer,
-                            selectedIconColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                            selectedTextColor = MaterialTheme.colorScheme.onSurface,
-                            unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                            unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                    val activeTabsToDisplay = allTabsConfig.filter { visibleTabsKeys.contains(it.key) }
 
-                        val allTabsConfig = listOf(
-                            Triple(MainTab.HOME, "Clean", Icons.Default.CleaningServices) to "HOME",
-                            Triple(MainTab.FILES, "Browse", Icons.Default.Folder) to "FILES",
-                            Triple(MainTab.DRIVE, "Drive", Icons.Default.CloudQueue) to "DRIVE",
-                            Triple(MainTab.MONTHLY_ARCHIVE, "Monthly", Icons.Default.CalendarMonth) to "MONTHLY_ARCHIVE",
-                            Triple(MainTab.PROGRESS, "Progress", Icons.Default.HourglassTop) to "PROGRESS",
-                            Triple(MainTab.SETTINGS, "Settings", Icons.Default.Settings) to "SETTINGS"
-                        )
-
-                        val activeTabsToDisplay = allTabsConfig.filter { visibleTabsKeys.contains(it.second) }
-
-                        activeTabsToDisplay.forEach { (tabData, _) ->
-                            val (tab, label, icon) = tabData
-                            val isSelected = selectedTab == tab
-                            val showLabel = when (labelMode) {
-                                0 -> true
-                                1 -> isSelected
-                                else -> false
-                            }
-
-                            NavigationBarItem(
-                                selected = isSelected,
-                                onClick = {
-                                    if (prefs.bottomNavHapticFeedback) {
-                                        triggerHapticFeedback(context, haptic)
-                                    }
-                                    targetCategoryTitle = null
-                                    selectedTab = tab
-                                },
-                                icon = { Icon(icon, contentDescription = label) },
-                                label = if (showLabel) {
-                                    { Text(label, style = MaterialTheme.typography.labelMedium.copy(fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium)) }
-                                } else null,
-                                alwaysShowLabel = labelMode == 0,
-                                colors = navItemColors
-                            )
-                        }
-                    }
+                    com.example.telegrambackup.ui.common.MacDockBottomBar(
+                        items = activeTabsToDisplay,
+                        selectedTab = selectedTab,
+                        onTabSelected = { tab ->
+                            targetCategoryTitle = null
+                            selectedTab = tab
+                        },
+                        dockHeight = navHeight,
+                        labelMode = prefs.bottomNavLabelMode,
+                        hapticFeedbackEnabled = prefs.bottomNavHapticFeedback
+                    )
                 }
             ) { paddingValues ->
                 Box(modifier = Modifier.padding(paddingValues)) {
