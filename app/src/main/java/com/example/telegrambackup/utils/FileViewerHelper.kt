@@ -55,6 +55,54 @@ object FileViewerHelper {
     }
 
     /**
+     * Resolves the actual physical file on the device, even if it has moved across
+     * directories, storage volumes, or was saved with a relative/cloud path.
+     */
+    fun findLocalFile(filePath: String, fileName: String): File? {
+        if (filePath.isNotBlank()) {
+            val direct = File(filePath)
+            if (direct.exists() && direct.length() > 0) return direct
+
+            // Try substituting Internal Storage / /storage/emulated/0
+            val emulatedPath = filePath.replaceFirst(Regex("^(?:/)?(?:Internal Storage|internal storage)/"), "/storage/emulated/0/")
+            val emulatedFile = File(emulatedPath)
+            if (emulatedFile.exists() && emulatedFile.length() > 0) return emulatedFile
+
+            val sdcardPath = filePath.replaceFirst(Regex("^(?:/)?(?:sdcard)/"), "/storage/emulated/0/")
+            val sdcardFile = File(sdcardPath)
+            if (sdcardFile.exists() && sdcardFile.length() > 0) return sdcardFile
+        }
+
+        if (fileName.isBlank()) return null
+
+        // Search common Android user directories by exact filename
+        val candidates = listOf(
+            android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS),
+            android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOCUMENTS),
+            android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_PICTURES),
+            android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DCIM),
+            android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_MOVIES),
+            android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_MUSIC),
+            File("/storage/emulated/0/Download"),
+            File("/storage/emulated/0/Documents"),
+            File("/storage/emulated/0/DCIM/Camera"),
+            File("/storage/emulated/0/Pictures/Telegram"),
+            File("/storage/emulated/0/Telegram/Telegram Documents")
+        )
+
+        for (dir in candidates) {
+            if (dir != null && dir.exists() && dir.isDirectory) {
+                val candidate = File(dir, fileName)
+                if (candidate.exists() && candidate.length() > 0) {
+                    return candidate
+                }
+            }
+        }
+
+        return null
+    }
+
+    /**
      * Opens a file using the system's default viewer for its MIME type.
      * Supports local files (via FileProvider), content URIs, cloud cache, and URL-based files.
      */
@@ -83,19 +131,33 @@ object FileViewerHelper {
                 return
             }
 
-            // 3. Local Filesystem
-            val localFile = File(filePath)
-            if (localFile.exists() && localFile.length() > 0) {
-                if (!FileEncryptor.isLikelyPlainFile(localFile, fileName)) {
+            // 3. Local Filesystem (Direct or Resolved via findLocalFile)
+            val resolvedLocal = findLocalFile(filePath, fileName)
+            if (resolvedLocal != null && resolvedLocal.exists() && resolvedLocal.length() > 0) {
+                if (resolvedLocal.absolutePath != filePath && filePath.isNotBlank()) {
                     CoroutineScope(Dispatchers.IO).launch {
-                        FileEncryptor.ensureDecrypted(localFile, context, fileName)
+                        try {
+                            val db = com.example.telegrambackup.data.AppDatabase.getDatabase(context)
+                            val existing = db.uploadedFileDao().getFileByPath(filePath)
+                            if (existing != null) {
+                                db.uploadedFileDao().deleteByPath(filePath)
+                                existing.path = resolvedLocal.absolutePath
+                                db.uploadedFileDao().insert(existing)
+                            }
+                        } catch (_: Exception) {}
+                    }
+                }
+
+                if (!FileEncryptor.isLikelyPlainFile(resolvedLocal, fileName)) {
+                    CoroutineScope(Dispatchers.IO).launch {
+                        FileEncryptor.ensureDecrypted(resolvedLocal, context, fileName)
                         withContext(Dispatchers.Main) {
-                            launchFileProviderIntent(context, localFile, fileName)
+                            launchFileProviderIntent(context, resolvedLocal, fileName)
                         }
                     }
                     return
                 }
-                launchFileProviderIntent(context, localFile, fileName)
+                launchFileProviderIntent(context, resolvedLocal, fileName)
                 return
             }
 
@@ -122,11 +184,20 @@ object FileViewerHelper {
                 }
             }
 
-            // 5. On-Demand Cloud Fetch & Open if telegramFileId is provided
-            if (telegramFileId.isNotBlank() && telegramFileId != "DIR_MARKER") {
+            // 5. On-Demand Cloud Fetch & Open if telegramFileId is provided (or if db record exists)
+            val effectiveTgId = if (telegramFileId.isNotBlank()) telegramFileId else {
+                runCatching {
+                    val db = com.example.telegrambackup.data.AppDatabase.getDatabase(context)
+                    val rec = db.uploadedFileDao().getFileByPath(filePath)
+                        ?: db.uploadedFileDao().getFileByName(fileName)
+                    rec?.telegramFileId ?: ""
+                }.getOrDefault("")
+            }
+
+            if (effectiveTgId.isNotBlank() && effectiveTgId != "DIR_MARKER") {
                 Toast.makeText(context, "Preparing $fileName for viewing...", Toast.LENGTH_SHORT).show()
                 CoroutineScope(Dispatchers.IO).launch {
-                    val downloaded = TelegramMediaResolver.fetchToTempCache(context, telegramFileId, fileName)
+                    val downloaded = TelegramMediaResolver.fetchToTempCache(context, effectiveTgId, fileName)
                     if (downloaded != null && downloaded.exists()) {
                         FileEncryptor.ensureDecrypted(downloaded, context, fileName)
                     }

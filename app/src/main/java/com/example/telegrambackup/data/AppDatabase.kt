@@ -249,8 +249,9 @@ abstract class AppDatabase : RoomDatabase() {
                         // Self-healing schema validation on startup
                         createAllTablesAndIndexes(db)
                         try {
-                            // 🛠️ Automatic sanitization: Map corrupt/0/1970 timestamps to July 15, 2026 12:00:00 UTC (1784030400000L)
-                            db.execSQL("UPDATE uploaded_files SET timestamp = 1784030400000 WHERE timestamp < 946684800000 OR timestamp IS NULL")
+                            // 🛠️ Automatic sanitization: Map corrupt/0/1970 or legacy July 15, 2026 placeholder timestamps to current September 2026 era
+                            val now = System.currentTimeMillis()
+                            db.execSQL("UPDATE uploaded_files SET timestamp = $now WHERE timestamp = 1784030400000 OR timestamp < 946684800000 OR timestamp IS NULL")
                         } catch (_: Exception) {}
                     }
                 })

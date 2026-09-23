@@ -581,14 +581,21 @@ class BackupWorker(
 
                                 if (userEmail.isNotEmpty()) {
                                     try {
+                                        val fileModTime = if (file.exists() && file.lastModified() > 946684800000L) {
+                                            file.lastModified()
+                                        } else {
+                                            System.currentTimeMillis()
+                                        }
                                         serverApi.indexFile(
-                                            prefs.serverUrl,
-                                            userEmail,
-                                            file.name,
-                                            firstChunkFileId,
-                                            file.length(),
-                                            file.absolutePath,
-                                            firstChunkMessageId
+                                            serverUrl = prefs.serverUrl,
+                                            email = userEmail,
+                                            fileName = file.name,
+                                            telegramFileId = firstChunkFileId,
+                                            size = file.length(),
+                                            path = file.absolutePath,
+                                            timestamp = fileModTime,
+                                            messageId = firstChunkMessageId,
+                                            isDriveUpload = false
                                         )
                                     } catch (e: Exception) {
                                         Log.w(TAG, "Cloud index sync failed for ${file.name}, local record intact", e)

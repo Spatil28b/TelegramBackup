@@ -60,7 +60,18 @@ enum class MonthlyViewMode {
     CATEGORY_WISE
 }
 
-const val SANITIZED_JULY_2026_TIMESTAMP = 1784030400000L // July 15, 2026 12:00:00 UTC
+const val SANITIZED_DEFAULT_TIMESTAMP = 1790213700000L // September 2026 default baseline
+
+fun getSafeTimestamp(file: UploadedFile): Long {
+    if (file.timestamp > 946684800000L && file.timestamp != 1784030400000L) {
+        return file.timestamp
+    }
+    val local = FileViewerHelper.findLocalFile(file.path, file.fileName)
+    if (local != null && local.exists() && local.lastModified() > 946684800000L) {
+        return local.lastModified()
+    }
+    return SANITIZED_DEFAULT_TIMESTAMP
+}
 
 /**
  * Normalizes an uploaded file path to relative path segments from internal storage root.
@@ -179,8 +190,25 @@ fun MonthlyArchiveScreen() {
     fun loadFiles() {
         scope.launch(Dispatchers.IO) {
             try {
-                // Proactively sanitize any corrupt timestamps (< Jan 1, 2000) to July 15, 2026
-                AppDatabase.getDatabase(context).uploadedFileDao().sanitizeCorruptedTimestamps(SANITIZED_JULY_2026_TIMESTAMP)
+                val db = AppDatabase.getDatabase(context)
+                val dao = db.uploadedFileDao()
+                dao.sanitizeCorruptedTimestamps(System.currentTimeMillis())
+
+                val legacyFiles = dao.getAllRawFiles().filter {
+                    it.timestamp == 1784030400000L || it.timestamp < 946684800000L
+                }
+                if (legacyFiles.isNotEmpty()) {
+                    val fixed = legacyFiles.map { f ->
+                        val local = FileViewerHelper.findLocalFile(f.path, f.fileName)
+                        val ts = if (local != null && local.exists() && local.lastModified() > 946684800000L) {
+                            local.lastModified()
+                        } else {
+                            System.currentTimeMillis()
+                        }
+                        f.copy(timestamp = ts)
+                    }
+                    dao.insertAll(fixed)
+                }
             } catch (_: Exception) {}
 
             val files = try {
@@ -190,7 +218,8 @@ fun MonthlyArchiveScreen() {
             }
             withContext(Dispatchers.Main) {
                 allFiles = files.map { f ->
-                    if (f.timestamp < 946684800000L) f.copy(timestamp = SANITIZED_JULY_2026_TIMESTAMP) else f
+                    val safe = getSafeTimestamp(f)
+                    if (f.timestamp != safe) f.copy(timestamp = safe) else f
                 }
                 isLoading = false
             }
@@ -199,14 +228,13 @@ fun MonthlyArchiveScreen() {
 
     LaunchedEffect(Unit) { loadFiles() }
 
-    // Available years from files (clamping any invalid timestamp to July 2026)
+    // Available years from files
     val availableYears = remember(allFiles) {
         val cal = Calendar.getInstance()
         val years = allFiles
             .filter { it.telegramFileId != "DIR_MARKER" && !it.isDeleted }
             .map {
-                val safeTime = if (it.timestamp < 946684800000L) SANITIZED_JULY_2026_TIMESTAMP else it.timestamp
-                cal.timeInMillis = safeTime
+                cal.timeInMillis = getSafeTimestamp(it)
                 cal.get(Calendar.YEAR)
             }.distinct().sortedDescending()
         if (years.isEmpty()) listOf(Calendar.getInstance().get(Calendar.YEAR)) else years
@@ -222,8 +250,7 @@ fun MonthlyArchiveScreen() {
         val validFiles = allFiles.filter { it.telegramFileId != "DIR_MARKER" && !it.isDeleted }
         val grouped = validFiles
             .groupBy { file ->
-                val safeTime = if (file.timestamp < 946684800000L) SANITIZED_JULY_2026_TIMESTAMP else file.timestamp
-                cal.timeInMillis = safeTime
+                cal.timeInMillis = getSafeTimestamp(file)
                 val y = cal.get(Calendar.YEAR)
                 val m = cal.get(Calendar.MONTH)
                 Pair(y, m)
@@ -233,7 +260,8 @@ fun MonthlyArchiveScreen() {
             }
             .map { (key, files) ->
                 val sortedFiles = files.map { f ->
-                    if (f.timestamp < 946684800000L) f.copy(timestamp = SANITIZED_JULY_2026_TIMESTAMP) else f
+                    val safe = getSafeTimestamp(f)
+                    if (f.timestamp != safe) f.copy(timestamp = safe) else f
                 }.sortedByDescending { it.timestamp }
                 MonthGroup(
                     year = key.first,
@@ -791,17 +819,21 @@ fun MonthlyArchiveScreen() {
                                                 selectedPaths = if (isSelected) selectedPaths - file.path else selectedPaths + file.path
                                                 if (selectedPaths.isEmpty()) isSelectionMode = false
                                             } else {
-                                                val localFile = File(file.path)
-                                                val hasLocal = localFile.exists() && localFile.length() > 0
+                                                val resolvedLocal = FileViewerHelper.findLocalFile(file.path, file.fileName)
+                                                val hasLocal = resolvedLocal != null && resolvedLocal.exists() && resolvedLocal.length() > 0
+                                                val effectivePath = resolvedLocal?.absolutePath ?: file.path
 
-                                                if (FileViewerHelper.isAudioFile(file.fileName)) {
-                                                    activeAudioPlayerItem = Pair(file.path, file.fileName)
-                                                } else if (FileViewerHelper.isVideoFile(file.fileName) && hasLocal) {
-                                                    activeVideoPlayerItem = Pair(file.path, file.fileName)
-                                                } else if (hasLocal || file.telegramFileId.isNotEmpty()) {
-                                                    FileViewerHelper.openFile(context, file.path, file.fileName, file.telegramFileId)
+                                                if (hasLocal) {
+                                                    if (FileViewerHelper.isAudioFile(file.fileName)) {
+                                                        activeAudioPlayerItem = Pair(effectivePath, file.fileName)
+                                                    } else if (FileViewerHelper.isVideoFile(file.fileName)) {
+                                                        activeVideoPlayerItem = Pair(effectivePath, file.fileName)
+                                                    } else {
+                                                        FileViewerHelper.openFile(context, effectivePath, file.fileName, file.telegramFileId)
+                                                    }
                                                 } else {
-                                                    Toast.makeText(context, "Opening ${file.fileName}...", Toast.LENGTH_SHORT).show()
+                                                    // Cloud file or moved file: open via FileViewerHelper which fetches all chunks cleanly
+                                                    FileViewerHelper.openFile(context, file.path, file.fileName, file.telegramFileId)
                                                 }
                                             }
                                         },

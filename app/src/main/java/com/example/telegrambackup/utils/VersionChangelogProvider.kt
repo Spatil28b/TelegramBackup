@@ -28,6 +28,35 @@ object VersionChangelogProvider {
 
     private val releases = listOf(
         VersionRelease(
+            versionName = "2.2.7",
+            versionCode = 110,
+            releaseDate = "September 2026",
+            highlights = "Large File Sharing Limit Fix, September Archive Recovery & Moved Files",
+            entries = listOf(
+                ChangelogEntry(
+                    Icons.Default.Share,
+                    TelegramBlue,
+                    "Large File Sharing (No 3.99 MB Limit)",
+                    "Fixed chunk resolution pipeline so files of any size (50MB, 500MB, 2GB+) stream and download completely without being capped at 3.99 MB.",
+                    "CORE"
+                ),
+                ChangelogEntry(
+                    Icons.Default.DateRange,
+                    TelegramEmerald,
+                    "September Archive Healing",
+                    "Fixed indexing argument mismatch and sanitized all corrupted or legacy July 2026 placeholder timestamps back to September 2026 and real file dates.",
+                    "ARCHIVE"
+                ),
+                ChangelogEntry(
+                    Icons.Default.FolderOpen,
+                    TelegramBlue,
+                    "Moved & Cloud File Opening",
+                    "Smart local file resolver locates moved files across directories; cloud files assemble all multi-part chunks before opening for seamless playback.",
+                    "RESOLVER"
+                )
+            )
+        ),
+        VersionRelease(
             versionName = "2.2.6",
             versionCode = 109,
             releaseDate = "September 2026",

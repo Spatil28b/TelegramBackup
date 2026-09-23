@@ -197,8 +197,13 @@ object SettingsDbManager {
                 val trashByPath = existingTrashList.associateBy { it.path }
                 val trashByTgId = existingTrashList.filter { it.telegramFileId.isNotEmpty() }.associateBy { it.telegramFileId }
                 val filesToInsert = cloudFiles.map { cloudFile ->
-                    if (cloudFile.timestamp < 946684800000L) {
-                        cloudFile.timestamp = 1784030400000L
+                    if (cloudFile.timestamp < 946684800000L || cloudFile.timestamp == 1784030400000L) {
+                        val localCandidate = FileViewerHelper.findLocalFile(cloudFile.path, cloudFile.fileName)
+                        cloudFile.timestamp = if (localCandidate != null && localCandidate.exists() && localCandidate.lastModified() > 946684800000L) {
+                            localCandidate.lastModified()
+                        } else {
+                            System.currentTimeMillis()
+                        }
                     }
                     val trashRecord = trashByPath[cloudFile.path]
                         ?: (if (cloudFile.telegramFileId.isNotEmpty()) trashByTgId[cloudFile.telegramFileId] else null)

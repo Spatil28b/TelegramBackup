@@ -134,16 +134,27 @@ fun ModernVideoPlayerDialog(
             var activeVideoSource by remember { mutableStateOf<String?>(null) }
 
             LaunchedEffect(filePathOrUrl) {
+                val localResolved = FileViewerHelper.findLocalFile(filePathOrUrl, fileName)
                 if (filePathOrUrl.startsWith("http://") || filePathOrUrl.startsWith("https://")) {
                     activeVideoSource = filePathOrUrl
-                } else if (File(filePathOrUrl).exists()) {
-                    activeVideoSource = filePathOrUrl
+                } else if (localResolved != null && localResolved.exists() && localResolved.length() > 0) {
+                    activeVideoSource = localResolved.absolutePath
                 } else {
-                    val directUrl = TelegramMediaResolver.resolveDirectUrl(context, filePathOrUrl)
+                    val db = com.example.telegrambackup.data.AppDatabase.getDatabase(context)
+                    val fileRecord = db.uploadedFileDao().getFileByPath(filePathOrUrl)
+                        ?: db.uploadedFileDao().getFileByName(fileName)
+                        ?: db.uploadedFileDao().getFileByTelegramFileId(filePathOrUrl)
+                    val tgId = fileRecord?.telegramFileId ?: filePathOrUrl
+
+                    val directUrl = if (tgId.isNotBlank() && tgId != "DIR_MARKER") TelegramMediaResolver.resolveDirectUrl(context, tgId) else null
                     if (directUrl != null) {
                         activeVideoSource = directUrl
                     } else {
-                        val cached = TelegramMediaResolver.fetchToTempCache(context, filePathOrUrl, fileName)
+                        val cached = if (fileRecord != null) {
+                            TelegramMediaResolver.fetchToTempCache(context, fileRecord)
+                        } else {
+                            TelegramMediaResolver.fetchToTempCache(context, tgId, fileName)
+                        }
                         activeVideoSource = cached?.absolutePath
                     }
                 }

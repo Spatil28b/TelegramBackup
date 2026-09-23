@@ -540,18 +540,35 @@ class ServerApi {
                                  tgId == "DIR_MARKER" ||
                                  pathStr.startsWith("Internal Storage")
 
-                    val rawTime = obj.optLong("timestamp", 1784030400000L)
-                    val safeTime = if (rawTime < 946684800000L) 1784030400000L else rawTime
+                    val fSize = obj.optLong("size", 0L)
+                    val rawTime = obj.optLong("timestamp", 0L)
+                    val safeTime = if (rawTime < 946684800000L || rawTime == 1784030400000L) {
+                        val localCandidate = if (pathStr.isNotBlank()) java.io.File(pathStr) else null
+                        if (localCandidate != null && localCandidate.exists() && localCandidate.lastModified() > 946684800000L) {
+                            localCandidate.lastModified()
+                        } else {
+                            System.currentTimeMillis()
+                        }
+                    } else {
+                        rawTime
+                    }
+
+                    val computedChunks = if (fSize > com.example.telegrambackup.utils.FileChunker.CHUNK_SIZE) {
+                        ((fSize + com.example.telegrambackup.utils.FileChunker.CHUNK_SIZE - 1) / com.example.telegrambackup.utils.FileChunker.CHUNK_SIZE).toInt()
+                    } else 1
+                    val resolvedChunks = maxOf(obj.optInt("totalChunks", 1), obj.optInt("total_chunks", 1), computedChunks)
 
                     val entity = UploadedFile(
                         pathStr,
                         fName,
                         tgId,
                         safeTime,
-                        obj.optLong("size", 0L),
-                        obj.optLong("messageId", 0L)
+                        fSize,
+                        obj.optLong("messageId", 0L),
+                        totalChunks = resolvedChunks
                     ).apply {
                         isDriveUpload = isDrive
+                        totalChunks = resolvedChunks
                     }
                     list.add(entity)
                 }

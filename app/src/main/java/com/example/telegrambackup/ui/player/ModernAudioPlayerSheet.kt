@@ -25,6 +25,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.telegrambackup.theme.TelegramBlue
 import com.example.telegrambackup.theme.TelegramEmerald
+import com.example.telegrambackup.utils.FileViewerHelper
 import com.example.telegrambackup.utils.TelegramMediaResolver
 import kotlinx.coroutines.delay
 import java.io.File
@@ -83,16 +84,27 @@ fun ModernAudioPlayerSheet(
             mediaPlayer.reset()
 
             var activeSource: String? = null
+            val localResolved = FileViewerHelper.findLocalFile(filePathOrUrl, fileName)
             if (filePathOrUrl.startsWith("http://") || filePathOrUrl.startsWith("https://")) {
                 activeSource = filePathOrUrl
-            } else if (File(filePathOrUrl).exists()) {
-                activeSource = File(filePathOrUrl).absolutePath
+            } else if (localResolved != null && localResolved.exists() && localResolved.length() > 0) {
+                activeSource = localResolved.absolutePath
             } else {
-                val directUrl = TelegramMediaResolver.resolveDirectUrl(context, filePathOrUrl)
+                val db = com.example.telegrambackup.data.AppDatabase.getDatabase(context)
+                val fileRecord = db.uploadedFileDao().getFileByPath(filePathOrUrl)
+                    ?: db.uploadedFileDao().getFileByName(fileName)
+                    ?: db.uploadedFileDao().getFileByTelegramFileId(filePathOrUrl)
+                val tgId = fileRecord?.telegramFileId ?: filePathOrUrl
+
+                val directUrl = if (tgId.isNotBlank() && tgId != "DIR_MARKER") TelegramMediaResolver.resolveDirectUrl(context, tgId) else null
                 if (directUrl != null) {
                     activeSource = directUrl
                 } else {
-                    val cached = TelegramMediaResolver.fetchToTempCache(context, filePathOrUrl, fileName)
+                    val cached = if (fileRecord != null) {
+                        TelegramMediaResolver.fetchToTempCache(context, fileRecord)
+                    } else {
+                        TelegramMediaResolver.fetchToTempCache(context, tgId, fileName)
+                    }
                     activeSource = cached?.absolutePath
                 }
             }

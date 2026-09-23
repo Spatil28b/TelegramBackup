@@ -423,7 +423,25 @@ fun MainApp(
             displayUserName = prefs.displayName
             displayUserAvatarUri = com.example.telegrambackup.utils.ProfileManager.getAvatarUri(context)?.toString() ?: prefs.profilePictureUri
             scope.launch(Dispatchers.IO) {
-                try { AppDatabase.getDatabase(context).uploadedFileDao().sanitizeCorruptedTimestamps() } catch (_: Exception) {}
+                try {
+                    val db = AppDatabase.getDatabase(context)
+                    db.uploadedFileDao().sanitizeCorruptedTimestamps(System.currentTimeMillis())
+                    val legacyFiles = db.uploadedFileDao().getAllRawFiles().filter {
+                        it.timestamp == 1784030400000L || it.timestamp < 946684800000L
+                    }
+                    if (legacyFiles.isNotEmpty()) {
+                        val fixed = legacyFiles.map { f ->
+                            val local = FileViewerHelper.findLocalFile(f.path, f.fileName)
+                            val ts = if (local != null && local.exists() && local.lastModified() > 946684800000L) {
+                                local.lastModified()
+                            } else {
+                                System.currentTimeMillis()
+                            }
+                            f.copy(timestamp = ts)
+                        }
+                        db.uploadedFileDao().insertAll(fixed)
+                    }
+                } catch (_: Exception) {}
                 try { SettingsDbManager.fetchAndSyncSettingsOnAppOpen(context) } catch (_: Exception) {}
                 try { SettingsDbManager.restoreCloudFileIndexToRoom(context) } catch (_: Exception) {}
                 try { com.example.telegrambackup.network.BotFleetManager.ensureInitialized(context, force = true) } catch (_: Exception) {}
