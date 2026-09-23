@@ -129,61 +129,11 @@ object ZipBackupDownloader {
                     Log.d(TAG, "⚡ Resuming from Cache: ${item.fileName}")
                 }
 
-                // Step 3: If missing from cache & local storage, download from Telegram Cloud
-                if (fileToCompress == null && item.telegramFileId.isNotEmpty() && botToken.isNotEmpty()) {
-                    val totalChunks = item.totalChunks
-                    if (totalChunks > 1) {
-                        // Multi-part chunked file: fetch all chunk parts from DB / Telegram
-                        val chunkParts = mutableListOf<File>()
-                        var allChunksOk = true
-
-                        for (cIdx in 1..totalChunks) {
-                            val chunkCacheFile = File(persistentCacheDir, "${item.fileName}.part%03d".format(cIdx))
-                            if (chunkCacheFile.exists() && chunkCacheFile.length() > 0) {
-                                chunkParts.add(chunkCacheFile)
-                                continue
-                            }
-
-                            // Fetch chunk record from Room DB
-                            val chunkRecord = chunkDao.getChunk(item.path, cIdx)
-                            val fileIdToFetch = chunkRecord?.telegramFileId ?: if (cIdx == 1) item.telegramFileId else ""
-
-                            if (fileIdToFetch.isNotEmpty()) {
-                                val downloadUrl = TelegramMediaResolver.resolveDirectUrl(context, fileIdToFetch) ?: telegramDownloader.getDownloadUrl(botToken, fileIdToFetch)
-                                if (downloadUrl != null) {
-                                    val ok = downloadDirectToFile(downloadUrl, chunkCacheFile)
-                                    if (ok) {
-                                        chunkParts.add(chunkCacheFile)
-                                    } else {
-                                        allChunksOk = false
-                                        break
-                                    }
-                                } else {
-                                    allChunksOk = false
-                                    break
-                                }
-                            } else {
-                                allChunksOk = false
-                                break
-                            }
-                        }
-
-                        if (allChunksOk && chunkParts.size == totalChunks) {
-                            // Merge all chunks into single file
-                            FileChunker.mergeChunks(chunkParts, cachedFile)
-                            if (cachedFile.exists() && cachedFile.length() > 0) {
-                                fileToCompress = cachedFile
-                            }
-                        }
-                    } else {
-                        // Single-file download from Telegram Cloud
-                        val downloadUrl = TelegramMediaResolver.resolveDirectUrl(context, item.telegramFileId) ?: telegramDownloader.getDownloadUrl(botToken, item.telegramFileId)
-                        if (downloadUrl != null) {
-                            val success = downloadDirectToFile(downloadUrl, cachedFile)
-                            if (success) {
-                                fileToCompress = cachedFile
-                            }
-                        }
+                // Step 3: If missing from cache & local storage, download from Telegram Cloud with parallel multi-bot fleet
+                if (fileToCompress == null && item.telegramFileId.isNotEmpty()) {
+                    val ok = TelegramMediaResolver.downloadAndAssembleFile(context, item, cachedFile)
+                    if (ok && cachedFile.exists() && cachedFile.length() > 0) {
+                        fileToCompress = cachedFile
                     }
                 }
 

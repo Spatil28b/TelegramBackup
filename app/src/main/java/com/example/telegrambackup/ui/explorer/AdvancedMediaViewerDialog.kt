@@ -5,6 +5,7 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.pdf.PdfRenderer
+import android.media.MediaPlayer
 import android.net.Uri
 import android.os.ParcelFileDescriptor
 import android.os.Vibrator
@@ -13,14 +14,18 @@ import android.widget.VideoView
 import android.widget.Toast
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.gestures.rememberTransformableState
 import androidx.compose.foundation.gestures.transformable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
+import androidx.compose.ui.geometry.Offset
+import kotlinx.coroutines.delay
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -128,6 +133,7 @@ fun AdvancedMediaViewerDialog(
     val nameLower = currentFile.fileName.lowercase()
     val isImage = nameLower.endsWith(".jpg") || nameLower.endsWith(".jpeg") || nameLower.endsWith(".png") || nameLower.endsWith(".webp") || nameLower.endsWith(".heic") || nameLower.endsWith(".gif") || nameLower.endsWith(".bmp")
     val isVideo = nameLower.endsWith(".mp4") || nameLower.endsWith(".mkv") || nameLower.endsWith(".avi") || nameLower.endsWith(".mov") || nameLower.endsWith(".webm") || nameLower.endsWith(".3gp")
+    val isAudio = nameLower.endsWith(".mp3") || nameLower.endsWith(".m4a") || nameLower.endsWith(".aac") || nameLower.endsWith(".wav") || nameLower.endsWith(".flac") || nameLower.endsWith(".ogg") || nameLower.endsWith(".opus") || nameLower.endsWith(".wma")
     val isPdf = nameLower.endsWith(".pdf")
     val isTextFile = nameLower.endsWith(".txt") || nameLower.endsWith(".log") || nameLower.endsWith(".json") || nameLower.endsWith(".csv") || nameLower.endsWith(".md") || nameLower.endsWith(".xml") || nameLower.endsWith(".kt") || nameLower.endsWith(".java") || nameLower.endsWith(".html") || nameLower.endsWith(".css") || nameLower.endsWith(".js") || nameLower.endsWith(".py") || nameLower.endsWith(".sh") || nameLower.endsWith(".yml") || nameLower.endsWith(".yaml")
 
@@ -141,7 +147,7 @@ fun AdvancedMediaViewerDialog(
     var isCloudResolving by remember(currentFile.telegramFileId) { mutableStateOf(false) }
 
     LaunchedEffect(currentFile) {
-        if ((!localFileExists || isPdf) && currentFile.telegramFileId.isNotBlank() && currentFile.telegramFileId != "DIR_MARKER") {
+        if ((!localFileExists || isPdf || isAudio) && currentFile.telegramFileId.isNotBlank() && currentFile.telegramFileId != "DIR_MARKER") {
             isCloudResolving = true
             val directUrl = TelegramMediaResolver.resolveDirectUrl(context, currentFile.telegramFileId)
             resolvedDirectUrl = directUrl
@@ -371,6 +377,20 @@ fun AdvancedMediaViewerDialog(
                                     Text("Preparing cloud video stream...", style = MaterialTheme.typography.titleSmall.copy(color = Color.White))
                                 }
                             }
+                        }
+
+                        // 2b. AUDIO VIEWER
+                        isAudio -> {
+                            val audioTargetFile = when {
+                                localFileExists -> localFile
+                                cachedDownloadedFile != null && cachedDownloadedFile!!.exists() -> cachedDownloadedFile
+                                else -> null
+                            }
+                            AudioPlayerComponent(
+                                file = audioTargetFile,
+                                fileName = currentFile.fileName,
+                                directUrl = resolvedDirectUrl
+                            )
                         }
 
                         // 3. PDF VIEWER
@@ -615,12 +635,55 @@ private fun PdfViewerComponent(file: File, fileName: String = file.name) {
             Text("Preparing & Opening PDF...", style = MaterialTheme.typography.titleSmall.copy(color = Color.White))
         }
     } else if (totalPdfPages > 0 && pdfRenderer != null) {
-        Box(modifier = Modifier.fillMaxSize()) {
+        var zoomScale by remember { mutableFloatStateOf(1f) }
+        var panOffset by remember { mutableStateOf(Offset.Zero) }
+        val currentPage by remember { derivedStateOf { lazyListState.firstVisibleItemIndex } }
+
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .pointerInput(Unit) {
+                    detectTransformGestures { _, pan, zoom, _ ->
+                        zoomScale = (zoomScale * zoom).coerceIn(1f, 4f)
+                        if (zoomScale > 1f) {
+                            val maxPanX = (zoomScale - 1f) * 600f
+                            val maxPanY = (zoomScale - 1f) * 900f
+                            panOffset = Offset(
+                                (panOffset.x + pan.x).coerceIn(-maxPanX, maxPanX),
+                                (panOffset.y + pan.y).coerceIn(-maxPanY, maxPanY)
+                            )
+                        } else {
+                            panOffset = Offset.Zero
+                        }
+                    }
+                }
+                .pointerInput(Unit) {
+                    detectTapGestures(
+                        onDoubleTap = {
+                            if (zoomScale > 1.05f) {
+                                zoomScale = 1f
+                                panOffset = Offset.Zero
+                            } else {
+                                zoomScale = 2.2f
+                            }
+                        }
+                    )
+                }
+        ) {
             LazyColumn(
                 state = lazyListState,
+                userScrollEnabled = zoomScale <= 1.05f,
                 verticalArrangement = Arrangement.spacedBy(12.dp),
-                contentPadding = PaddingValues(top = 10.dp, bottom = 40.dp),
-                modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp)
+                contentPadding = PaddingValues(top = 10.dp, bottom = 65.dp),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer {
+                        scaleX = zoomScale
+                        scaleY = zoomScale
+                        translationX = panOffset.x
+                        translationY = panOffset.y
+                    }
+                    .padding(horizontal = 12.dp)
             ) {
                 items(totalPdfPages, key = { it }) { pageIdx ->
                     var pageBitmap by remember(pageIdx) { mutableStateOf(pageBitmapCache[pageIdx]) }
@@ -686,6 +749,33 @@ private fun PdfViewerComponent(file: File, fileName: String = file.name) {
                     }
                 }
             }
+
+            // Floating Page Count & Zoom Badge
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = Color(0xCC0F172A),
+                border = BorderStroke(1.dp, Color(0xFF334155)),
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 12.dp)
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Page ${currentPage + 1} of $totalPdfPages",
+                        style = MaterialTheme.typography.labelMedium.copy(color = Color.White, fontWeight = FontWeight.Bold)
+                    )
+                    if (zoomScale > 1.05f) {
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "• ${(zoomScale * 100).toInt()}%",
+                            style = MaterialTheme.typography.labelSmall.copy(color = TelegramBlue, fontWeight = FontWeight.SemiBold)
+                        )
+                    }
+                }
+            }
         }
     } else {
         Column(
@@ -747,6 +837,218 @@ private fun PdfViewerComponent(file: File, fileName: String = file.name) {
                 }
                 IconButton(onClick = { retryTrigger++ }) {
                     Icon(Icons.Default.Refresh, contentDescription = "Retry", tint = Color.White)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AudioPlayerComponent(
+    file: File?,
+    fileName: String,
+    directUrl: String?
+) {
+    val context = LocalContext.current
+    var isPlaying by remember { mutableStateOf(false) }
+    var currentPositionMs by remember { mutableIntStateOf(0) }
+    var durationMs by remember { mutableIntStateOf(0) }
+    var isPreparing by remember { mutableStateOf(true) }
+    var mediaPlayer by remember { mutableStateOf<MediaPlayer?>(null) }
+    var playbackError by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(file?.absolutePath, directUrl) {
+        isPreparing = true
+        playbackError = null
+        withContext(Dispatchers.IO) {
+            try {
+                val player = MediaPlayer()
+                if (file != null && file.exists() && file.length() > 0) {
+                    val workingDir = File(context.cacheDir, "audio_preview_work").apply { if (!exists()) mkdirs() }
+                    val workingFile = File(workingDir, "audio_${System.currentTimeMillis()}_${file.name}")
+                    file.copyTo(workingFile, overwrite = true)
+                    FileEncryptor.ensureDecrypted(workingFile, context, fileName)
+                    player.setDataSource(workingFile.absolutePath)
+                } else if (!directUrl.isNullOrBlank()) {
+                    player.setDataSource(directUrl)
+                } else {
+                    playbackError = "Audio source not available"
+                    isPreparing = false
+                    return@withContext
+                }
+
+                player.setOnPreparedListener { mp ->
+                    durationMs = mp.duration
+                    isPreparing = false
+                    mp.start()
+                    isPlaying = true
+                }
+                player.setOnCompletionListener {
+                    isPlaying = false
+                    currentPositionMs = 0
+                }
+                player.setOnErrorListener { _, what, extra ->
+                    playbackError = "Playback error: $what/$extra"
+                    isPreparing = false
+                    isPlaying = false
+                    true
+                }
+                player.prepareAsync()
+                mediaPlayer = player
+            } catch (e: Exception) {
+                playbackError = e.localizedMessage ?: "Failed to play audio"
+                isPreparing = false
+            }
+        }
+    }
+
+    LaunchedEffect(isPlaying) {
+        while (isPlaying) {
+            mediaPlayer?.let {
+                if (it.isPlaying) {
+                    currentPositionMs = it.currentPosition
+                }
+            }
+            delay(400)
+        }
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            try {
+                mediaPlayer?.stop()
+                mediaPlayer?.release()
+                mediaPlayer = null
+            } catch (_: Exception) {}
+        }
+    }
+
+    fun formatTime(ms: Int): String {
+        val totalSecs = (ms / 1000).coerceAtLeast(0)
+        val mins = totalSecs / 60
+        val secs = totalSecs % 60
+        return "%02d:%02d".format(mins, secs)
+    }
+
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(24.dp)
+    ) {
+        // Glowing Animated Music Icon Disc
+        Surface(
+            shape = CircleShape,
+            color = Color(0xFF1E293B),
+            border = BorderStroke(2.dp, if (isPlaying) TelegramBlue else Color(0xFF334155)),
+            modifier = Modifier.size(130.dp)
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(
+                    imageVector = Icons.Default.MusicNote,
+                    contentDescription = null,
+                    tint = if (isPlaying) TelegramBlue else Color(0xFF94A3B8),
+                    modifier = Modifier.size(64.dp)
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(24.dp))
+
+        Text(
+            text = fileName,
+            style = MaterialTheme.typography.titleMedium.copy(color = Color.White, fontWeight = FontWeight.Bold),
+            maxLines = 1,
+            textAlign = TextAlign.Center
+        )
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        if (isPreparing) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                CircularProgressIndicator(color = TelegramBlue, modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Buffering audio...", style = MaterialTheme.typography.bodySmall.copy(color = Color.White.copy(alpha = 0.7f)))
+            }
+        } else if (playbackError != null) {
+            Text(playbackError!!, style = MaterialTheme.typography.bodySmall.copy(color = Color(0xFFEF4444)))
+        } else {
+            // Seek bar / Progress slider
+            val sliderValue = if (durationMs > 0) currentPositionMs.toFloat() / durationMs.toFloat() else 0f
+            Slider(
+                value = sliderValue.coerceIn(0f, 1f),
+                onValueChange = { frac ->
+                    val targetMs = (frac * durationMs).toInt()
+                    currentPositionMs = targetMs
+                    mediaPlayer?.seekTo(targetMs)
+                },
+                colors = SliderDefaults.colors(
+                    thumbColor = TelegramBlue,
+                    activeTrackColor = TelegramBlue,
+                    inactiveTrackColor = Color(0xFF334155)
+                ),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(formatTime(currentPositionMs), style = MaterialTheme.typography.bodySmall.copy(color = Color.White.copy(alpha = 0.6f)))
+                Text(formatTime(durationMs), style = MaterialTheme.typography.bodySmall.copy(color = Color.White.copy(alpha = 0.6f)))
+            }
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+            // Playback Controls (-10s, Play/Pause, +10s)
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(20.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(
+                    onClick = {
+                        val newPos = (currentPositionMs - 10000).coerceAtLeast(0)
+                        currentPositionMs = newPos
+                        mediaPlayer?.seekTo(newPos)
+                    },
+                    modifier = Modifier.size(48.dp)
+                ) {
+                    Icon(Icons.Default.Replay10, contentDescription = "Rewind 10s", tint = Color.White, modifier = Modifier.size(32.dp))
+                }
+
+                IconButton(
+                    onClick = {
+                        mediaPlayer?.let { mp ->
+                            if (mp.isPlaying) {
+                                mp.pause()
+                                isPlaying = false
+                            } else {
+                                mp.start()
+                                isPlaying = true
+                            }
+                        }
+                    },
+                    modifier = Modifier
+                        .size(64.dp)
+                        .background(TelegramBlue, CircleShape)
+                ) {
+                    Icon(
+                        imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                        contentDescription = if (isPlaying) "Pause" else "Play",
+                        tint = Color.White,
+                        modifier = Modifier.size(36.dp)
+                    )
+                }
+
+                IconButton(
+                    onClick = {
+                        val newPos = (currentPositionMs + 10000).coerceAtMost(durationMs)
+                        currentPositionMs = newPos
+                        mediaPlayer?.seekTo(newPos)
+                    },
+                    modifier = Modifier.size(48.dp)
+                ) {
+                    Icon(Icons.Default.Forward10, contentDescription = "Forward 10s", tint = Color.White, modifier = Modifier.size(32.dp))
                 }
             }
         }

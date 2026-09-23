@@ -16,8 +16,14 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.ui.graphics.asImageBitmap
+import com.example.telegrambackup.utils.KeyRecoveryManager
+import com.example.telegrambackup.utils.TelegramApiConfig
+import android.content.ClipData
+import android.content.ClipboardManager
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -264,6 +270,10 @@ fun BackupSettingsScreen(
     var lowBatteryProtectionState by remember { mutableStateOf(prefs.lowBatteryProtection) }
     var showNetworkSelfAnalysisModal by remember { mutableStateOf(false) }
 
+    var showBiometricTimeoutDialog by remember { mutableStateOf(false) }
+    var showCustomBotApiDialog by remember { mutableStateOf(false) }
+    var showKeyRecoveryDialog by remember { mutableStateOf(false) }
+
     if (showDeepReindexModal) {
         DeepReindexDialog(onDismiss = { showDeepReindexModal = false })
     }
@@ -282,6 +292,266 @@ fun BackupSettingsScreen(
 
     if (showAppInfoModal) {
         AppInfoDialog(onDismiss = { showAppInfoModal = false })
+    }
+
+    if (showBiometricTimeoutDialog) {
+        val options = listOf(
+            0 to "Immediately",
+            30 to "30 Seconds",
+            60 to "1 Minute",
+            300 to "5 Minutes",
+            900 to "15 Minutes"
+        )
+        AlertDialog(
+            onDismissRequest = { showBiometricTimeoutDialog = false },
+            title = { Text("Auto-Lock Timeout", fontWeight = FontWeight.Bold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Select how long after backgrounding before requiring biometric unlock:", style = MaterialTheme.typography.bodySmall)
+                    options.forEach { (seconds, label) ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable {
+                                    prefs.biometricAutoLockTimeoutSeconds = seconds
+                                    showBiometricTimeoutDialog = false
+                                }
+                                .padding(vertical = 12.dp, horizontal = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = prefs.biometricAutoLockTimeoutSeconds == seconds,
+                                onClick = {
+                                    prefs.biometricAutoLockTimeoutSeconds = seconds
+                                    showBiometricTimeoutDialog = false
+                                }
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(label, style = MaterialTheme.typography.bodyMedium)
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showBiometricTimeoutDialog = false }) { Text("Close") }
+            }
+        )
+    }
+
+    if (showCustomBotApiDialog) {
+        var tempUrl by remember { mutableStateOf(prefs.customBotApiUrl) }
+        AlertDialog(
+            onDismissRequest = { showCustomBotApiDialog = false },
+            title = { Text("Telegram Bot API Server", fontWeight = FontWeight.Bold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        "Default is https://api.telegram.org. Enter your self-hosted local Bot API server URL (e.g., http://192.168.1.50:8081) to enable 2,000 MB single-request uploads.",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    OutlinedTextField(
+                        value = tempUrl,
+                        onValueChange = { tempUrl = it },
+                        label = { Text("Server Base URL") },
+                        placeholder = { Text("https://api.telegram.org") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End
+                    ) {
+                        TextButton(
+                            onClick = { tempUrl = "" }
+                        ) {
+                            Text("Reset to Default")
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val cleaned = tempUrl.trim().removeSuffix("/")
+                        prefs.customBotApiUrl = cleaned
+                        showCustomBotApiDialog = false
+                        Toast.makeText(context, if (cleaned.isEmpty()) "Restored to official Telegram Bot API" else "Saved custom API server: $cleaned", Toast.LENGTH_SHORT).show()
+                    }
+                ) {
+                    Text("Save")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showCustomBotApiDialog = false }) { Text("Cancel") }
+            }
+        )
+    }
+
+    if (showKeyRecoveryDialog) {
+        var recoveryTab by remember { mutableIntStateOf(0) }
+        val mnemonicWords = remember(uniqueMasterKey) {
+            KeyRecoveryManager.keyToMnemonic(uniqueMasterKey)
+        }
+        val qrBitmap = remember(uniqueMasterKey) {
+            KeyRecoveryManager.generateQrBitmap(uniqueMasterKey, 512)
+        }
+        var importPhraseInput by remember { mutableStateOf("") }
+        var importError by remember { mutableStateOf<String?>(null) }
+
+        AlertDialog(
+            onDismissRequest = { showKeyRecoveryDialog = false },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.VpnKey, contentDescription = null, tint = Color(0xFF8B5CF6))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Master Key Recovery", fontWeight = FontWeight.Bold)
+                }
+            },
+            text = {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    PrimaryTabRow(selectedTabIndex = recoveryTab, modifier = Modifier.fillMaxWidth()) {
+                        Tab(selected = recoveryTab == 0, onClick = { recoveryTab = 0 }, text = { Text("12 Words", style = MaterialTheme.typography.labelSmall) })
+                        Tab(selected = recoveryTab == 1, onClick = { recoveryTab = 1 }, text = { Text("Offline QR", style = MaterialTheme.typography.labelSmall) })
+                        Tab(selected = recoveryTab == 2, onClick = { recoveryTab = 2 }, text = { Text("Import", style = MaterialTheme.typography.labelSmall) })
+                    }
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    when (recoveryTab) {
+                        0 -> {
+                            Text(
+                                "Write down these 12 words in exact order. This phrase can reconstruct your AES-256 decryption key on any device:",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    val words = mnemonicWords
+                                    for (i in 0 until words.size step 2) {
+                                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            Surface(
+                                                shape = RoundedCornerShape(8.dp),
+                                                color = MaterialTheme.colorScheme.surface,
+                                                modifier = Modifier.weight(1f)
+                                            ) {
+                                                Text(
+                                                    "${i + 1}. ${words[i]}",
+                                                    modifier = Modifier.padding(8.dp),
+                                                    style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold)
+                                                )
+                                            }
+                                            if (i + 1 < words.size) {
+                                                Surface(
+                                                    shape = RoundedCornerShape(8.dp),
+                                                    color = MaterialTheme.colorScheme.surface,
+                                                    modifier = Modifier.weight(1f)
+                                                ) {
+                                                    Text(
+                                                        "${i + 2}. ${words[i + 1]}",
+                                                        modifier = Modifier.padding(8.dp),
+                                                        style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold)
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Button(
+                                onClick = {
+                                    val clip = ClipData.newPlainText("12-Word Recovery Phrase", mnemonicWords.joinToString(" "))
+                                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                                    clipboard?.setPrimaryClip(clip)
+                                    Toast.makeText(context, "Copied 12 words to clipboard!", Toast.LENGTH_SHORT).show()
+                                },
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Copy 12 Words")
+                            }
+                        }
+                        1 -> {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+                                Text(
+                                    "Scan this high-contrast offline QR code with another device to transfer your master key without typing:",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Spacer(modifier = Modifier.height(12.dp))
+                                if (qrBitmap != null) {
+                                    Surface(
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = Color.White,
+                                        modifier = Modifier.size(200.dp).padding(4.dp)
+                                    ) {
+                                        Image(
+                                            bitmap = qrBitmap.asImageBitmap(),
+                                            contentDescription = "Master Key QR Code",
+                                            modifier = Modifier.fillMaxSize()
+                                        )
+                                    }
+                                } else {
+                                    Text("Unable to generate QR code", color = MaterialTheme.colorScheme.error)
+                                }
+                            }
+                        }
+                        2 -> {
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text(
+                                    "Restore your master encryption key by entering the 12-word mnemonic phrase:",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                OutlinedTextField(
+                                    value = importPhraseInput,
+                                    onValueChange = {
+                                        importPhraseInput = it
+                                        importError = null
+                                    },
+                                    label = { Text("12-Word Phrase") },
+                                    minLines = 3,
+                                    maxLines = 4,
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(12.dp)
+                                )
+                                if (importError != null) {
+                                    Text(importError!!, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelSmall)
+                                }
+                                Button(
+                                    onClick = {
+                                        val cleanWords = importPhraseInput.trim().split("\\s+".toRegex()).filter { it.isNotEmpty() }
+                                        val recoveredKey = KeyRecoveryManager.mnemonicToMasterKey(cleanWords)
+                                        if (recoveredKey != null && recoveredKey.length >= 16) {
+                                            prefs.encryptionKey = recoveredKey
+                                            showKeyRecoveryDialog = false
+                                            Toast.makeText(context, "Master key restored successfully!", Toast.LENGTH_SHORT).show()
+                                        } else {
+                                            importError = "Invalid 12-word phrase. Please check the spelling and order."
+                                        }
+                                    },
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text("Restore Key")
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showKeyRecoveryDialog = false }) { Text("Close") }
+            }
+        )
     }
 
     if (showCacheOptimizerModal) {
@@ -1914,6 +2184,30 @@ fun BackupSettingsScreen(
                     Spacer(modifier = Modifier.height(8.dp))
 
                     Text(
+                        "TELEGRAM API SERVER & ENDPOINTS",
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, letterSpacing = 0.8.sp)
+                    )
+
+                    Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.40f), modifier = Modifier.fillMaxWidth()) {
+                        Column {
+                            OptionValueRowWithInfo(
+                                "Bot API Server URL",
+                                if (prefs.customBotApiUrl.isBlank()) "Default (api.telegram.org)" else prefs.customBotApiUrl,
+                                onClick = {
+                                    triggerHapticFeedback(context, haptic)
+                                    showCustomBotApiDialog = true
+                                },
+                                onInfoClick = {
+                                    featureInfoTitle = "Custom Bot API Server"
+                                    featureInfoDesc = "Connect to a self-hosted Telegram Bot API server to upload files up to 2,000 MB (2 GB) in a single request and remove cloud rate limits."
+                                }
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Text(
                         "AI NETWORK BENCHMARK & SELF-ANALYSIS",
                         style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, letterSpacing = 0.8.sp)
                     )
@@ -1993,6 +2287,37 @@ fun BackupSettingsScreen(
                     Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.40f), modifier = Modifier.fillMaxWidth()) {
                         Column {
                             SwitchRowWithInfo("Biometric App Lock", biometricLock, { biometricLock = it; prefs.biometricLock = it }, { featureInfoTitle = "Biometrics"; featureInfoDesc = "Requires Fingerprint / Face Unlock when opening app." })
+                            if (biometricLock) {
+                                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
+                                OptionValueRowWithInfo(
+                                    "Auto-Lock Timeout",
+                                    when (prefs.biometricAutoLockTimeoutSeconds) {
+                                        0 -> "Immediately"
+                                        30 -> "After 30s"
+                                        60 -> "After 1 min"
+                                        300 -> "After 5 min"
+                                        900 -> "After 15 min"
+                                        else -> "${prefs.biometricAutoLockTimeoutSeconds}s"
+                                    },
+                                    onClick = {
+                                        showBiometricTimeoutDialog = true
+                                    },
+                                    onInfoClick = {
+                                        featureInfoTitle = "Auto-Lock Timeout"
+                                        featureInfoDesc = "Locks the app after being placed in background for this duration."
+                                    }
+                                )
+                                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
+                                SwitchRowWithInfo(
+                                    "Lock Safe & Secret Storage",
+                                    prefs.biometricLockForSafe,
+                                    { prefs.biometricLockForSafe = it },
+                                    {
+                                        featureInfoTitle = "Safe Folder Lock"
+                                        featureInfoDesc = "Requires biometric unlock before viewing hidden or safe files."
+                                    }
+                                )
+                            }
                             HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
                             SwitchRowWithInfo(
                                 "Screen Privacy (Anti-Spyware)",
@@ -2026,21 +2351,37 @@ fun BackupSettingsScreen(
                                 }
                             }
 
-                            OutlinedButton(
-                                onClick = {
-                                    triggerHapticFeedback(context, haptic)
-                                    val targetMail = prefs.recoveryEmail.ifEmpty { userEmail }
-                                    scope.launch {
-                                        authRepo.requestOtp(targetMail, "master_key_backup")
-                                        Toast.makeText(context, "✉️ Master Key email sent to $targetMail", Toast.LENGTH_LONG).show()
-                                    }
-                                },
-                                shape = RoundedCornerShape(12.dp),
-                                modifier = Modifier.fillMaxWidth().height(48.dp)
-                            ) {
-                                Icon(Icons.Default.Email, contentDescription = null, modifier = Modifier.size(16.dp))
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("Email Key to Recovery Inbox", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold))
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Button(
+                                    onClick = {
+                                        triggerHapticFeedback(context, haptic)
+                                        showKeyRecoveryDialog = true
+                                    },
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF8B5CF6)),
+                                    modifier = Modifier.weight(1f).height(48.dp)
+                                ) {
+                                    Icon(Icons.Default.QrCode, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("12-Word & QR", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold))
+                                }
+
+                                OutlinedButton(
+                                    onClick = {
+                                        triggerHapticFeedback(context, haptic)
+                                        val targetMail = prefs.recoveryEmail.ifEmpty { userEmail }
+                                        scope.launch {
+                                            authRepo.requestOtp(targetMail, "master_key_backup")
+                                            Toast.makeText(context, "✉️ Master Key email sent to $targetMail", Toast.LENGTH_LONG).show()
+                                        }
+                                    },
+                                    shape = RoundedCornerShape(12.dp),
+                                    modifier = Modifier.weight(1f).height(48.dp)
+                                ) {
+                                    Icon(Icons.Default.Email, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Email Key", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold))
+                                }
                             }
                         }
                     }

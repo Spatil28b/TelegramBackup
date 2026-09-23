@@ -269,7 +269,31 @@ fun MainApp(
         }
     }
 
-    LaunchedEffect(isBiometricActive) {
+    // Lifecycle-Aware Biometric Auto-Lock (Locks app after configurable background timeout)
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    var backgroundedTimestamp by remember { mutableLongStateOf(0L) }
+
+    DisposableEffect(lifecycleOwner, isBiometricActive) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_STOP) {
+                backgroundedTimestamp = System.currentTimeMillis()
+            } else if (event == androidx.lifecycle.Lifecycle.Event.ON_START) {
+                if (isBiometricActive && backgroundedTimestamp > 0L) {
+                    val elapsedSeconds = (System.currentTimeMillis() - backgroundedTimestamp) / 1000
+                    val timeout = prefs.biometricAutoLockTimeoutSeconds
+                    if (elapsedSeconds >= timeout) {
+                        isAuthenticated = false
+                    }
+                }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
+    LaunchedEffect(isBiometricActive, isAuthenticated) {
         if (isBiometricActive && !isAuthenticated) {
             BiometricHelper.showBiometricPrompt(
                 activity = activity,

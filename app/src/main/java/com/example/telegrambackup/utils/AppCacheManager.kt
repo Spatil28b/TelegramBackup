@@ -59,6 +59,9 @@ object AppCacheManager {
         val cacheBase = context.cacheDir
 
         val previewDir = File(cacheBase, "cloud_preview_cache")
+        val pdfWorkDir = File(cacheBase, "pdf_preview_work")
+        val pdfThumbDir = File(cacheBase, "pdf_thumb_work")
+        val sharedProviderDir = File(cacheBase, "shared_provider_cache")
         val backupTempDir = File(cacheBase, "backup_temp")
         val driveProcTempDir = File(cacheBase, "drive_proc_temp")
         val driveUploadTempDir = File(cacheBase, "drive_upload_temp")
@@ -66,7 +69,7 @@ object AppCacheManager {
         val zipArchiveDir = File(cacheBase, "zip_archive_cache")
         val updatesDir = File(cacheBase, "updates")
 
-        val previewsBytes = getFolderSize(previewDir)
+        val previewsBytes = getFolderSize(previewDir) + getFolderSize(pdfWorkDir) + getFolderSize(pdfThumbDir) + getFolderSize(sharedProviderDir)
         val tempChunksBytes = getFolderSize(backupTempDir) + getFolderSize(driveProcTempDir) + 
                               getFolderSize(driveUploadTempDir) + getFolderSize(driveFolderTempDir)
         val archiveBytes = getFolderSize(zipArchiveDir) + getFolderSize(updatesDir)
@@ -101,6 +104,9 @@ object AppCacheManager {
                 File(cacheBase, "drive_proc_temp"),
                 File(cacheBase, "drive_upload_temp"),
                 File(cacheBase, "drive_folder_temp"),
+                File(cacheBase, "pdf_preview_work"),
+                File(cacheBase, "pdf_thumb_work"),
+                File(cacheBase, "shared_provider_cache"),
                 File(cacheBase, "updates")
             )
             val now = System.currentTimeMillis()
@@ -157,6 +163,9 @@ object AppCacheManager {
 
             val dirsToPurge = listOf(
                 File(cacheBase, "cloud_preview_cache"),
+                File(cacheBase, "pdf_preview_work"),
+                File(cacheBase, "pdf_thumb_work"),
+                File(cacheBase, "shared_provider_cache"),
                 File(cacheBase, "backup_temp"),
                 File(cacheBase, "drive_proc_temp"),
                 File(cacheBase, "drive_upload_temp"),

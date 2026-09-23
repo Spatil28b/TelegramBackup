@@ -12,8 +12,8 @@ android {
         applicationId = "com.example.telegrambackup"
         minSdk = 24
         targetSdk = 36
-        versionCode = 89
-        versionName = "2.1.86"
+        versionCode = 90
+        versionName = "2.1.87"
     }
 
     signingConfigs {
@@ -114,4 +114,7 @@ dependencies {
   implementation(libs.androidx.room.runtime)
   implementation(libs.androidx.room.ktx)
   ksp(libs.androidx.room.compiler)
+
+  // Offline QR Code Generation
+  implementation("com.google.zxing:core:3.5.3")
 }

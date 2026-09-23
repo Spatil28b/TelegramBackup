@@ -10,6 +10,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
@@ -91,6 +92,15 @@ data class LocalFolderModel(
 
 enum class FileSortOption { NAME, SIZE, DATE }
 
+enum class ExplorerFilterType(val label: String, val icon: ImageVector?) {
+    ALL("All", null),
+    PHOTOS("Photos", Icons.Default.CameraAlt),
+    VIDEOS("Videos", Icons.Default.Videocam),
+    DOCUMENTS("Docs", Icons.Default.Description),
+    AUDIO("Audio", Icons.Default.MusicNote),
+    ARCHIVES("Archives", Icons.Default.Archive)
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BackupExplorerScreen(
@@ -123,6 +133,7 @@ fun BackupExplorerScreen(
     }
 
     var sortOption by remember { mutableStateOf(FileSortOption.DATE) }
+    var selectedFilterType by remember { mutableStateOf(ExplorerFilterType.ALL) }
     var selectedViewMode by remember { mutableIntStateOf(0) }
 
     var cloudFileList by remember { mutableStateOf<List<UploadedFile>>(emptyList()) }
@@ -348,12 +359,25 @@ fun BackupExplorerScreen(
         }
     }
 
-    val activeDisplayFiles = remember(cloudFileList, currentPathFiles, externalSearchQuery, sortOption) {
+    val activeDisplayFiles = remember(cloudFileList, currentPathFiles, externalSearchQuery, sortOption, selectedFilterType) {
         val q = externalSearchQuery.trim()
         var list = if (q.isNotEmpty()) {
             cloudFileList.filter { it.fileName.contains(q, ignoreCase = true) || it.path.contains(q, ignoreCase = true) }
         } else {
             currentPathFiles
+        }
+        if (selectedFilterType != ExplorerFilterType.ALL) {
+            list = list.filter { f ->
+                val name = f.fileName.lowercase()
+                when (selectedFilterType) {
+                    ExplorerFilterType.PHOTOS -> name.endsWith(".jpg") || name.endsWith(".jpeg") || name.endsWith(".png") || name.endsWith(".webp") || name.endsWith(".heic")
+                    ExplorerFilterType.VIDEOS -> name.endsWith(".mp4") || name.endsWith(".mkv") || name.endsWith(".avi") || name.endsWith(".mov")
+                    ExplorerFilterType.DOCUMENTS -> name.endsWith(".pdf") || name.endsWith(".docx") || name.endsWith(".doc") || name.endsWith(".txt") || name.endsWith(".xlsx")
+                    ExplorerFilterType.AUDIO -> name.endsWith(".mp3") || name.endsWith(".wav") || name.endsWith(".aac") || name.endsWith(".flac") || name.endsWith(".m4a") || name.endsWith(".ogg")
+                    ExplorerFilterType.ARCHIVES -> name.endsWith(".zip") || name.endsWith(".rar") || name.endsWith(".7z") || name.endsWith(".tar") || name.endsWith(".gz")
+                    else -> true
+                }
+            }
         }
         list = when (sortOption) {
             FileSortOption.NAME -> list.sortedBy { it.fileName.lowercase() }
@@ -878,6 +902,27 @@ fun BackupExplorerScreen(
                                     }
                                 }
                             }
+                        }
+                    }
+
+                    // Smart Filter Chips Row
+                    Spacer(modifier = Modifier.height(6.dp))
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp)
+                    ) {
+                        items(ExplorerFilterType.values()) { filter ->
+                            FilterChip(
+                                selected = selectedFilterType == filter,
+                                onClick = {
+                                    triggerHapticFeedback(context, haptic)
+                                    selectedFilterType = filter
+                                },
+                                leadingIcon = if (filter.icon != null) {
+                                    { Icon(filter.icon, contentDescription = null, modifier = Modifier.size(14.dp)) }
+                                } else null,
+                                label = { Text(filter.label, style = MaterialTheme.typography.labelSmall) }
+                            )
                         }
                     }
 

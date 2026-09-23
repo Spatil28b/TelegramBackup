@@ -90,7 +90,7 @@ object TelegramMediaResolver {
 
         for (botToken in candidateTokens) {
             try {
-                val requestUrl = "https://api.telegram.org/bot$botToken/getFile?file_id=$telegramFileId"
+                val requestUrl = TelegramApiConfig.getMethodUrl(context, botToken, "getFile?file_id=$telegramFileId")
                 val request = Request.Builder().url(requestUrl).get().build()
                 val response = client.newCall(request).execute()
                 val body = response.body?.string() ?: continue
@@ -99,7 +99,7 @@ object TelegramMediaResolver {
                     val json = JSONObject(body)
                     val filePath = json.optJSONObject("result")?.optString("file_path")
                     if (!filePath.isNullOrBlank()) {
-                        val directUrl = "https://api.telegram.org/file/bot$botToken/$filePath"
+                        val directUrl = TelegramApiConfig.getFileUrl(context, botToken, filePath)
                         urlCache.put(telegramFileId, directUrl)
                         return@withContext directUrl
                     }
@@ -189,7 +189,7 @@ object TelegramMediaResolver {
 
             val token = candidateTokens[((mId.toInt()) % candidateTokens.size).coerceAtLeast(0)]
             try {
-                val forwardUrl = "https://api.telegram.org/bot$token/forwardMessage"
+                val forwardUrl = TelegramApiConfig.getMethodUrl(context, token, "forwardMessage")
                 val payload = JSONObject().apply {
                     put("chat_id", targetChatId)
                     put("from_chat_id", targetChatId)
@@ -214,7 +214,7 @@ object TelegramMediaResolver {
                     // Clean up the forwarded probe message immediately
                     if (forwardedMsgId > 0L) {
                         try {
-                            val delUrl = "https://api.telegram.org/bot$token/deleteMessage"
+                            val delUrl = TelegramApiConfig.getMethodUrl(context, token, "deleteMessage")
                             val delPayload = JSONObject().apply {
                                 put("chat_id", targetChatId)
                                 put("message_id", forwardedMsgId)

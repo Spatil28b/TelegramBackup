@@ -500,7 +500,7 @@ object DriveUploadManager {
         secretKey: String
     ): Pair<String, Long>? {
         return try {
-            val url = "https://api.telegram.org/bot$botToken/sendDocument"
+            val url = TelegramApiConfig.getMethodUrl(context, botToken, "sendDocument")
             val obfuscatedName = if (secretKey.isNotEmpty()) FileEncryptor.obfuscateFileName(file.name, secretKey) else "ENC_${file.name.hashCode() and 0x7FFFFFFF}.bin"
             val encryptedCaption = if (secretKey.isNotEmpty()) "🔒 ENC:" + FileEncryptor.encryptText(caption, secretKey) else caption
 

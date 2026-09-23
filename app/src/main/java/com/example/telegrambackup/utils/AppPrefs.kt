@@ -359,4 +359,19 @@ class AppPrefs(private val context: Context) {
     var biometricLock: Boolean
         get() = isBiometricEnabled
         set(value) { isBiometricEnabled = value }
+
+    // Custom Local Telegram Bot API Server (e.g. http://192.168.1.100:8081)
+    var customBotApiUrl: String
+        get() = prefs.getString("custom_bot_api_url", "") ?: ""
+        set(value) = prefs.edit().putString("custom_bot_api_url", value.trim()).apply()
+
+    // Auto-lock timeout in seconds: 0 = immediate, 30 = 30s, 60 = 1m, 300 = 5m
+    var biometricAutoLockTimeoutSeconds: Int
+        get() = prefs.getInt("biometric_autolock_timeout", 30)
+        set(value) = prefs.edit().putInt("biometric_autolock_timeout", value).apply()
+
+    // Require biometric specifically to open Private Safe Vault
+    var biometricLockForSafe: Boolean
+        get() = prefs.getBoolean("biometric_lock_for_safe", true)
+        set(value) = prefs.edit().putBoolean("biometric_lock_for_safe", value).apply()
 }

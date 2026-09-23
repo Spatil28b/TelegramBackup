@@ -23,6 +23,8 @@ import com.example.telegrambackup.utils.AppPrefs
 import com.example.telegrambackup.utils.BackupProgressTracker
 import com.example.telegrambackup.utils.FileChunker
 import com.example.telegrambackup.utils.FileEncryptor
+import com.example.telegrambackup.utils.FileFingerprintUtil
+import com.example.telegrambackup.utils.TelegramApiConfig
 import com.example.telegrambackup.utils.TelegramFileVerifier
 import com.example.telegrambackup.utils.SettingsDbManager
 import com.example.telegrambackup.utils.UploadItemProgress
@@ -256,10 +258,11 @@ class BackupWorker(
                 return@withContext Result.success()
             }
 
-            // Step 6: Multi-Criteria Deduplication Engine (Path & Name+Size matching)
+            // Step 6: Multi-Criteria Deduplication Engine (Path, Name+Size, and Content-Hash Fingerprint matching)
             val existingFiles = try { uploadedDao.getAllFiles() } catch (e: Exception) { emptyList() }
             val existingPaths = HashSet<String>()
             val existingNameSizePairs = HashSet<String>()
+            val existingFilesBySize = HashMap<Long, MutableList<UploadedFile>>()
 
             for (f in existingFiles) {
                 if (f.path.isNotEmpty()) {
@@ -269,18 +272,68 @@ class BackupWorker(
                 if (f.fileName.isNotEmpty()) {
                     existingNameSizePairs.add("${f.fileName.lowercase()}_${f.size}")
                 }
+                if (f.size > 0 && f.telegramFileId.isNotBlank()) {
+                    existingFilesBySize.getOrPut(f.size) { mutableListOf() }.add(f)
+                }
             }
 
-            val unbackedFiles = candidateFiles.filter { candidate ->
+            val unbackedFiles = mutableListOf<File>()
+            var deduplicatedCount = 0
+
+            for (candidate in candidateFiles) {
                 val pathExact = candidate.absolutePath
                 val pathLower = candidate.absolutePath.lowercase()
                 val nameSize = "${candidate.name.lowercase()}_${candidate.length()}"
 
-                val isAlreadyBackedUp = existingPaths.contains(pathExact) ||
+                val isPathOrNameMatch = existingPaths.contains(pathExact) ||
                         existingPaths.contains(pathLower) ||
                         existingNameSizePairs.contains(nameSize)
 
-                !isAlreadyBackedUp
+                if (isPathOrNameMatch) {
+                    continue
+                }
+
+                // Step 6b: Content-Hash Fingerprint Deduplication (Rename-proof & folder-proof)
+                val candidateLength = candidate.length()
+                val sizeMatches = existingFilesBySize[candidateLength]
+                var isContentDuplicate = false
+
+                if (!sizeMatches.isNullOrEmpty()) {
+                    val candidateFingerprint = FileFingerprintUtil.computeFastFingerprint(candidate)
+                    if (candidateFingerprint.isNotEmpty()) {
+                        for (match in sizeMatches) {
+                            val matchLocalFile = File(match.path)
+                            if (matchLocalFile.exists() && matchLocalFile.length() == candidateLength) {
+                                val matchFingerprint = FileFingerprintUtil.computeFastFingerprint(matchLocalFile)
+                                if (matchFingerprint.isNotEmpty() && matchFingerprint == candidateFingerprint) {
+                                    // Found 100% cryptographic content duplicate! Link to existing Telegram cloud file
+                                    val deduplicatedRecord = match.copy(
+                                        path = candidate.absolutePath,
+                                        fileName = candidate.name,
+                                        timestamp = System.currentTimeMillis()
+                                    )
+                                    try {
+                                        uploadedDao.insert(deduplicatedRecord)
+                                        existingPaths.add(candidate.absolutePath)
+                                        existingNameSizePairs.add(nameSize)
+                                        deduplicatedCount++
+                                        isContentDuplicate = true
+                                        Log.i(TAG, "⚡ Instant Deduplication: ${candidate.name} matches ${match.fileName} (Fingerprint: $candidateFingerprint). Linked to cloud without re-upload!")
+                                    } catch (_: Exception) {}
+                                    break
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (!isContentDuplicate) {
+                    unbackedFiles.add(candidate)
+                }
+            }
+
+            if (deduplicatedCount > 0) {
+                Log.i(TAG, "🎯 Deduplication Engine saved $deduplicatedCount file uploads via Content-Hash matching!")
             }
 
             if (unbackedFiles.isEmpty()) {
@@ -736,7 +789,7 @@ class BackupWorker(
         secretKey: String = ""
     ): Pair<String, Long>? {
         return try {
-            val url = "https://api.telegram.org/bot$botToken/sendDocument"
+            val url = TelegramApiConfig.getMethodUrl(applicationContext, botToken, "sendDocument")
 
             val obfuscatedName = if (secretKey.isNotEmpty()) FileEncryptor.obfuscateFileName(file.name, secretKey) else "ENC_${file.name.hashCode() and 0x7FFFFFFF}.bin"
             val encryptedCaption = if (secretKey.isNotEmpty()) "🔒 ENC:" + FileEncryptor.encryptText(caption, secretKey) else caption
