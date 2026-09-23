@@ -1398,4 +1398,86 @@ class ServerApi {
         }
         return@withContext list
     }
+
+    /**
+     * Creates an opaque, ultra-secure cloud file sharing link on the server.
+     * Prevents client credential leakage by encrypting bot token and encryption key
+     * server-side with AES-256-GCM.
+     */
+    suspend fun createSecureShareLink(
+        serverUrl: String,
+        fileName: String,
+        fileSize: Long,
+        fileId: String,
+        botToken: String,
+        encryptionKey: String,
+        chunks: List<Triple<Int, String, String>> = emptyList(),
+        pin: String = "",
+        expiresAt: Long = 0L
+    ): ShareLinkServerResult = withContext(Dispatchers.IO) {
+        try {
+            val url = cleanUrl(serverUrl, "/api/share/create")
+            val json = JSONObject().apply {
+                put("fileName", fileName)
+                put("fileSize", fileSize)
+                put("fileId", fileId)
+                if (botToken.isNotBlank()) put("botToken", botToken.trim())
+                if (encryptionKey.isNotBlank()) put("encryptionKey", encryptionKey.trim())
+                if (pin.isNotBlank()) put("pin", pin.trim())
+                if (expiresAt > 0L) put("expiresAt", expiresAt)
+
+                if (chunks.isNotEmpty()) {
+                    val chunksArray = JSONArray()
+                    for (chunk in chunks) {
+                        val cJson = JSONObject().apply {
+                            put("chunkIndex", chunk.first)
+                            put("telegramFileId", chunk.second)
+                            if (chunk.third.isNotBlank()) put("botTokenUsed", chunk.third.trim())
+                        }
+                        chunksArray.put(cJson)
+                    }
+                    put("chunks", chunksArray)
+                }
+            }
+
+            val body = json.toString().toRequestBody("application/json; charset=utf-8".toMediaTypeOrNull())
+            val request = Request.Builder().url(url).post(body).build()
+            val response = client.newCall(request).execute()
+            val respBody = response.body?.string() ?: ""
+
+            if (response.isSuccessful) {
+                val respJson = JSONObject(respBody)
+                if (respJson.optBoolean("success")) {
+                    return@withContext ShareLinkServerResult(
+                        success = true,
+                        shareId = respJson.optString("shareId"),
+                        shareUrl = respJson.optString("shareUrl"),
+                        directDownloadUrl = respJson.optString("directDownloadUrl"),
+                        expiresAt = respJson.optLong("expiresAt"),
+                        hasPin = respJson.optBoolean("hasPin")
+                    )
+                }
+            }
+            val err = try {
+                val j = JSONObject(respBody)
+                j.optString("message", "HTTP ${response.code}")
+            } catch (_: Exception) {
+                "HTTP ${response.code}"
+            }
+            return@withContext ShareLinkServerResult(success = false, message = err)
+        } catch (e: Exception) {
+            Log.e("ServerApi", "createSecureShareLink failed", e)
+            return@withContext ShareLinkServerResult(success = false, message = e.message ?: "Network error")
+        }
+    }
 }
+
+data class ShareLinkServerResult(
+    val success: Boolean,
+    val shareId: String = "",
+    val shareUrl: String = "",
+    val directDownloadUrl: String = "",
+    val expiresAt: Long = 0L,
+    val hasPin: Boolean = false,
+    val message: String = ""
+)
