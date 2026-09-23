@@ -28,6 +28,21 @@ object VersionChangelogProvider {
 
     private val releases = listOf(
         VersionRelease(
+            versionName = "2.2.6",
+            versionCode = 109,
+            releaseDate = "September 2026",
+            highlights = "Komi Store Floating Capsule Nav Bar Background Polish",
+            entries = listOf(
+                ChangelogEntry(
+                    Icons.Default.Navigation,
+                    TelegramBlue,
+                    "Komi Store Floating Capsule Background",
+                    "Restored the signature Komi Store floating pill capsule background with elevated surfaceContainer gradient, soft drop shadow, rounded pill borders, and active pill tab indicators.",
+                    "UI"
+                )
+            )
+        ),
+        VersionRelease(
             versionName = "2.2.5",
             versionCode = 108,
             releaseDate = "September 2026",
