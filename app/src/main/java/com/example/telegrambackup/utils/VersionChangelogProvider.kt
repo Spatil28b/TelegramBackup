@@ -28,6 +28,63 @@ object VersionChangelogProvider {
 
     private val releases = listOf(
         VersionRelease(
+            versionName = "2.2.3",
+            versionCode = 106,
+            releaseDate = "September 2026",
+            highlights = "Komi Store Floating Capsule Nav, Seamless In-App Auto-Update Engine, Zero-Lag Direction Transitions & Symbolic UI",
+            entries = listOf(
+                ChangelogEntry(
+                    Icons.Default.Sync,
+                    TelegramBlue,
+                    "Seamless Auto-Update Engine",
+                    "Integrated compile-time BuildConfig versioning and unified update comparisons. Guarantees immediate in-app update prompts and 1-tap installation.",
+                    "UPDATER"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Navigation,
+                    TelegramEmerald,
+                    "Komi Store Floating Capsule Nav Bar",
+                    "Compact liquid pill bar (62dp) with spring bouncy touch animations (1.08x scale), continuous rounded corners, and soft elevation.",
+                    "DESIGN"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Speed,
+                    Color(0xFF8B5CF6),
+                    "Zero-Lag Direction-Aware Transitions",
+                    "Main-thread I/O eliminated; buttery smooth left-to-right / right-to-left slide & fade screen transitions follow navigation flow.",
+                    "PERFORMANCE"
+                ),
+                ChangelogEntry(
+                    Icons.Default.VisibilityOff,
+                    Color(0xFF06B6D4),
+                    "Smart Scroll Auto-Hide",
+                    "Bottom navigation bar intelligently slides down out of view when scrolling down to maximize content space, and smoothly re-emerges on scroll up.",
+                    "EXPERIENCE"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Notifications,
+                    Color(0xFFF59E0B),
+                    "Symbolic Minimal Notifications",
+                    "Clean glyph icons and metrics: ☁️, ⚡, ⬆️, ⬇️, ✓, 💾 with instant single-tap actions ([Pause], [Drive], [Open], [Share]).",
+                    "NOTIFICATIONS"
+                ),
+                ChangelogEntry(
+                    Icons.Default.DeleteSweep,
+                    Color(0xFFEF4444),
+                    "Minimalist Trash Bin & Storage UX",
+                    "Clean status pills, inline search, and minimal modern spacing without bulky red alert banners.",
+                    "CLEAN UI"
+                ),
+                ChangelogEntry(
+                    Icons.AutoMirrored.Filled.MenuBook,
+                    Color(0xFF10B981),
+                    "Separated Setup Guide & User Manual",
+                    "Distinct tabs for 🚀 Quick Setup Guide (4 steps) and 📖 Features & User Manual with in-depth operational breakdowns.",
+                    "GUIDES"
+                )
+            )
+        ),
+        VersionRelease(
             versionName = "2.2.2",
             versionCode = 105,
             releaseDate = "September 2026",
