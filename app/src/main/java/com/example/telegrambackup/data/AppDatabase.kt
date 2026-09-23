@@ -248,6 +248,10 @@ abstract class AppDatabase : RoomDatabase() {
                         super.onOpen(db)
                         // Self-healing schema validation on startup
                         createAllTablesAndIndexes(db)
+                        try {
+                            // 🛠️ Automatic sanitization: Map corrupt/0/1970 timestamps to July 15, 2026 12:00:00 UTC (1784030400000L)
+                            db.execSQL("UPDATE uploaded_files SET timestamp = 1784030400000 WHERE timestamp < 946684800000 OR timestamp IS NULL")
+                        } catch (_: Exception) {}
                     }
                 })
                 .build()

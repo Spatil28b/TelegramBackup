@@ -28,6 +28,42 @@ object VersionChangelogProvider {
 
     private val releases = listOf(
         VersionRelease(
+            versionName = "2.2.5",
+            versionCode = 108,
+            releaseDate = "September 2026",
+            highlights = "1970 January Timestamp Self-Healing, 100% Internal Storage Replica in Monthly Archive, Komi Store Floating Transparent Navigation Bar, Cloud File Streaming in Archive",
+            entries = listOf(
+                ChangelogEntry(
+                    Icons.Default.DateRange,
+                    TelegramBlue,
+                    "1970 January Timestamp Self-Healing",
+                    "Fixed legacy corrupted/0-epoch timestamp bug shifting files into January 1970. All affected items are automatically mapped to July 2026 across Room database, backend, and UI.",
+                    "FIX"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Folder,
+                    Color(0xFF8B5CF6),
+                    "100% Internal Storage Replica in Archive",
+                    "Monthly Archive strictly models your device's internal storage directory tree. No loose root file dumping; subfolders like DCIM, Download, and Pictures preserve exact filesystem paths.",
+                    "ARCHIVE"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Navigation,
+                    TelegramEmerald,
+                    "Komi Store Floating Zero-Background Nav Bar",
+                    "Eliminated solid background cutoffs, gutters, and shadows. The 6-item navigation bar floats completely transparently edge-to-edge above your content.",
+                    "UI"
+                ),
+                ChangelogEntry(
+                    Icons.Default.CloudSync,
+                    Color(0xFFF59E0B),
+                    "Direct Cloud File Opening in Archive",
+                    "Files backed up to Telegram can now be opened, previewed, and streamed directly from inside the Monthly Archive folder views.",
+                    "CLOUD"
+                )
+            )
+        ),
+        VersionRelease(
             versionName = "2.2.4",
             versionCode = 107,
             releaseDate = "September 2026",

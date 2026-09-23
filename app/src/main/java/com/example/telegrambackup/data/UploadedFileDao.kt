@@ -85,6 +85,12 @@ interface UploadedFileDao {
     @Query("SELECT * FROM uploaded_files")
     fun getAllRawFiles(): List<UploadedFile>
 
+    @Query("UPDATE uploaded_files SET timestamp = :newTs WHERE timestamp < 946684800000 OR timestamp IS NULL")
+    fun sanitizeCorruptedTimestamps(newTs: Long): Int
+
+    @Query("UPDATE uploaded_files SET timestamp = 1784030400000 WHERE timestamp < 946684800000 OR timestamp IS NULL")
+    fun sanitizeCorruptedTimestamps(): Int
+
     @Query("DELETE FROM uploaded_files")
     fun deleteAll()
 }

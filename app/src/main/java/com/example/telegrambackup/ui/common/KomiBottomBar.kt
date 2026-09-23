@@ -73,14 +73,15 @@ fun <T> KomiBottomBar(
         modifier = modifier
             .fillMaxWidth()
             .navigationBarsPadding()
-            .padding(horizontal = 20.dp, vertical = 6.dp),
+            .padding(horizontal = 8.dp, vertical = 4.dp),
         contentAlignment = Alignment.Center
     ) {
-        // Clean Floating bar (active tab pill provides visual accent)
+        // Zero-background floating bar (pure transparent container, active pill indicator)
         Row(
             modifier = Modifier
+                .fillMaxWidth()
                 .height(barHeight)
-                .padding(horizontal = 8.dp, vertical = 4.dp),
+                .padding(horizontal = 4.dp, vertical = 2.dp),
             horizontalArrangement = Arrangement.SpaceEvenly,
             verticalAlignment = Alignment.CenterVertically
         ) {

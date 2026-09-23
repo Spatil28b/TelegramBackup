@@ -423,6 +423,7 @@ fun MainApp(
             displayUserName = prefs.displayName
             displayUserAvatarUri = com.example.telegrambackup.utils.ProfileManager.getAvatarUri(context)?.toString() ?: prefs.profilePictureUri
             scope.launch(Dispatchers.IO) {
+                try { AppDatabase.getDatabase(context).uploadedFileDao().sanitizeCorruptedTimestamps() } catch (_: Exception) {}
                 try { SettingsDbManager.fetchAndSyncSettingsOnAppOpen(context) } catch (_: Exception) {}
                 try { SettingsDbManager.restoreCloudFileIndexToRoom(context) } catch (_: Exception) {}
                 try { com.example.telegrambackup.network.BotFleetManager.ensureInitialized(context, force = true) } catch (_: Exception) {}
@@ -1043,7 +1044,7 @@ fun MainApp(
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(paddingValues)
+                        .padding(top = paddingValues.calculateTopPadding())
                 ) {
                     AnimatedContent(
                         targetState = selectedTab,

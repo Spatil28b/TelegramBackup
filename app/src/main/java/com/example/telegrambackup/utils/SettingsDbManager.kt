@@ -197,6 +197,9 @@ object SettingsDbManager {
                 val trashByPath = existingTrashList.associateBy { it.path }
                 val trashByTgId = existingTrashList.filter { it.telegramFileId.isNotEmpty() }.associateBy { it.telegramFileId }
                 val filesToInsert = cloudFiles.map { cloudFile ->
+                    if (cloudFile.timestamp < 946684800000L) {
+                        cloudFile.timestamp = 1784030400000L
+                    }
                     val trashRecord = trashByPath[cloudFile.path]
                         ?: (if (cloudFile.telegramFileId.isNotEmpty()) trashByTgId[cloudFile.telegramFileId] else null)
                     if (trashRecord != null) {

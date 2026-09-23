@@ -540,11 +540,14 @@ class ServerApi {
                                  tgId == "DIR_MARKER" ||
                                  pathStr.startsWith("Internal Storage")
 
+                    val rawTime = obj.optLong("timestamp", 1784030400000L)
+                    val safeTime = if (rawTime < 946684800000L) 1784030400000L else rawTime
+
                     val entity = UploadedFile(
                         pathStr,
                         fName,
                         tgId,
-                        obj.optLong("timestamp", System.currentTimeMillis()),
+                        safeTime,
                         obj.optLong("size", 0L),
                         obj.optLong("messageId", 0L)
                     ).apply {

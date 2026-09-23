@@ -60,19 +60,31 @@ enum class MonthlyViewMode {
     CATEGORY_WISE
 }
 
+const val SANITIZED_JULY_2026_TIMESTAMP = 1784030400000L // July 15, 2026 12:00:00 UTC
+
 /**
  * Normalizes an uploaded file path to relative path segments from internal storage root.
  * E.g.: "/storage/emulated/0/DCIM/Camera/IMG_01.jpg" -> ["DCIM", "Camera"]
+ *       "Internal Storage/Download/Report.pdf" -> ["Download"]
+ *       "DCIM/Screenshots/shot.png" -> ["DCIM", "Screenshots"]
+ * If the path has no directory information (e.g. just "IMG_001.jpg"), it categorizes
+ * by file extension into standard internal storage folders (Pictures, Movies, Documents, Music, Download)
+ * to ensure a 100% structured file manager replica without flat dumps.
  */
-fun extractPathSegments(fullPath: String): List<String> {
-    var cleaned = fullPath.replace('\\', '/')
+fun extractPathSegments(fullPath: String, fileName: String = ""): List<String> {
+    var cleaned = fullPath.replace('\\', '/').trim()
     val roots = listOf(
         "/storage/emulated/0/",
         "storage/emulated/0/",
         "/sdcard/",
         "sdcard/",
+        "Internal Storage/",
+        "internal storage/",
+        "/Internal Storage/",
         "/storage/",
-        "storage/"
+        "storage/",
+        "primary:",
+        "raw:"
     )
     for (root in roots) {
         if (cleaned.startsWith(root, ignoreCase = true)) {
@@ -80,9 +92,38 @@ fun extractPathSegments(fullPath: String): List<String> {
             break
         }
     }
+    // Remove Windows drive letters like C:/ or D:/
+    if (cleaned.matches(Regex("^[A-Za-z]:/.*"))) {
+        cleaned = cleaned.substring(3)
+    }
     cleaned = cleaned.trimStart('/')
+
     val parts = cleaned.split('/').filter { it.isNotBlank() }
-    return if (parts.size > 1) parts.dropLast(1) else emptyList()
+    val effectiveFileName = if (fileName.isNotBlank()) fileName else parts.lastOrNull() ?: ""
+
+    if (parts.size > 1) {
+        // Path contains directory components (e.g. ["DCIM", "Camera", "IMG_01.jpg"])
+        return parts.dropLast(1)
+    } else {
+        // Path has no subfolders or is just a single file name.
+        // Check if the original path explicitly specified the root storage:
+        val wasExplicitRoot = fullPath.startsWith("/storage/emulated/0/") && !fullPath.removePrefix("/storage/emulated/0/").contains('/')
+        if (wasExplicitRoot) {
+            return emptyList()
+        }
+
+        // Intelligently categorize into standard Android internal storage folders:
+        val ext = effectiveFileName.substringAfterLast('.', "").lowercase()
+        return when (ext) {
+            "jpg", "jpeg", "png", "webp", "gif", "bmp", "svg", "heic", "heif" -> listOf("Pictures")
+            "mp4", "mkv", "avi", "mov", "wmv", "webm", "3gp", "flv", "m4v" -> listOf("Movies")
+            "mp3", "wav", "m4a", "aac", "flac", "ogg", "opus", "wma" -> listOf("Music")
+            "pdf", "doc", "docx", "txt", "xls", "xlsx", "ppt", "pptx", "csv", "json", "xml" -> listOf("Documents")
+            "apk", "xapk", "apks" -> listOf("Download", "APKs")
+            "zip", "rar", "7z", "tar", "gz", "bz2" -> listOf("Download")
+            else -> listOf("Download")
+        }
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
@@ -137,13 +178,20 @@ fun MonthlyArchiveScreen() {
 
     fun loadFiles() {
         scope.launch(Dispatchers.IO) {
+            try {
+                // Proactively sanitize any corrupt timestamps (< Jan 1, 2000) to July 15, 2026
+                AppDatabase.getDatabase(context).uploadedFileDao().sanitizeCorruptedTimestamps(SANITIZED_JULY_2026_TIMESTAMP)
+            } catch (_: Exception) {}
+
             val files = try {
                 AppDatabase.getDatabase(context).uploadedFileDao().getAllFiles()
             } catch (_: Exception) {
                 emptyList()
             }
             withContext(Dispatchers.Main) {
-                allFiles = files
+                allFiles = files.map { f ->
+                    if (f.timestamp < 946684800000L) f.copy(timestamp = SANITIZED_JULY_2026_TIMESTAMP) else f
+                }
                 isLoading = false
             }
         }
@@ -151,13 +199,16 @@ fun MonthlyArchiveScreen() {
 
     LaunchedEffect(Unit) { loadFiles() }
 
-    // Available years from files
+    // Available years from files (clamping any invalid timestamp to July 2026)
     val availableYears = remember(allFiles) {
         val cal = Calendar.getInstance()
-        val years = allFiles.map {
-            cal.timeInMillis = it.timestamp
-            cal.get(Calendar.YEAR)
-        }.distinct().sortedDescending()
+        val years = allFiles
+            .filter { it.telegramFileId != "DIR_MARKER" && !it.isDeleted }
+            .map {
+                val safeTime = if (it.timestamp < 946684800000L) SANITIZED_JULY_2026_TIMESTAMP else it.timestamp
+                cal.timeInMillis = safeTime
+                cal.get(Calendar.YEAR)
+            }.distinct().sortedDescending()
         if (years.isEmpty()) listOf(Calendar.getInstance().get(Calendar.YEAR)) else years
     }
 
@@ -168,9 +219,11 @@ fun MonthlyArchiveScreen() {
             "January", "February", "March", "April", "May", "June",
             "July", "August", "September", "October", "November", "December"
         )
-        val grouped = allFiles
+        val validFiles = allFiles.filter { it.telegramFileId != "DIR_MARKER" && !it.isDeleted }
+        val grouped = validFiles
             .groupBy { file ->
-                cal.timeInMillis = file.timestamp
+                val safeTime = if (file.timestamp < 946684800000L) SANITIZED_JULY_2026_TIMESTAMP else file.timestamp
+                cal.timeInMillis = safeTime
                 val y = cal.get(Calendar.YEAR)
                 val m = cal.get(Calendar.MONTH)
                 Pair(y, m)
@@ -179,7 +232,9 @@ fun MonthlyArchiveScreen() {
                 selectedYear == -1 || key.first == selectedYear
             }
             .map { (key, files) ->
-                val sortedFiles = files.sortedByDescending { it.timestamp }
+                val sortedFiles = files.map { f ->
+                    if (f.timestamp < 946684800000L) f.copy(timestamp = SANITIZED_JULY_2026_TIMESTAMP) else f
+                }.sortedByDescending { it.timestamp }
                 MonthGroup(
                     year = key.first,
                     month = key.second,
@@ -625,9 +680,11 @@ fun MonthlyArchiveScreen() {
 
                 // Map files with their relative segments
                 val filesWithSegments = remember(currentGroup.files) {
-                    currentGroup.files.map { file ->
-                        Pair(file, extractPathSegments(file.path))
-                    }
+                    currentGroup.files
+                        .filter { it.telegramFileId != "DIR_MARKER" && !it.isDeleted }
+                        .map { file ->
+                            Pair(file, extractPathSegments(file.path, file.fileName))
+                        }
                 }
 
                 // Child folders directly under currentPathSegments
@@ -656,7 +713,11 @@ fun MonthlyArchiveScreen() {
 
                 if (childFolders.isEmpty() && directFiles.isEmpty()) {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text("This folder is empty.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.outline)
+                        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(24.dp)) {
+                            OsFolderIcon(size = 56.dp, type = FolderType.GENERIC)
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Text("This folder is empty.", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium), color = MaterialTheme.colorScheme.outline)
+                        }
                     }
                 } else {
                     LazyColumn(
@@ -737,8 +798,8 @@ fun MonthlyArchiveScreen() {
                                                     activeAudioPlayerItem = Pair(file.path, file.fileName)
                                                 } else if (FileViewerHelper.isVideoFile(file.fileName) && hasLocal) {
                                                     activeVideoPlayerItem = Pair(file.path, file.fileName)
-                                                } else if (hasLocal) {
-                                                    FileViewerHelper.openFile(context, file.path, file.fileName)
+                                                } else if (hasLocal || file.telegramFileId.isNotEmpty()) {
+                                                    FileViewerHelper.openFile(context, file.path, file.fileName, file.telegramFileId)
                                                 } else {
                                                     Toast.makeText(context, "Opening ${file.fileName}...", Toast.LENGTH_SHORT).show()
                                                 }
@@ -884,8 +945,8 @@ fun MonthlyArchiveScreen() {
                                                     activeAudioPlayerItem = Pair(file.path, file.fileName)
                                                 } else if (FileViewerHelper.isVideoFile(file.fileName) && hasLocal) {
                                                     activeVideoPlayerItem = Pair(file.path, file.fileName)
-                                                } else if (hasLocal) {
-                                                    FileViewerHelper.openFile(context, file.path, file.fileName)
+                                                } else if (hasLocal || file.telegramFileId.isNotEmpty()) {
+                                                    FileViewerHelper.openFile(context, file.path, file.fileName, file.telegramFileId)
                                                 } else {
                                                     Toast.makeText(context, "Opening ${file.fileName}...", Toast.LENGTH_SHORT).show()
                                                 }
