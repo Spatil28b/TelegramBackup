@@ -9,12 +9,9 @@ import android.util.Log
 import android.widget.Toast
 import androidx.core.app.NotificationCompat
 import com.example.telegrambackup.R
-import com.example.telegrambackup.data.AppDatabase
 import com.example.telegrambackup.data.UploadedFile
-import com.example.telegrambackup.network.HttpClientProvider
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import okhttp3.Request
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
@@ -56,12 +53,6 @@ object ZipBackupDownloader {
             return@withContext
         }
 
-        val prefs = AppPrefs(context)
-        val botToken = prefs.botToken
-        val telegramDownloader = TelegramDownloader(context)
-
-        val db = AppDatabase.getDatabase(context)
-        val chunkDao = db.chunkProgressDao()
 
         val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         val channelId = "zip_download_channel"
@@ -200,25 +191,5 @@ object ZipBackupDownloader {
         }
     }
 
-    private fun downloadDirectToFile(url: String, targetFile: File): Boolean {
-        return try {
-            val request = Request.Builder().url(url).build()
-            val response = HttpClientProvider.uploadClient.newCall(request).execute()
-            if (response.isSuccessful) {
-                val inputStream = response.body?.byteStream() ?: return false
-                FileOutputStream(targetFile).use { outputStream ->
-                    val buffer = ByteArray(32768)
-                    var bytesRead: Int
-                    while (inputStream.read(buffer).also { bytesRead = it } != -1) {
-                        outputStream.write(buffer, 0, bytesRead)
-                    }
-                }
-                return targetFile.exists() && targetFile.length() > 0
-            }
-            false
-        } catch (e: Exception) {
-            Log.e(TAG, "Error downloading direct file", e)
-            false
-        }
-    }
+
 }

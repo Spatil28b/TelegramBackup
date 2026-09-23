@@ -60,14 +60,6 @@
             </intent-filter>
         </receiver>
 
-        <receiver
-            android:name=".receiver.StopBackupReceiver"
-            android:enabled="true"
-            android:exported="false">
-            <intent-filter>
-                <action android:name="com.example.telegrambackup.ACTION_STOP_BACKUP" />
-            </intent-filter>
-        </receiver>
 
         <receiver
             android:name=".receiver.BackupControlReceiver"

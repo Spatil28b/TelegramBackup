@@ -6,7 +6,9 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.VibrationEffect
 import android.os.Vibrator
+import android.os.VibratorManager
 import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
@@ -72,12 +74,21 @@ import com.example.telegrambackup.utils.SettingsDbManager
 import com.example.telegrambackup.worker.BackupWorker
 import kotlinx.coroutines.launch
 
-private fun triggerHapticFeedback(context: Context, haptic: androidx.compose.ui.hapticfeedback.HapticFeedback) {
+@Suppress("DEPRECATION")
+private fun triggerHapticFeedback(context: Context, haptic: androidx.compose.ui.hapticfeedback.HapticFeedback?) {
     try {
-        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-        val vibrator = context.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
-        vibrator?.vibrate(30L)
-    } catch (e: Exception) { }
+        haptic?.performHapticFeedback(HapticFeedbackType.LongPress)
+    } catch (_: Exception) { }
+    try {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val vibratorManager = context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as? VibratorManager
+            vibratorManager?.defaultVibrator?.vibrate(VibrationEffect.createOneShot(30L, VibrationEffect.DEFAULT_AMPLITUDE))
+        } else {
+            @Suppress("DEPRECATION")
+            val vibrator = context.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
+            vibrator?.vibrate(30L)
+        }
+    } catch (_: Exception) { }
 }
 
 enum class MainTab {
