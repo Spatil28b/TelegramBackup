@@ -565,13 +565,26 @@ fun MainApp(
                         Text("CORE", style = MaterialTheme.typography.labelSmall.copy(color = Color.White.copy(alpha = 0.5f), fontWeight = FontWeight.Bold), modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
 
                         NavigationDrawerItem(
-                            icon = { Icon(Icons.Default.Dashboard, contentDescription = null, tint = Color.White) },
-                            label = { Text("Dashboard", color = Color.White, fontWeight = FontWeight.Medium) },
+                            icon = { Icon(Icons.Default.CleaningServices, contentDescription = null, tint = Color.White) },
+                            label = { Text("Clean (Storage)", color = Color.White, fontWeight = FontWeight.Medium) },
                             selected = selectedTab == MainTab.HOME,
                             onClick = {
                                 triggerHapticFeedback(context, haptic)
                                 targetCategoryTitle = null
                                 selectedTab = MainTab.HOME
+                                scope.launch { drawerState.close() }
+                            },
+                            colors = NavigationDrawerItemDefaults.colors(unselectedContainerColor = Color.Transparent, selectedContainerColor = Color.White.copy(alpha = 0.15f))
+                        )
+
+                        NavigationDrawerItem(
+                            icon = { Icon(Icons.Default.Folder, contentDescription = null, tint = Color.White) },
+                            label = { Text("Browse (Files)", color = Color.White, fontWeight = FontWeight.Medium) },
+                            selected = selectedTab == MainTab.FILES,
+                            onClick = {
+                                triggerHapticFeedback(context, haptic)
+                                targetCategoryTitle = null
+                                selectedTab = MainTab.FILES
                                 scope.launch { drawerState.close() }
                             },
                             colors = NavigationDrawerItemDefaults.colors(unselectedContainerColor = Color.Transparent, selectedContainerColor = Color.White.copy(alpha = 0.15f))
@@ -584,19 +597,6 @@ fun MainApp(
                             onClick = {
                                 triggerHapticFeedback(context, haptic)
                                 selectedTab = MainTab.DRIVE
-                                scope.launch { drawerState.close() }
-                            },
-                            colors = NavigationDrawerItemDefaults.colors(unselectedContainerColor = Color.Transparent, selectedContainerColor = Color.White.copy(alpha = 0.15f))
-                        )
-
-                        NavigationDrawerItem(
-                            icon = { Icon(Icons.Default.Folder, contentDescription = null, tint = Color.White) },
-                            label = { Text("Backup Explorer", color = Color.White, fontWeight = FontWeight.Medium) },
-                            selected = selectedTab == MainTab.FILES,
-                            onClick = {
-                                triggerHapticFeedback(context, haptic)
-                                targetCategoryTitle = null
-                                selectedTab = MainTab.FILES
                                 scope.launch { drawerState.close() }
                             },
                             colors = NavigationDrawerItemDefaults.colors(unselectedContainerColor = Color.Transparent, selectedContainerColor = Color.White.copy(alpha = 0.15f))
@@ -808,7 +808,7 @@ fun MainApp(
                                     ) {
                                         Icon(
                                             imageVector = when (selectedTab) {
-                                                MainTab.HOME -> Icons.Default.Dashboard
+                                                MainTab.HOME -> Icons.Default.CleaningServices
                                                 MainTab.DRIVE -> Icons.Default.CloudQueue
                                                 MainTab.LOCAL -> Icons.Default.Smartphone
                                                 MainTab.PROGRESS -> Icons.Default.HourglassTop
@@ -829,11 +829,11 @@ fun MainApp(
                                     Spacer(modifier = Modifier.width(10.dp))
                                     Text(
                                         text = when (selectedTab) {
-                                            MainTab.HOME -> "Dashboard"
+                                            MainTab.HOME -> "Clean"
+                                            MainTab.FILES -> "Browse"
                                             MainTab.DRIVE -> "Cloud Drive"
                                             MainTab.LOCAL -> "Local Unbacked Storage"
                                             MainTab.PROGRESS -> "Live Upload Progress"
-                                            MainTab.FILES -> "Backup Explorer"
                                             MainTab.MONTHLY_ARCHIVE -> "Monthly Archive"
                                             MainTab.GUIDE -> "Complete Setup Guide"
                                             MainTab.TRASH -> "Trash Bin"
@@ -910,8 +910,18 @@ fun MainApp(
                                 targetCategoryTitle = null
                                 selectedTab = MainTab.HOME
                             },
-                            icon = { Icon(Icons.Default.Home, contentDescription = "Home") },
-                            label = { Text("Home") }
+                            icon = { Icon(Icons.Default.CleaningServices, contentDescription = "Clean") },
+                            label = { Text("Clean") }
+                        )
+                        NavigationBarItem(
+                            selected = selectedTab == MainTab.FILES,
+                            onClick = {
+                                triggerHapticFeedback(context, haptic)
+                                targetCategoryTitle = null
+                                selectedTab = MainTab.FILES
+                            },
+                            icon = { Icon(Icons.Default.Folder, contentDescription = "Browse") },
+                            label = { Text("Browse") }
                         )
                         NavigationBarItem(
                             selected = selectedTab == MainTab.DRIVE,
@@ -921,16 +931,6 @@ fun MainApp(
                             },
                             icon = { Icon(Icons.Default.CloudQueue, contentDescription = "Drive") },
                             label = { Text("Drive") }
-                        )
-                        NavigationBarItem(
-                            selected = selectedTab == MainTab.FILES,
-                            onClick = {
-                                triggerHapticFeedback(context, haptic)
-                                targetCategoryTitle = null
-                                selectedTab = MainTab.FILES
-                            },
-                            icon = { Icon(Icons.Default.Folder, contentDescription = "Files") },
-                            label = { Text("Files") }
                         )
                         NavigationBarItem(
                             selected = selectedTab == MainTab.MONTHLY_ARCHIVE,
@@ -960,17 +960,21 @@ fun MainApp(
                             userName = displayUserName,
                             recentFiles = liveUploadedFiles,
                             onQuickActionClick = { catIndex ->
-                                explorerInitialTab = 2
-                                targetCategoryTitle = when (catIndex) {
-                                    0 -> "Camera & Photos"
-                                    1 -> "Videos"
-                                    2 -> "Documents"
-                                    3 -> "Downloads"
-                                    4 -> "APKs"
-                                    5 -> "Music"
-                                    else -> "Camera & Photos"
+                                if (catIndex == -1) {
+                                    selectedTab = MainTab.TRASH
+                                } else {
+                                    explorerInitialTab = 2
+                                    targetCategoryTitle = when (catIndex) {
+                                        0 -> "Images"
+                                        1 -> "Videos"
+                                        2 -> "Documents & other"
+                                        3 -> "Downloads"
+                                        4 -> "Apps"
+                                        5 -> "Audio"
+                                        else -> "Images"
+                                    }
+                                    selectedTab = MainTab.FILES
                                 }
-                                selectedTab = MainTab.FILES
                             },
                             onViewAllClick = {
                                 explorerInitialTab = 0

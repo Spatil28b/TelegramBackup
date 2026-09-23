@@ -91,6 +91,8 @@ fun FileActionMenuModal(
     val dateFormat = remember { SimpleDateFormat("MMM dd, yyyy • hh:mm a", Locale.getDefault()) }
     val ext = remember(file.fileName) { file.fileName.substringAfterLast('.', "").uppercase() }
     val isFolder = file.telegramFileId == "DIR_MARKER"
+    val prefs = remember { AppPrefs(context) }
+    var isStarred by remember(file.path) { mutableStateOf(prefs.isFileStarred(file.path)) }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -327,6 +329,18 @@ fun FileActionMenuModal(
                                 }
                             }
                         }
+                    }
+                )
+
+                // 4b. Star / Favorite File (Files by Google collection)
+                FileActionRow(
+                    icon = if (isStarred) Icons.Default.Star else Icons.Default.StarBorder,
+                    iconTint = Color(0xFFF9AB00),
+                    title = if (isStarred) "Remove from Starred" else "Add to Starred",
+                    subtitle = if (isStarred) "Remove from Starred collection" else "Pin to Google Files Starred collection",
+                    onClick = {
+                        isStarred = prefs.toggleStarredFile(file.path)
+                        Toast.makeText(context, if (isStarred) "⭐ Added to Starred" else "Removed from Starred", Toast.LENGTH_SHORT).show()
                     }
                 )
 

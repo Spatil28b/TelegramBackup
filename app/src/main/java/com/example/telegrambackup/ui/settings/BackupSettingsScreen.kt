@@ -1371,76 +1371,168 @@ fun BackupSettingsScreen(
                         .background(MaterialTheme.colorScheme.background)
                         .verticalScroll(rememberScrollState())
                         .padding(horizontal = 16.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
                     Spacer(modifier = Modifier.height(2.dp))
 
-                    // 🌟 Clean Profile & Summary Card
-                    Surface(
-                        shape = RoundedCornerShape(20.dp),
-                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.40f),
-                        modifier = Modifier.fillMaxWidth().clickable {
-                            triggerHapticFeedback(context, haptic)
-                            currentCategory = StreamlinedCategory.PROFILE_ACCOUNT
-                        }
+                    // 🎵 SpotiFLAC Bold Header Title & Subtitle
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 10.dp, bottom = 4.dp, start = 4.dp, end = 4.dp)
                     ) {
-                        Column(modifier = Modifier.padding(16.dp)) {
+                        Text(
+                            text = "Settings",
+                            style = MaterialTheme.typography.headlineLarge.copy(
+                                fontWeight = FontWeight.ExtraBold,
+                                fontSize = 32.sp,
+                                letterSpacing = (-0.5).sp
+                            ),
+                            color = MaterialTheme.colorScheme.onBackground
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = "Configure cloud engine, bot fleet, security & preferences",
+                            style = MaterialTheme.typography.bodyMedium.copy(
+                                fontSize = 13.5.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f)
+                            )
+                        )
+                    }
+
+                    // 🔍 SpotiFLAC Pill Search Field
+                    SpotiSearchField(
+                        query = searchQuery,
+                        onQueryChange = { searchQuery = it },
+                        placeholder = "Search settings, rules, features...",
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    // 🌟 SpotiFLAC Hero Profile & Summary Card
+                    Surface(
+                        shape = RoundedCornerShape(22.dp),
+                        color = spotiGroupCardColor(),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                triggerHapticFeedback(context, haptic)
+                                currentCategory = StreamlinedCategory.PROFILE_ACCOUNT
+                            }
+                    ) {
+                        Column(modifier = Modifier.padding(18.dp)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Box(
-                                    modifier = Modifier.size(52.dp).clip(CircleShape).background(TelegramBlue),
+                                    modifier = Modifier
+                                        .size(54.dp)
+                                        .clip(CircleShape)
+                                        .background(TelegramBlue),
                                     contentAlignment = Alignment.Center
                                 ) {
                                     if (userAvatarUri != null) {
-                                        AsyncImage(model = userAvatarUri, contentDescription = "Avatar", contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                                        AsyncImage(
+                                            model = userAvatarUri,
+                                            contentDescription = "Avatar",
+                                            contentScale = ContentScale.Crop,
+                                            modifier = Modifier.fillMaxSize()
+                                        )
                                     } else {
-                                        Text(userNameInput.take(1).uppercase(), style = MaterialTheme.typography.titleLarge.copy(color = Color.White, fontWeight = FontWeight.Bold))
+                                        Text(
+                                            userNameInput.take(1).uppercase(),
+                                            style = MaterialTheme.typography.titleLarge.copy(
+                                                color = Color.White,
+                                                fontWeight = FontWeight.ExtraBold
+                                            )
+                                        )
                                     }
                                 }
                                 Spacer(modifier = Modifier.width(14.dp))
                                 Column(modifier = Modifier.weight(1f)) {
-                                    Text(userNameInput, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
-                                    Text(userEmail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(
+                                            userNameInput,
+                                            style = MaterialTheme.typography.titleMedium.copy(
+                                                fontWeight = FontWeight.ExtraBold,
+                                                fontSize = 17.sp
+                                            ),
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Surface(
+                                            shape = RoundedCornerShape(6.dp),
+                                            color = TelegramEmerald.copy(alpha = 0.15f)
+                                        ) {
+                                            Text(
+                                                "Active",
+                                                style = MaterialTheme.typography.labelSmall.copy(
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = TelegramEmerald,
+                                                    fontSize = 10.sp
+                                                ),
+                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                            )
+                                        }
+                                    }
                                     Spacer(modifier = Modifier.height(2.dp))
                                     Text(
+                                        userEmail,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f)
+                                    )
+                                    Spacer(modifier = Modifier.height(3.dp))
+                                    Text(
                                         "${formatFileSize(realDbTotalBytes)} • $realDbRecordCount files protected",
-                                        style = MaterialTheme.typography.labelSmall.copy(color = TelegramBlue, fontWeight = FontWeight.Medium)
+                                        style = MaterialTheme.typography.labelSmall.copy(
+                                            color = TelegramBlue,
+                                            fontWeight = FontWeight.Bold
+                                        )
                                     )
                                 }
-                                Icon(Icons.Default.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.outline.copy(alpha = 0.6f))
+                                Icon(
+                                    Icons.Default.ChevronRight,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.40f),
+                                    modifier = Modifier.size(20.dp)
+                                )
                             }
 
-                            Spacer(modifier = Modifier.height(12.dp))
+                            Spacer(modifier = Modifier.height(14.dp))
                             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
-                            Spacer(modifier = Modifier.height(8.dp))
+                            Spacer(modifier = Modifier.height(10.dp))
 
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                TextButton(
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                FilledTonalButton(
                                     onClick = {
                                         triggerHapticFeedback(context, haptic)
                                         showNetworkSelfAnalysisModal = true
                                     },
                                     modifier = Modifier.weight(1f),
-                                    shape = RoundedCornerShape(10.dp)
+                                    shape = RoundedCornerShape(12.dp),
+                                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 10.dp)
                                 ) {
                                     Icon(Icons.Default.Insights, contentDescription = null, tint = TelegramBlue, modifier = Modifier.size(16.dp))
                                     Spacer(modifier = Modifier.width(4.dp))
-                                    Text("7-Day AI", style = MaterialTheme.typography.labelMedium, maxLines = 1)
+                                    Text("7-Day AI", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold), maxLines = 1)
                                 }
 
-                                TextButton(
+                                FilledTonalButton(
                                     onClick = {
                                         triggerHapticFeedback(context, haptic)
                                         showDiagnosticModal = true
                                     },
                                     modifier = Modifier.weight(1f),
-                                    shape = RoundedCornerShape(10.dp)
+                                    shape = RoundedCornerShape(12.dp),
+                                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 10.dp)
                                 ) {
                                     Icon(Icons.Default.HealthAndSafety, contentDescription = null, tint = TelegramEmerald, modifier = Modifier.size(16.dp))
                                     Spacer(modifier = Modifier.width(4.dp))
-                                    Text("Health", style = MaterialTheme.typography.labelMedium, maxLines = 1)
+                                    Text("Health", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold), maxLines = 1)
                                 }
 
-                                FilledTonalButton(
+                                Button(
                                     onClick = {
                                         triggerHapticFeedback(context, haptic)
                                         try {
@@ -1452,7 +1544,9 @@ fun BackupSettingsScreen(
                                         } catch (_: Exception) { }
                                     },
                                     modifier = Modifier.weight(1f),
-                                    shape = RoundedCornerShape(10.dp)
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = TelegramBlue),
+                                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 10.dp)
                                 ) {
                                     Icon(Icons.Default.CloudSync, contentDescription = null, modifier = Modifier.size(16.dp))
                                     Spacer(modifier = Modifier.width(4.dp))
@@ -1461,28 +1555,6 @@ fun BackupSettingsScreen(
                             }
                         }
                     }
-
-                    // 🔍 Minimal Search Bar
-                    OutlinedTextField(
-                        value = searchQuery,
-                        onValueChange = { searchQuery = it },
-                        placeholder = { Text("Search settings...", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.outline) },
-                        leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = MaterialTheme.colorScheme.outline, modifier = Modifier.size(18.dp)) },
-                        trailingIcon = {
-                            if (searchQuery.isNotEmpty()) {
-                                IconButton(onClick = { searchQuery = "" }) {
-                                    Icon(Icons.Default.Clear, contentDescription = "Clear", modifier = Modifier.size(16.dp))
-                                }
-                            }
-                        },
-                        singleLine = true,
-                        shape = RoundedCornerShape(14.dp),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
-                            focusedBorderColor = TelegramBlue
-                        ),
-                        modifier = Modifier.fillMaxWidth()
-                    )
 
                     val q = searchQuery.trim().lowercase()
 
@@ -1495,223 +1567,206 @@ fun BackupSettingsScreen(
                     }
 
                     // ==========================================
-                    // 1. CLOUD & BACKUP
+                    // 1. CLOUD & BACKUP (SpotiFLAC Group)
                     // ==========================================
                     if (matchSearch("cloud", "sync", "backup", "telegram", "token", "chat", "credentials", "fleet", "bot", "channel", "smart", "mode", "schedule", "wifi", "network", "speed", "threads")) {
-                        Text(
-                            "CLOUD & SYNC",
-                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, letterSpacing = 0.8.sp)
-                        )
+                        SpotiSectionHeader("Cloud & Sync")
 
-                        Surface(
-                            shape = RoundedCornerShape(18.dp),
-                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.40f)
-                        ) {
-                            Column {
-                                // Global Master Switch (Controls All Backups & Drive)
-                                if (matchSearch("global", "master", "stop", "pause", "resume", "all", "backup", "drive")) {
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(horizontal = 16.dp, vertical = 14.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Box(
-                                            modifier = Modifier
-                                                .size(40.dp)
-                                                .clip(RoundedCornerShape(10.dp))
-                                                .background(if (!stopAllBackup) TelegramEmerald.copy(alpha = 0.12f) else Color(0xFFEF4444).copy(alpha = 0.12f)),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Icon(
-                                                if (!stopAllBackup) Icons.Default.CloudDone else Icons.Default.CloudOff,
-                                                contentDescription = null,
-                                                tint = if (!stopAllBackup) TelegramEmerald else Color(0xFFEF4444),
-                                                modifier = Modifier.size(22.dp)
-                                            )
-                                        }
-                                        Spacer(modifier = Modifier.width(14.dp))
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Text("Global Cloud Sync Engine", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
-                                            Text(
-                                                if (!stopAllBackup) "Master switch active (All cloud services enabled)" else "All cloud sync operations paused",
-                                                style = MaterialTheme.typography.labelSmall,
-                                                color = MaterialTheme.colorScheme.outline
-                                            )
-                                        }
-                                        Switch(
-                                            checked = !stopAllBackup,
-                                            onCheckedChange = { isEnabled ->
-                                                triggerHapticFeedback(context, haptic)
-                                                stopAllBackup = !isEnabled
-                                                prefs.masterCloudSyncEnabled = isEnabled
-                                                if (isEnabled) {
-                                                    BackupWorker.enqueue(context)
-                                                    Toast.makeText(context, "✅ Global Cloud Sync Resumed", Toast.LENGTH_SHORT).show()
-                                                } else {
-                                                    Toast.makeText(context, "⏸️ All Cloud Operations Paused", Toast.LENGTH_SHORT).show()
-                                                }
-                                            },
-                                            colors = SwitchDefaults.colors(
-                                                checkedThumbColor = Color.White,
-                                                checkedTrackColor = TelegramEmerald
-                                            )
-                                        )
-                                    }
-                                    HorizontalDivider(modifier = Modifier.padding(start = 68.dp, end = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
-                                }
-
-                                // Separate Cloud Drive Sync Toggle
-                                if (matchSearch("drive", "sync", "manual", "folder", "tree", "direct", "upload")) {
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(horizontal = 16.dp, vertical = 14.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Box(
-                                            modifier = Modifier
-                                                .size(40.dp)
-                                                .clip(RoundedCornerShape(10.dp))
-                                                .background(Color(0xFF8B5CF6).copy(alpha = 0.12f)),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Icon(
-                                                Icons.Default.CloudUpload,
-                                                contentDescription = null,
-                                                tint = Color(0xFF8B5CF6),
-                                                modifier = Modifier.size(22.dp)
-                                            )
-                                        }
-                                        Spacer(modifier = Modifier.width(14.dp))
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Text("Cloud Drive Direct Uploads", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
-                                            Text("Dedicated 3-4 bot fleet for Drive file drops", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
-                                        }
-                                        Switch(
-                                            checked = driveSyncEnabledState,
-                                            onCheckedChange = { isEnabled ->
-                                                triggerHapticFeedback(context, haptic)
-                                                driveSyncEnabledState = isEnabled
-                                                prefs.driveSyncEnabled = isEnabled
-                                                Toast.makeText(context, if (isEnabled) "Cloud Drive sync enabled" else "Cloud Drive sync paused", Toast.LENGTH_SHORT).show()
-                                            },
-                                            colors = SwitchDefaults.colors(
-                                                checkedThumbColor = Color.White,
-                                                checkedTrackColor = Color(0xFF8B5CF6)
-                                            )
-                                        )
-                                    }
-                                    HorizontalDivider(modifier = Modifier.padding(start = 68.dp, end = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
-                                }
-
-                                if (matchSearch("telegram", "credentials", "token", "chat", "key", "bot", "id")) {
-                                    MinimalSettingRow(
-                                        icon = Icons.Default.Key,
-                                        title = "Telegram Credentials",
-                                        subtitle = "Bot token & destination chat ID",
-                                        value = if (prefs.credentialsVerified) "Connected" else "Setup required",
-                                        valueColor = if (prefs.credentialsVerified) TelegramEmerald else Color(0xFFF59E0B),
-                                        iconColor = Color(0xFF3B82F6)
-                                    ) {
+                        SpotiSettingsGroup {
+                            // Global Master Switch (Controls All Backups & Drive)
+                            if (matchSearch("global", "master", "stop", "pause", "resume", "all", "backup", "drive")) {
+                                SpotiSettingsSwitchItem(
+                                    icon = if (!stopAllBackup) Icons.Default.CloudDone else Icons.Default.CloudOff,
+                                    title = "Global Cloud Sync Engine",
+                                    subtitle = if (!stopAllBackup) "Master switch active (All cloud services enabled)" else "All cloud sync operations paused",
+                                    checked = !stopAllBackup,
+                                    onCheckedChange = { isEnabled ->
                                         triggerHapticFeedback(context, haptic)
-                                        currentCategory = StreamlinedCategory.TELEGRAM_CREDENTIALS
-                                    }
-                                }
+                                        stopAllBackup = !isEnabled
+                                        prefs.masterCloudSyncEnabled = isEnabled
+                                        if (isEnabled) {
+                                            BackupWorker.enqueue(context)
+                                            Toast.makeText(context, "✅ Global Cloud Sync Resumed", Toast.LENGTH_SHORT).show()
+                                        } else {
+                                            Toast.makeText(context, "⏸️ All Cloud Operations Paused", Toast.LENGTH_SHORT).show()
+                                        }
+                                    },
+                                    iconTint = if (!stopAllBackup) TelegramEmerald else Color(0xFFEF4444)
+                                )
+                            }
 
-                                if (matchSearch("fleet", "multi", "multi-bot", "bot", "channel", "routing", "speed", "pool", "turbo", "load balancer")) {
-                                    HorizontalDivider(modifier = Modifier.padding(start = 68.dp, end = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
-                                    MinimalSettingRow(
-                                        icon = Icons.Default.Speed,
-                                        title = "Bot Fleet & Channel Routing",
-                                        subtitle = "Multi-bot pool (300% faster) & category channels",
-                                        value = "Manage Fleet",
-                                        valueColor = TelegramBlue,
-                                        iconColor = Color(0xFF6366F1)
-                                    ) {
+                            // Separate Cloud Drive Sync Toggle
+                            if (matchSearch("drive", "sync", "manual", "folder", "tree", "direct", "upload")) {
+                                SpotiSettingsSwitchItem(
+                                    icon = Icons.Default.CloudUpload,
+                                    title = "Cloud Drive Direct Uploads",
+                                    subtitle = "Dedicated 3-4 bot fleet for Drive file drops",
+                                    checked = driveSyncEnabledState,
+                                    onCheckedChange = { isEnabled ->
                                         triggerHapticFeedback(context, haptic)
-                                        currentCategory = StreamlinedCategory.BOT_FLEET
-                                    }
-                                }
+                                        driveSyncEnabledState = isEnabled
+                                        prefs.driveSyncEnabled = isEnabled
+                                        Toast.makeText(context, if (isEnabled) "Cloud Drive sync enabled" else "Cloud Drive sync paused", Toast.LENGTH_SHORT).show()
+                                    },
+                                    iconTint = Color(0xFF8B5CF6)
+                                )
+                            }
 
-                                if (matchSearch("smart", "backup", "engine", "mode", "schedule", "folder", "filter", "continuous", "nightly", "interval", "camera", "downloads", "documents", "videos", "apks", "limit", "size")) {
-                                    HorizontalDivider(modifier = Modifier.padding(start = 68.dp, end = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
-                                    val modeName = when (smartBackupMode) {
-                                        0 -> "Continuous"
-                                        1 -> "Every ${smartScanInterval}h"
-                                        else -> "Nightly"
-                                    }
-                                    MinimalSettingRow(
-                                        icon = Icons.Default.CloudSync,
-                                        title = "Smart Backup Engine",
-                                        subtitle = "Automation schedules & file filters",
-                                        value = if (autoBackup) modeName else "Off",
-                                        valueColor = if (autoBackup) TelegramBlue else MaterialTheme.colorScheme.outline,
-                                        iconColor = Color(0xFF10B981)
-                                    ) {
-                                        triggerHapticFeedback(context, haptic)
-                                        currentCategory = StreamlinedCategory.BACKUP_SOURCES_RULES
-                                    }
+                            if (matchSearch("telegram", "credentials", "token", "chat", "key", "bot", "id")) {
+                                SpotiSettingsItem(
+                                    icon = Icons.Default.Key,
+                                    title = "Telegram Credentials",
+                                    subtitle = "Bot token & destination chat ID",
+                                    value = if (prefs.credentialsVerified) "Connected" else "Setup required",
+                                    valueColor = if (prefs.credentialsVerified) TelegramEmerald else Color(0xFFF59E0B),
+                                    iconTint = Color(0xFF3B82F6)
+                                ) {
+                                    triggerHapticFeedback(context, haptic)
+                                    currentCategory = StreamlinedCategory.TELEGRAM_CREDENTIALS
                                 }
+                            }
 
-                                if (matchSearch("network", "wifi", "cellular", "data", "speed", "threads", "compression", "limit", "performance")) {
-                                    HorizontalDivider(modifier = Modifier.padding(start = 68.dp, end = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
-                                    MinimalSettingRow(
-                                        icon = Icons.Default.Wifi,
-                                        title = "Network & Upload Speed",
-                                        subtitle = "Wi-Fi rule, threads & compression",
-                                        value = if (backupOverWifi) "Wi-Fi Only" else "Any",
-                                        iconColor = Color(0xFF06B6D4)
-                                    ) {
-                                        triggerHapticFeedback(context, haptic)
-                                        currentCategory = StreamlinedCategory.NETWORK_PERFORMANCE
-                                    }
+                            if (matchSearch("fleet", "multi", "multi-bot", "bot", "channel", "routing", "speed", "pool", "turbo", "load balancer")) {
+                                SpotiSettingsItem(
+                                    icon = Icons.Default.Speed,
+                                    title = "Bot Fleet & Channel Routing",
+                                    subtitle = "Multi-bot pool (300% faster) & category channels",
+                                    value = "Manage Fleet",
+                                    valueColor = TelegramBlue,
+                                    iconTint = Color(0xFF6366F1)
+                                ) {
+                                    triggerHapticFeedback(context, haptic)
+                                    currentCategory = StreamlinedCategory.BOT_FLEET
+                                }
+                            }
+
+                            if (matchSearch("smart", "backup", "engine", "mode", "schedule", "folder", "filter", "continuous", "nightly", "interval", "camera", "downloads", "documents", "videos", "apks", "limit", "size")) {
+                                val modeName = when (smartBackupMode) {
+                                    0 -> "Continuous"
+                                    1 -> "Every ${smartScanInterval}h"
+                                    else -> "Nightly"
+                                }
+                                SpotiSettingsItem(
+                                    icon = Icons.Default.CloudSync,
+                                    title = "Smart Backup Engine",
+                                    subtitle = "Automation schedules & file filters",
+                                    value = if (autoBackup) modeName else "Off",
+                                    valueColor = if (autoBackup) TelegramBlue else MaterialTheme.colorScheme.outline,
+                                    iconTint = Color(0xFF10B981)
+                                ) {
+                                    triggerHapticFeedback(context, haptic)
+                                    currentCategory = StreamlinedCategory.BACKUP_SOURCES_RULES
+                                }
+                            }
+
+                            if (matchSearch("network", "wifi", "cellular", "data", "speed", "threads", "compression", "limit", "performance")) {
+                                SpotiSettingsItem(
+                                    icon = Icons.Default.Wifi,
+                                    title = "Network & Upload Speed",
+                                    subtitle = "Wi-Fi rule, threads & compression",
+                                    value = if (backupOverWifi) "Wi-Fi Only" else "Any",
+                                    iconTint = Color(0xFF06B6D4),
+                                    showDivider = false
+                                ) {
+                                    triggerHapticFeedback(context, haptic)
+                                    currentCategory = StreamlinedCategory.NETWORK_PERFORMANCE
                                 }
                             }
                         }
                     }
 
                     // ==========================================
-                    // 2. SECURITY & PRIVACY
+                    // 2. SECURITY & PRIVACY (SpotiFLAC Group)
                     // ==========================================
                     if (matchSearch("security", "privacy", "key", "encryption", "biometric", "fingerprint", "pin", "master", "aes", "diagnostics", "health", "ping", "test")) {
-                        Text(
-                            "SECURITY & PRIVACY",
-                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, letterSpacing = 0.8.sp)
-                        )
+                        SpotiSectionHeader("Security & Privacy")
 
-                        Surface(
-                            shape = RoundedCornerShape(18.dp),
-                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.40f)
-                        ) {
-                            Column {
-                                if (matchSearch("encryption", "master", "key", "aes", "256", "biometric", "fingerprint", "pin", "security")) {
-                                    MinimalSettingRow(
-                                        icon = Icons.Default.Lock,
-                                        title = "Encryption & Master Key",
-                                        subtitle = "256-bit AES encryption & biometrics",
-                                        value = if (biometricLock) "Biometrics Active" else "AES-256",
-                                        valueColor = Color(0xFF8B5CF6),
-                                        iconColor = Color(0xFF8B5CF6)
-                                    ) {
-                                        triggerHapticFeedback(context, haptic)
-                                        currentCategory = StreamlinedCategory.SECURITY_PRIVACY_RESTORE
-                                    }
+                        SpotiSettingsGroup {
+                            if (matchSearch("encryption", "master", "key", "aes", "256", "biometric", "fingerprint", "pin", "security")) {
+                                SpotiSettingsItem(
+                                    icon = Icons.Default.Lock,
+                                    title = "Encryption & Master Key",
+                                    subtitle = "256-bit AES encryption & biometrics",
+                                    value = if (biometricLock) "Biometrics Active" else "AES-256",
+                                    valueColor = Color(0xFF8B5CF6),
+                                    iconTint = Color(0xFF8B5CF6)
+                                ) {
+                                    triggerHapticFeedback(context, haptic)
+                                    currentCategory = StreamlinedCategory.SECURITY_PRIVACY_RESTORE
                                 }
+                            }
 
-                                if (matchSearch("diagnostics", "health", "test", "ping", "verify", "server", "bot")) {
-                                    HorizontalDivider(modifier = Modifier.padding(start = 68.dp, end = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
-                                    MinimalSettingRow(
-                                        icon = Icons.Default.HealthAndSafety,
-                                        title = "System Health & Diagnostics",
-                                        subtitle = "Server ping & bot verification test",
-                                        value = "Run Test",
-                                        valueColor = Color(0xFF14B8A6),
-                                        iconColor = Color(0xFF14B8A6),
-                                        hasSubSettings = false
-                                    ) {
-                                        triggerHapticFeedback(context, haptic)
-                                        showDiagnosticModal = true
+                            if (matchSearch("diagnostics", "health", "test", "ping", "verify", "server", "bot")) {
+                                SpotiSettingsItem(
+                                    icon = Icons.Default.HealthAndSafety,
+                                    title = "System Health & Diagnostics",
+                                    subtitle = "Server ping & bot verification test",
+                                    value = "Run Test",
+                                    valueColor = Color(0xFF14B8A6),
+                                    iconTint = Color(0xFF14B8A6),
+                                    showDivider = false
+                                ) {
+                                    triggerHapticFeedback(context, haptic)
+                                    showDiagnosticModal = true
+                                }
+                            }
+                        }
+                    }
+
+                    // ==========================================
+                    // 3. PREFERENCES (SpotiFLAC Group)
+                    // ==========================================
+                    if (matchSearch("profile", "account", "email", "recovery", "display name", "name", "theme", "appearance", "dark", "light", "mode", "color", "notification")) {
+                        SpotiSectionHeader("Preferences")
+
+                        SpotiSettingsGroup {
+                            if (matchSearch("profile", "account", "email", "recovery", "inbox", "name", "display name")) {
+                                SpotiSettingsItem(
+                                    icon = Icons.Default.Person,
+                                    title = "Profile & Recovery Email",
+                                    subtitle = "Display name & recovery inbox",
+                                    value = if (prefs.recoveryEmail.isNotEmpty()) "Configured" else "",
+                                    iconTint = Color(0xFFEC4899)
+                                ) {
+                                    triggerHapticFeedback(context, haptic)
+                                    currentCategory = StreamlinedCategory.PROFILE_ACCOUNT
+                                }
+                            }
+
+                            if (matchSearch("appearance", "theme", "dark", "light", "system", "mode", "color", "look")) {
+                                val themeLabel = AppThemeMode.fromId(selectedTheme).title
+                                SpotiSettingsItem(
+                                    icon = Icons.Default.Palette,
+                                    title = "Appearance & Themes",
+                                    subtitle = "10 premium styles & AMOLED black",
+                                    value = themeLabel,
+                                    iconTint = Color(0xFFF59E0B)
+                                ) {
+                                    triggerHapticFeedback(context, haptic)
+                                    currentCategory = StreamlinedCategory.APPEARANCE_REGION
+                                }
+                            }
+
+                            if (matchSearch("notification", "controller", "status", "bar", "start", "stop", "alert", "download", "minimal")) {
+                                var persistentNotifActive by remember { mutableStateOf(prefs.persistentNotificationEnabled) }
+                                SpotiSettingsItem(
+                                    icon = Icons.Default.NotificationsActive,
+                                    title = "Quick Controller & Notifications",
+                                    subtitle = "Status bar 1-tap Start/Stop & separate channels",
+                                    value = if (persistentNotifActive) "Enabled" else "Disabled",
+                                    valueColor = if (persistentNotifActive) TelegramEmerald else Color.Gray,
+                                    iconTint = TelegramBlue,
+                                    showDivider = false
+                                ) {
+                                    triggerHapticFeedback(context, haptic)
+                                    persistentNotifActive = !persistentNotifActive
+                                    prefs.persistentNotificationEnabled = persistentNotifActive
+                                    if (persistentNotifActive) {
+                                        com.example.telegrambackup.utils.AppNotificationHelper.showPersistentControlNotification(context, isRunning = false)
+                                        Toast.makeText(context, "✓ Quick Controller Notification Activated", Toast.LENGTH_SHORT).show()
+                                    } else {
+                                        com.example.telegrambackup.utils.AppNotificationHelper.cancelPersistentControlNotification(context)
+                                        Toast.makeText(context, "Quick Controller Disabled", Toast.LENGTH_SHORT).show()
                                     }
                                 }
                             }
@@ -1719,154 +1774,84 @@ fun BackupSettingsScreen(
                     }
 
                     // ==========================================
-                    // 3. PREFERENCES
+                    // 4. SYSTEM & MAINTENANCE (SpotiFLAC Group)
                     // ==========================================
-                    if (matchSearch("profile", "account", "email", "recovery", "display name", "name", "theme", "appearance", "dark", "light", "mode", "color")) {
-                        Text(
-                            "PREFERENCES",
-                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, letterSpacing = 0.8.sp)
-                        )
+                    if (matchSearch("update", "version", "about", "changelog", "danger", "reset", "wipe", "delete", "trash", "clean", "logout", "log out", "cache", "storage")) {
+                        SpotiSectionHeader("System & Maintenance")
 
-                        Surface(
-                            shape = RoundedCornerShape(18.dp),
-                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.40f)
-                        ) {
-                            Column {
-                                if (matchSearch("profile", "account", "email", "recovery", "inbox", "name", "display name")) {
-                                    MinimalSettingRow(
-                                        icon = Icons.Default.Person,
-                                        title = "Profile & Recovery Email",
-                                        subtitle = "Display name & recovery inbox",
-                                        value = if (prefs.recoveryEmail.isNotEmpty()) "Configured" else "",
-                                        iconColor = Color(0xFFEC4899)
-                                    ) {
-                                        triggerHapticFeedback(context, haptic)
-                                        currentCategory = StreamlinedCategory.PROFILE_ACCOUNT
-                                    }
+                        SpotiSettingsGroup {
+                            if (matchSearch("about", "update", "version", "specs", "changelog", "release")) {
+                                val currentVersion = remember { try { context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "2.1.95" } catch (_: Exception) { "2.1.95" } }
+                                SpotiSettingsItem(
+                                    icon = Icons.Default.SystemUpdate,
+                                    title = "About & Updates",
+                                    subtitle = "Software specs & changelog",
+                                    value = "v$currentVersion",
+                                    valueColor = Color(0xFF6366F1),
+                                    iconTint = Color(0xFF6366F1)
+                                ) {
+                                    triggerHapticFeedback(context, haptic)
+                                    showAppInfoModal = true
                                 }
+                            }
 
-                                if (matchSearch("appearance", "theme", "dark", "light", "system", "mode", "color", "look")) {
-                                    HorizontalDivider(modifier = Modifier.padding(start = 68.dp, end = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
-                                    val themeLabel = AppThemeMode.fromId(selectedTheme).title
-                                    MinimalSettingRow(
-                                        icon = Icons.Default.Palette,
-                                        title = "Appearance & Themes",
-                                        subtitle = "10 premium styles & AMOLED black",
-                                        value = themeLabel,
-                                        iconColor = Color(0xFFF59E0B)
-                                    ) {
-                                        triggerHapticFeedback(context, haptic)
-                                        currentCategory = StreamlinedCategory.APPEARANCE_REGION
-                                    }
+                            if (matchSearch("cache", "storage", "clean", "size", "clear", "optimize", "memory", "budget")) {
+                                SpotiSettingsItem(
+                                    icon = Icons.Default.CleaningServices,
+                                    title = "Cache & Storage Optimization",
+                                    subtitle = "Auto-pruning budget & instant cleaner",
+                                    value = "${AppCacheManager.formatBytes(cacheStats.totalBytes)} / ${maxCacheBudgetMB}MB",
+                                    valueColor = if (cacheStats.usagePercentage > 0.85f) Color(0xFFEF4444) else TelegramEmerald,
+                                    iconTint = Color(0xFF10B981)
+                                ) {
+                                    triggerHapticFeedback(context, haptic)
+                                    cacheStats = AppCacheManager.getCacheStats(context)
+                                    showCacheOptimizerModal = true
                                 }
+                            }
 
-                                if (matchSearch("notification", "controller", "status", "bar", "start", "stop", "alert", "download", "minimal")) {
-                                    HorizontalDivider(modifier = Modifier.padding(start = 68.dp, end = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
-                                    var persistentNotifActive by remember { mutableStateOf(prefs.persistentNotificationEnabled) }
-                                    MinimalSettingRow(
-                                        icon = Icons.Default.NotificationsActive,
-                                        title = "Quick Controller & Notifications",
-                                        subtitle = "Status bar 1-tap Start/Stop & separate channels",
-                                        value = if (persistentNotifActive) "Enabled" else "Disabled",
-                                        valueColor = if (persistentNotifActive) TelegramEmerald else Color.Gray,
-                                        iconColor = TelegramBlue,
-                                        hasSubSettings = false
-                                    ) {
-                                        triggerHapticFeedback(context, haptic)
-                                        persistentNotifActive = !persistentNotifActive
-                                        prefs.persistentNotificationEnabled = persistentNotifActive
-                                        if (persistentNotifActive) {
-                                            com.example.telegrambackup.utils.AppNotificationHelper.showPersistentControlNotification(context, isRunning = false)
-                                            Toast.makeText(context, "✓ Quick Controller Notification Activated", Toast.LENGTH_SHORT).show()
-                                        } else {
-                                            com.example.telegrambackup.utils.AppNotificationHelper.cancelPersistentControlNotification(context)
-                                            Toast.makeText(context, "Quick Controller Disabled", Toast.LENGTH_SHORT).show()
-                                        }
-                                    }
+                            if (matchSearch("data", "reset", "wipe", "delete", "trash", "auto-clean", "danger", "maintenance")) {
+                                SpotiSettingsItem(
+                                    icon = Icons.Default.DeleteForever,
+                                    title = "Data Management & Reset",
+                                    subtitle = "Trash auto-clean & data wipe",
+                                    value = "",
+                                    iconTint = Color(0xFFEF4444),
+                                    showDivider = false
+                                ) {
+                                    triggerHapticFeedback(context, haptic)
+                                    currentCategory = StreamlinedCategory.DANGER_ZONE
                                 }
                             }
                         }
                     }
 
-                    // ==========================================
-                    // 4. SYSTEM & MAINTENANCE
-                    // ==========================================
-                    if (matchSearch("update", "version", "about", "changelog", "danger", "reset", "wipe", "delete", "trash", "clean", "logout", "log out")) {
-                        Text(
-                            "SYSTEM & MAINTENANCE",
-                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, letterSpacing = 0.8.sp)
-                        )
-
-                        Surface(
-                            shape = RoundedCornerShape(18.dp),
-                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.40f)
-                        ) {
-                            Column {
-                                if (matchSearch("about", "update", "version", "specs", "changelog", "release")) {
-                                    val currentVersion = remember { try { context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "2.1.81" } catch (_: Exception) { "2.1.81" } }
-                                    MinimalSettingRow(
-                                        icon = Icons.Default.SystemUpdate,
-                                        title = "About & Updates",
-                                        subtitle = "Software specs & changelog",
-                                        value = "v$currentVersion",
-                                        valueColor = Color(0xFF6366F1),
-                                        iconColor = Color(0xFF6366F1),
-                                        hasSubSettings = false
-                                    ) {
-                                        triggerHapticFeedback(context, haptic)
-                                        showAppInfoModal = true
-                                    }
-                                }
-
-                                if (matchSearch("data", "reset", "wipe", "delete", "trash", "auto-clean", "danger", "maintenance")) {
-                                    HorizontalDivider(modifier = Modifier.padding(start = 68.dp, end = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
-                                    MinimalSettingRow(
-                                        icon = Icons.Default.DeleteForever,
-                                        title = "Data Management & Reset",
-                                        subtitle = "Trash auto-clean & data wipe",
-                                        value = "",
-                                        iconColor = Color(0xFFEF4444)
-                                    ) {
-                                        triggerHapticFeedback(context, haptic)
-                                        currentCategory = StreamlinedCategory.DANGER_ZONE
-                                    }
-                                }
-
-                                if (matchSearch("cache", "storage", "clean", "size", "clear", "optimize", "memory", "budget")) {
-                                    HorizontalDivider(modifier = Modifier.padding(start = 68.dp, end = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
-                                    MinimalSettingRow(
-                                        icon = Icons.Default.CleaningServices,
-                                        title = "Cache & Storage Optimization",
-                                        subtitle = "Auto-pruning budget & instant cleaner",
-                                        value = "${AppCacheManager.formatBytes(cacheStats.totalBytes)} / ${maxCacheBudgetMB}MB",
-                                        valueColor = if (cacheStats.usagePercentage > 0.85f) Color(0xFFEF4444) else TelegramEmerald,
-                                        iconColor = Color(0xFF10B981),
-                                        hasSubSettings = false
-                                    ) {
-                                        triggerHapticFeedback(context, haptic)
-                                        cacheStats = AppCacheManager.getCacheStats(context)
-                                        showCacheOptimizerModal = true
-                                    }
-                                }
-                            }
-                        }
-                    }
+                    // 💡 SpotiFLAC Informational Callout
+                    SpotiSettingsInfoCard(
+                        title = "Automatic Military-Grade Protection",
+                        message = "Files are securely split into 4MB AES-256 encrypted chunks and load-balanced across your Telegram bot fleet with infinite cloud retention and zero file size caps.",
+                        icon = Icons.Default.Shield,
+                        tone = SpotiInfoTone.PRIMARY
+                    )
 
                     Spacer(modifier = Modifier.height(4.dp))
 
                     // Log Out Button
                     OutlinedButton(
                         onClick = { triggerHapticFeedback(context, haptic); onLogout() },
-                        shape = RoundedCornerShape(14.dp),
+                        shape = RoundedCornerShape(16.dp),
                         colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFEF4444)),
-                        modifier = Modifier.fillMaxWidth().height(48.dp)
+                        border = BorderStroke(1.dp, Color(0xFFEF4444).copy(alpha = 0.40f)),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(50.dp)
                     ) {
-                        Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("Log Out Account", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                        Text("Log Out Account", fontWeight = FontWeight.Bold, fontSize = 15.sp)
                     }
 
-                    Spacer(modifier = Modifier.height(24.dp))
+                    Spacer(modifier = Modifier.height(28.dp))
                 }
             }
 
@@ -1882,19 +1867,14 @@ fun BackupSettingsScreen(
                         .padding(horizontal = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        IconButton(onClick = {
+                    SpotiSubpageHeader(
+                        title = "Profile & Account",
+                        subtitle = "Personal identity, recovery email & cloud backup",
+                        onBack = {
                             saveAllSettings(silent = true)
                             currentCategory = StreamlinedCategory.MAIN
-                        }) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                         }
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Profile & Account", style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold), maxLines = 1)
-                    }
+                    )
 
                     Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.40f), modifier = Modifier.fillMaxWidth()) {
                         Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -2202,21 +2182,16 @@ fun BackupSettingsScreen(
                         .padding(horizontal = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        IconButton(onClick = {
+                    SpotiSubpageHeader(
+                        title = "Telegram Credentials",
+                        subtitle = "Bot token & destination chat configuration",
+                        onBack = {
                             prefs.credentialsVerified = true
                             isCredentialEditUnlocked = false
                             saveAllSettings(silent = true)
                             currentCategory = StreamlinedCategory.MAIN
-                        }) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                         }
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Telegram Credentials", style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold), maxLines = 1)
-                    }
+                    )
 
                     if (prefs.credentialsVerified && !isCredentialEditUnlocked) {
                         Surface(shape = RoundedCornerShape(18.dp), color = Color(0xFFF59E0B).copy(alpha = 0.1f), modifier = Modifier.fillMaxWidth()) {
@@ -2346,19 +2321,14 @@ fun BackupSettingsScreen(
                         .padding(horizontal = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        IconButton(onClick = {
+                    SpotiSubpageHeader(
+                        title = "Smart Backup Engine",
+                        subtitle = "Automation triggers, schedules & file limits",
+                        onBack = {
                             saveAllSettings(silent = true)
                             currentCategory = StreamlinedCategory.MAIN
-                        }) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                         }
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Smart Backup Engine", style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold), maxLines = 1)
-                    }
+                    )
 
                     // Emergency Stop & Restart Engine
                     Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.40f), modifier = Modifier.fillMaxWidth()) {
@@ -2538,19 +2508,14 @@ fun BackupSettingsScreen(
                         .padding(horizontal = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        IconButton(onClick = {
+                    SpotiSubpageHeader(
+                        title = "Network & Performance",
+                        subtitle = "Wi-Fi constraints, speeds, compression & limits",
+                        onBack = {
                             saveAllSettings(silent = true)
                             currentCategory = StreamlinedCategory.MAIN
-                        }) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                         }
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Network & Performance", style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold), maxLines = 1)
-                    }
+                    )
 
                     Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.40f), modifier = Modifier.fillMaxWidth()) {
                         Column {
@@ -2666,19 +2631,14 @@ fun BackupSettingsScreen(
                         .padding(horizontal = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        IconButton(onClick = {
+                    SpotiSubpageHeader(
+                        title = "Security & Master Key",
+                        subtitle = "Biometrics, master encryption keys & screen privacy",
+                        onBack = {
                             saveAllSettings(silent = true)
                             currentCategory = StreamlinedCategory.MAIN
-                        }) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                         }
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Security & Master Key", style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold), maxLines = 1)
-                    }
+                    )
 
                     Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.40f), modifier = Modifier.fillMaxWidth()) {
                         Column {
@@ -2798,19 +2758,14 @@ fun BackupSettingsScreen(
                         .padding(horizontal = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        IconButton(onClick = {
+                    SpotiSubpageHeader(
+                        title = "Appearance & Theme",
+                        subtitle = "Select from 10 handcrafted visual color themes",
+                        onBack = {
                             saveAllSettings(silent = true)
                             currentCategory = StreamlinedCategory.MAIN
-                        }) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                         }
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Appearance & Theme", style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold), maxLines = 1)
-                    }
+                    )
 
                     Text(
                         "CHOOSE YOUR THEME (10 PREMIUM STYLES)",
@@ -2894,19 +2849,14 @@ fun BackupSettingsScreen(
                         .padding(horizontal = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        IconButton(onClick = {
+                    SpotiSubpageHeader(
+                        title = "Data Management & Reset",
+                        subtitle = "Wipe cache, clear history or reset account data",
+                        onBack = {
                             saveAllSettings(silent = true)
                             currentCategory = StreamlinedCategory.MAIN
-                        }) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                         }
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Data Management & Reset", style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold), maxLines = 1)
-                    }
+                    )
 
                     Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.40f), modifier = Modifier.fillMaxWidth()) {
                         Column {

@@ -27,6 +27,85 @@ object VersionChangelogProvider {
 
     private val releases = listOf(
         VersionRelease(
+            versionName = "2.1.97",
+            versionCode = 100,
+            releaseDate = "September 2026",
+            highlights = "100% Google Files UI/UX Transformation: Clean & Browse Hubs, Smart Category Cards, Recent Carousel & Storage Devices",
+            entries = listOf(
+                ChangelogEntry(
+                    Icons.Default.CleaningServices,
+                    TelegramBlue,
+                    "Google Files Clean Screen",
+                    "Redesigned Clean screen with real StatFs device storage breakdown, junk cleaner (1-tap cache prune), backed up media deletion, duplicate cleaner, and trash quick access.",
+                    "NEW"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Folder,
+                    TelegramEmerald,
+                    "Google Files Browse Hub",
+                    "New Browse screen featuring 'Search in Files' pill bar, Recent horizontal carousel, 2-column pastel category cards, Starred & Safe folder Collections, and real-time Storage devices.",
+                    "DESIGN"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Star,
+                    Color(0xFFF59E0B),
+                    "Starred Files Collection",
+                    "Star your favorite cloud files via the 3-dots action menu and access them instantly from the Collections section.",
+                    "FEATURE"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Lock,
+                    TelegramBlue,
+                    "Safe Folder Vault",
+                    "Biometric and PIN-protected private vault in Collections for end-to-end encrypted personal files.",
+                    "SECURITY"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Navigation,
+                    Color(0xFF8B5CF6),
+                    "Clean & Browse Navigation",
+                    "Standardized bottom navigation tabs and top app bar headers matching Google Files clean layout.",
+                    "UX"
+                )
+            )
+        ),
+        VersionRelease(
+            versionName = "2.1.96",
+            versionCode = 99,
+            releaseDate = "September 2026",
+            highlights = "All-New SpotiFLAC-Inspired Settings Design with Bold Aesthetic, Grouped Cards & Quick Search",
+            entries = listOf(
+                ChangelogEntry(
+                    Icons.Default.Palette,
+                    TelegramBlue,
+                    "SpotiFLAC Bold Settings UI",
+                    "Complete redesign of the Settings screen inspired by SpotiFLAC. Features high-contrast bold typography, clean uppercase headers, and unified card clusters.",
+                    "NEW"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Layers,
+                    Color(0xFF8B5CF6),
+                    "Unified Settings Groups",
+                    "Settings are cleanly grouped inside elevated, 20dp rounded surface cards with subtle hairline dividers, squircle icon boxes, and value status badges.",
+                    "DESIGN"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Search,
+                    Color(0xFF6366F1),
+                    "Instant Pill Search",
+                    "New pill/capsule search bar at the top of Settings allows instantaneous filtering across cloud sync, bot fleet, security, rules, and preferences.",
+                    "SEARCH"
+                ),
+                ChangelogEntry(
+                    Icons.Default.ArrowBack,
+                    TelegramEmerald,
+                    "Polished Subpage Navigation",
+                    "Redesigned subpage headers with circular back buttons and descriptive subtitles across Profile, Bot Fleet, Rules, Network, and Security.",
+                    "IMPROVEMENT"
+                )
+            )
+        ),
+        VersionRelease(
             versionName = "2.1.95",
             versionCode = 98,
             releaseDate = "September 2026",

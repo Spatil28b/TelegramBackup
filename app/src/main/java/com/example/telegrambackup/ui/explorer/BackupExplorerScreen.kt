@@ -21,6 +21,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.InsertDriveFile
@@ -63,6 +64,10 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.util.*
+import androidx.fragment.app.FragmentActivity
+import com.example.telegrambackup.utils.BiometricHelper
+import com.example.telegrambackup.utils.StorageStatsHelper
+import com.example.telegrambackup.utils.DeviceStorageInfo
 
 fun formatFileSize(sizeBytes: Long): String {
     if (sizeBytes <= 0) return "0 B"
@@ -93,7 +98,8 @@ data class ExplorerCategoryModel(
     val count: Int,
     val totalSizeBytes: Long,
     val icon: ImageVector,
-    val iconTint: Color
+    val iconTint: Color,
+    val containerTint: Color = Color(0xFFE8F0FE)
 )
 
 data class LocalFolderModel(
@@ -134,6 +140,17 @@ fun BackupExplorerScreen(
     var currentFolderDirectoryPath by remember { mutableStateOf("Internal Storage") }
     val folderPathHistory = remember { mutableStateListOf("Internal Storage") }
 
+    var localSearchQuery by remember { mutableStateOf("") }
+    val effectiveSearchQuery = remember(externalSearchQuery, localSearchQuery) {
+        if (externalSearchQuery.isNotBlank()) externalSearchQuery else localSearchQuery
+    }
+    val isSearching = effectiveSearchQuery.trim().isNotEmpty()
+
+    var deviceStorage by remember { mutableStateOf(StorageStatsHelper.getDeviceStorageInfo()) }
+    LaunchedEffect(Unit) {
+        deviceStorage = StorageStatsHelper.getDeviceStorageInfo()
+    }
+
     LaunchedEffect(initialTab, initialCategoryTitle) {
         if (initialCategoryTitle != null) {
             selectedCategoryTitle = initialCategoryTitle
@@ -142,6 +159,16 @@ fun BackupExplorerScreen(
         } else {
             selectedCategoryTitle = null
             activeSubTab = initialTab
+            if (initialTab == 1) {
+                currentFolderDirectoryPath = "Internal Storage/Phone Folders"
+                folderPathHistory.clear()
+                folderPathHistory.add("Internal Storage")
+                folderPathHistory.add("Internal Storage/Phone Folders")
+            } else if (initialTab == 0) {
+                currentFolderDirectoryPath = "Internal Storage"
+                folderPathHistory.clear()
+                folderPathHistory.add("Internal Storage")
+            }
         }
     }
 
@@ -170,6 +197,25 @@ fun BackupExplorerScreen(
     var shareModalFile by remember { mutableStateOf<UploadedFile?>(null) }
     var actionMenuFile by remember { mutableStateOf<UploadedFile?>(null) }
     var isZippingFolder by remember { mutableStateOf(false) }
+
+    BackHandler(enabled = localSearchQuery.isNotEmpty() || selectedCategoryTitle != null || currentFolderDirectoryPath != "Internal Storage" || isSelectionModeActive) {
+        if (isSelectionModeActive) {
+            isSelectionModeActive = false
+            selectedFilesList.clear()
+        } else if (localSearchQuery.isNotEmpty()) {
+            localSearchQuery = ""
+        } else if (selectedCategoryTitle != null) {
+            selectedCategoryTitle = null
+            onCategorySelected(null)
+        } else if (folderPathHistory.size > 1) {
+            folderPathHistory.removeAt(folderPathHistory.size - 1)
+            currentFolderDirectoryPath = folderPathHistory.last()
+        } else {
+            currentFolderDirectoryPath = "Internal Storage"
+            folderPathHistory.clear()
+            folderPathHistory.add("Internal Storage")
+        }
+    }
 
     fun refreshCloudData() {
         scope.launch {
@@ -240,7 +286,23 @@ fun BackupExplorerScreen(
         )
     }
 
-    BackHandler(enabled = activeViewerIndex != -1 || infoSheetFile != null || infoSheetFolder != null || selectedFilesList.isNotEmpty() || selectedCategoryTitle != null || folderPathHistory.size > 1) {
+    fun isFileMatchingCategory(f: UploadedFile, title: String): Boolean {
+        val name = f.fileName.lowercase()
+        val path = f.path.lowercase()
+        return when (title) {
+            "Images", "Camera & Photos" -> name.endsWith(".jpg") || name.endsWith(".jpeg") || name.endsWith(".png") || name.endsWith(".webp") || name.endsWith(".heic") || name.endsWith(".gif") || name.endsWith(".bmp") || name.endsWith(".svg")
+            "Videos" -> name.endsWith(".mp4") || name.endsWith(".mkv") || name.endsWith(".avi") || name.endsWith(".mov") || name.endsWith(".webm") || name.endsWith(".3gp") || name.endsWith(".flv")
+            "Audio", "Music" -> name.endsWith(".mp3") || name.endsWith(".wav") || name.endsWith(".aac") || name.endsWith(".flac") || name.endsWith(".m4a") || name.endsWith(".ogg") || name.endsWith(".opus")
+            "Documents", "Documents & other" -> name.endsWith(".pdf") || name.endsWith(".docx") || name.endsWith(".doc") || name.endsWith(".txt") || name.endsWith(".xlsx") || name.endsWith(".xls") || name.endsWith(".pptx") || name.endsWith(".ppt") || name.endsWith(".csv")
+            "Downloads" -> path.contains("download") || name.contains("download")
+            "Apps", "APKs" -> name.endsWith(".apk") || name.endsWith(".xapk")
+            "Archives" -> name.endsWith(".zip") || name.endsWith(".rar") || name.endsWith(".7z") || name.endsWith(".tar") || name.endsWith(".gz") || name.endsWith(".bz2")
+            "Starred" -> prefs.isFileStarred(f.path)
+            else -> true
+        }
+    }
+
+    BackHandler(enabled = activeViewerIndex != -1 || infoSheetFile != null || infoSheetFolder != null || selectedFilesList.isNotEmpty() || selectedCategoryTitle != null || folderPathHistory.size > 1 || currentFolderDirectoryPath != "Internal Storage" || isSearching) {
         if (activeViewerIndex != -1) {
             activeViewerIndex = -1
         } else if (infoSheetFile != null || infoSheetFolder != null) {
@@ -250,6 +312,8 @@ fun BackupExplorerScreen(
         } else if (selectedFilesList.isNotEmpty()) {
             selectedFilesList.clear()
             isSelectionModeActive = false
+        } else if (localSearchQuery.isNotEmpty()) {
+            localSearchQuery = ""
         } else if (selectedCategoryTitle != null) {
             selectedCategoryTitle = null
             onCategorySelected(null)
@@ -257,36 +321,107 @@ fun BackupExplorerScreen(
         } else if (folderPathHistory.size > 1) {
             folderPathHistory.removeAt(folderPathHistory.size - 1)
             currentFolderDirectoryPath = folderPathHistory.last()
+        } else if (currentFolderDirectoryPath != "Internal Storage") {
+            currentFolderDirectoryPath = "Internal Storage"
+            folderPathHistory.clear()
+            folderPathHistory.add("Internal Storage")
         }
     }
 
-    val categoriesData = remember(cloudFileList) {
+    val monthlyTimelineFolders = remember(cloudFileList) {
+        val format = java.text.SimpleDateFormat("yyyy - MMMM", Locale.US)
+        val monthMap = mutableMapOf<String, MutableList<UploadedFile>>()
+        cloudFileList.forEach { file ->
+            val dateKey = if (file.timestamp > 0) format.format(java.util.Date(file.timestamp)) else "Unknown Date"
+            monthMap.getOrPut(dateKey) { mutableListOf() }.add(file)
+        }
+        monthMap.map { (monthName, files) ->
+            LocalFolderModel(
+                folderName = monthName,
+                folderPath = "Timeline/$monthName",
+                filesCount = files.size,
+                totalSizeBytes = files.sumOf { it.size }
+            )
+        }.sortedByDescending { it.folderName }
+    }
+
+    val categoriesData = remember(cloudFileList, monthlyTimelineFolders) {
         fun getCategoryFiles(title: String): List<UploadedFile> {
-            return cloudFileList.filter { f ->
-                val name = f.fileName.lowercase()
-                when (title) {
-                    "Camera & Photos" -> name.endsWith(".jpg") || name.endsWith(".jpeg") || name.endsWith(".png") || name.endsWith(".webp") || name.endsWith(".heic")
-                    "Videos" -> name.endsWith(".mp4") || name.endsWith(".mkv") || name.endsWith(".avi") || name.endsWith(".mov")
-                    "Documents" -> name.endsWith(".pdf") || name.endsWith(".docx") || name.endsWith(".doc") || name.endsWith(".txt") || name.endsWith(".xlsx")
-                    "Downloads" -> name.endsWith(".zip") || name.endsWith(".rar") || name.endsWith(".tar") || name.endsWith(".7z") || name.contains("download")
-                    "APKs" -> name.endsWith(".apk")
-                    "Music" -> name.endsWith(".mp3") || name.endsWith(".wav") || name.endsWith(".aac") || name.endsWith(".flac")
-                    "Archives" -> name.endsWith(".zip") || name.endsWith(".rar") || name.endsWith(".7z")
-                    else -> true
-                }
-            }
+            return cloudFileList.filter { f -> isFileMatchingCategory(f, title) }
         }
 
         listOf(
-            ExplorerCategoryModel("Camera & Photos", getCategoryFiles("Camera & Photos").size, getCategoryFiles("Camera & Photos").sumOf { it.size }, Icons.Default.CameraAlt, Color(0xFF3B82F6)),
-            ExplorerCategoryModel("Videos", getCategoryFiles("Videos").size, getCategoryFiles("Videos").sumOf { it.size }, Icons.Default.Videocam, Color(0xFF8B5CF6)),
-            ExplorerCategoryModel("Documents", getCategoryFiles("Documents").size, getCategoryFiles("Documents").sumOf { it.size }, Icons.Default.Description, Color(0xFF10B981)),
-            ExplorerCategoryModel("Downloads", getCategoryFiles("Downloads").size, getCategoryFiles("Downloads").sumOf { it.size }, Icons.Default.Download, Color(0xFFF59E0B)),
-            ExplorerCategoryModel("APKs", getCategoryFiles("APKs").size, getCategoryFiles("APKs").size * 25000000L, Icons.Default.Android, Color(0xFFEC4899)),
-            ExplorerCategoryModel("Music", getCategoryFiles("Music").size, getCategoryFiles("Music").sumOf { it.size }, Icons.Default.MusicNote, Color(0xFFEF4444)),
-            ExplorerCategoryModel("Archives", getCategoryFiles("Archives").size, getCategoryFiles("Archives").sumOf { it.size }, Icons.Default.Archive, Color(0xFF06B6D4)),
-            ExplorerCategoryModel("Other Files", cloudFileList.size, cloudFileList.sumOf { it.size }, Icons.Default.Folder, Color(0xFF64748B))
+            ExplorerCategoryModel(
+                title = "Downloads",
+                count = getCategoryFiles("Downloads").size,
+                totalSizeBytes = getCategoryFiles("Downloads").sumOf { it.size },
+                icon = Icons.Default.Download,
+                iconTint = Color(0xFF1A73E8),
+                containerTint = Color(0xFFE8F0FE)
+            ),
+            ExplorerCategoryModel(
+                title = "Images",
+                count = getCategoryFiles("Images").size,
+                totalSizeBytes = getCategoryFiles("Images").sumOf { it.size },
+                icon = Icons.Default.Image,
+                iconTint = Color(0xFF8430CE),
+                containerTint = Color(0xFFF3E8FD)
+            ),
+            ExplorerCategoryModel(
+                title = "Videos",
+                count = getCategoryFiles("Videos").size,
+                totalSizeBytes = getCategoryFiles("Videos").sumOf { it.size },
+                icon = Icons.Default.Videocam,
+                iconTint = Color(0xFFD93025),
+                containerTint = Color(0xFFFCE8E6)
+            ),
+            ExplorerCategoryModel(
+                title = "Audio",
+                count = getCategoryFiles("Audio").size,
+                totalSizeBytes = getCategoryFiles("Audio").sumOf { it.size },
+                icon = Icons.Default.MusicNote,
+                iconTint = Color(0xFFE37400),
+                containerTint = Color(0xFFFEF7E0)
+            ),
+            ExplorerCategoryModel(
+                title = "Documents & other",
+                count = getCategoryFiles("Documents & other").size,
+                totalSizeBytes = getCategoryFiles("Documents & other").sumOf { it.size },
+                icon = Icons.Default.Description,
+                iconTint = Color(0xFF188038),
+                containerTint = Color(0xFFE6F4EA)
+            ),
+            ExplorerCategoryModel(
+                title = "Apps",
+                count = getCategoryFiles("Apps").size,
+                totalSizeBytes = getCategoryFiles("Apps").size * 25_000_000L,
+                icon = Icons.Default.Android,
+                iconTint = Color(0xFF1E8E3E),
+                containerTint = Color(0xFFE8F0FE)
+            ),
+            ExplorerCategoryModel(
+                title = "Archives",
+                count = getCategoryFiles("Archives").size,
+                totalSizeBytes = getCategoryFiles("Archives").sumOf { it.size },
+                icon = Icons.Default.Archive,
+                iconTint = Color(0xFF00796B),
+                containerTint = Color(0xFFE0F2F1)
+            ),
+            ExplorerCategoryModel(
+                title = "Monthly Archive",
+                count = monthlyTimelineFolders.size,
+                totalSizeBytes = cloudFileList.sumOf { it.size },
+                icon = Icons.Default.CalendarMonth,
+                iconTint = Color(0xFF5E35B1),
+                containerTint = Color(0xFFEDE7F6)
+            )
         )
+    }
+
+    val recentCloudFiles = remember(cloudFileList) {
+        cloudFileList.filter { it.telegramFileId != "DIR_MARKER" }
+            .sortedByDescending { it.timestamp }
+            .take(12)
     }
 
     fun normalizePath(path: String): String {
@@ -333,24 +468,7 @@ fun BackupExplorerScreen(
         }.sortedByDescending { it.filesCount }
     }
 
-    val monthlyTimelineFolders = remember(cloudFileList) {
-        val format = java.text.SimpleDateFormat("yyyy - MMMM", Locale.US)
-        val monthMap = mutableMapOf<String, MutableList<UploadedFile>>()
-        cloudFileList.forEach { file ->
-            val dateKey = if (file.timestamp > 0) format.format(java.util.Date(file.timestamp)) else "Unknown Date"
-            monthMap.getOrPut(dateKey) { mutableListOf() }.add(file)
-        }
-        monthMap.map { (monthName, files) ->
-            LocalFolderModel(
-                folderName = monthName,
-                folderPath = "Timeline/$monthName",
-                filesCount = files.size,
-                totalSizeBytes = files.sumOf { it.size }
-            )
-        }.sortedByDescending { it.folderName }
-    }
-
-    val currentPathFiles = remember(cloudFileList, selectedCategoryTitle, currentFolderDirectoryPath, activeSubTab) {
+    val currentPathFiles = remember(cloudFileList, selectedCategoryTitle, currentFolderDirectoryPath) {
         if (currentFolderDirectoryPath.startsWith("Timeline/")) {
             val monthName = currentFolderDirectoryPath.removePrefix("Timeline/")
             val format = java.text.SimpleDateFormat("yyyy - MMMM", Locale.US)
@@ -358,24 +476,17 @@ fun BackupExplorerScreen(
                 val dateKey = if (f.timestamp > 0) format.format(java.util.Date(f.timestamp)) else "Unknown Date"
                 dateKey == monthName
             }
-        } else if (activeSubTab == 2) {
-            if (selectedCategoryTitle == null) emptyList()
-            else {
-                val title = selectedCategoryTitle!!
-                cloudFileList.filter { f ->
-                    val name = f.fileName.lowercase()
-                    when (title) {
-                        "Camera & Photos" -> name.endsWith(".jpg") || name.endsWith(".jpeg") || name.endsWith(".png") || name.endsWith(".webp") || name.endsWith(".heic")
-                        "Videos" -> name.endsWith(".mp4") || name.endsWith(".mkv") || name.endsWith(".avi") || name.endsWith(".mov")
-                        "Documents" -> name.endsWith(".pdf") || name.endsWith(".docx") || name.endsWith(".doc") || name.endsWith(".txt") || name.endsWith(".xlsx")
-                        "Downloads" -> name.endsWith(".zip") || name.endsWith(".rar") || name.endsWith(".tar") || name.endsWith(".7z") || name.contains("download")
-                        "APKs" -> name.endsWith(".apk")
-                        "Music" -> name.endsWith(".mp3") || name.endsWith(".wav") || name.endsWith(".aac") || name.endsWith(".flac")
-                        "Archives" -> name.endsWith(".zip") || name.endsWith(".rar") || name.endsWith(".7z")
-                        else -> true
-                    }
-                }
+        } else if (selectedCategoryTitle != null) {
+            val title = selectedCategoryTitle!!
+            if (title == "All Files") {
+                cloudFileList
+            } else {
+                cloudFileList.filter { f -> isFileMatchingCategory(f, title) }
             }
+        } else if (currentFolderDirectoryPath == "Internal Storage/Private Safe Vault") {
+            cloudFileList.filter { it.path.contains("Safe") || it.path.contains("Vault") || it.path.contains(".private") || prefs.isFileStarred(it.path) }
+        } else if (currentFolderDirectoryPath == "Internal Storage/Phone Folders" || currentFolderDirectoryPath == "Internal Storage") {
+            cloudFileList
         } else {
             cloudFileList.filter { f ->
                 val norm = normalizePath(f.path)
@@ -385,8 +496,8 @@ fun BackupExplorerScreen(
         }
     }
 
-    val activeDisplayFiles = remember(cloudFileList, currentPathFiles, externalSearchQuery, sortOption, selectedFilterType) {
-        val q = externalSearchQuery.trim()
+    val activeDisplayFiles = remember(cloudFileList, currentPathFiles, effectiveSearchQuery, sortOption, selectedFilterType) {
+        val q = effectiveSearchQuery.trim()
         var list = if (q.isNotEmpty()) {
             cloudFileList.filter { it.fileName.contains(q, ignoreCase = true) || it.path.contains(q, ignoreCase = true) }
         } else {
@@ -553,277 +664,389 @@ fun BackupExplorerScreen(
                 infoSheetFile = fileInfo
             }
         )
-    }
-
-    val isSearching = externalSearchQuery.trim().isNotEmpty()
-
-    Column(modifier = Modifier.fillMaxSize()) {
+      Column(modifier = Modifier.fillMaxSize()) {
         if (!isSearching && selectedCategoryTitle == null && currentFolderDirectoryPath == "Internal Storage") {
-            PrimaryTabRow(
-                selectedTabIndex = activeSubTab,
-                modifier = Modifier.fillMaxWidth(),
-                containerColor = MaterialTheme.colorScheme.surface
+            // GOOGLE FILES BROWSE HUB
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(18.dp),
+                contentPadding = PaddingValues(top = 12.dp, bottom = 32.dp)
             ) {
-                Tab(
-                    selected = activeSubTab == 0,
-                    onClick = { triggerHapticFeedback(context, haptic); activeSubTab = 0 },
-                    text = {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.CalendarMonth, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("Monthly", fontWeight = FontWeight.Bold, maxLines = 1)
-                        }
-                    }
-                )
-                Tab(
-                    selected = activeSubTab == 1,
-                    onClick = { triggerHapticFeedback(context, haptic); activeSubTab = 1 },
-                    text = {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Folder, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("Phone Folders", fontWeight = FontWeight.Bold, maxLines = 1)
-                        }
-                    }
-                )
-                Tab(
-                    selected = activeSubTab == 2,
-                    onClick = { triggerHapticFeedback(context, haptic); activeSubTab = 2 },
-                    text = {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Category, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("Categories", fontWeight = FontWeight.Bold, maxLines = 1)
-                        }
-                    }
-                )
-            }
-        }
+                // 1. Search in Files Pill Bar
+                item {
+                    GoogleFilesSearchPill(
+                        query = localSearchQuery,
+                        onQueryChange = { localSearchQuery = it }
+                    )
+                }
 
-        if (!isSearching && selectedCategoryTitle == null && currentFolderDirectoryPath == "Internal Storage") {
-            if (activeSubTab == 0) {
-                // 📅 MONTHLY TIMELINE VIEW
-                Column(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text("Monthly Cloud Archive", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                            TextButton(
-                                onClick = {
-                                    triggerHapticFeedback(context, haptic)
-                                    showDuplicateCleaner = true
-                                },
-                                shape = RoundedCornerShape(8.dp),
-                                colors = ButtonDefaults.textButtonColors(containerColor = TelegramEmerald.copy(alpha = 0.12f))
+                // 2. Recent Files Horizontal Carousel
+                if (recentCloudFiles.isNotEmpty()) {
+                    item {
+                        Column {
+                            Text(
+                                text = "Recent",
+                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                            )
+                            Spacer(modifier = Modifier.height(10.dp))
+                            LazyRow(
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                modifier = Modifier.fillMaxWidth()
                             ) {
-                                Icon(Icons.Default.CleaningServices, contentDescription = null, tint = TelegramEmerald, modifier = Modifier.size(16.dp))
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text("Deduplicate", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, color = TelegramEmerald))
-                            }
-                            Surface(shape = RoundedCornerShape(8.dp), color = TelegramBlue.copy(alpha = 0.15f)) {
-                                Text("${monthlyTimelineFolders.size} Months", style = MaterialTheme.typography.labelSmall.copy(color = TelegramBlue, fontWeight = FontWeight.Bold), modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
-                            }
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(10.dp))
-
-                    if (isDataLoading) {
-                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-                    } else if (monthlyTimelineFolders.isEmpty()) {
-                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(24.dp)) {
-                                Icon(Icons.Default.EventBusy, contentDescription = null, tint = TelegramBlue, modifier = Modifier.size(64.dp))
-                                Spacer(modifier = Modifier.height(16.dp))
-                                Text("No Backups Recorded", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
-                            }
-                        }
-                    } else {
-                        LazyColumn(
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
-                            contentPadding = PaddingValues(bottom = 24.dp)
-                        ) {
-                            items(monthlyTimelineFolders) { folder ->
-                                Surface(
-                                    shape = RoundedCornerShape(16.dp),
-                                    color = MaterialTheme.colorScheme.surface,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .combinedClickable(
-                                            onClick = {
-                                                triggerHapticFeedback(context, haptic)
-                                                currentFolderDirectoryPath = folder.folderPath
-                                                folderPathHistory.add(folder.folderPath)
-                                            },
-                                            onLongClick = {
-                                                triggerHapticFeedback(context, haptic)
-                                                infoSheetFolder = folder
-                                            }
-                                        )
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(14.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Box(
-                                            modifier = Modifier.size(44.dp).clip(CircleShape).background(TelegramBlue.copy(alpha = 0.12f)),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Icon(Icons.Default.CalendarMonth, contentDescription = null, tint = TelegramBlue, modifier = Modifier.size(24.dp))
-                                        }
-
-                                        Spacer(modifier = Modifier.width(14.dp))
-
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Text(folder.folderName, style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold))
-                                            Text("${folder.filesCount} items • ${formatFileSize(folder.totalSizeBytes)}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
-                                        }
-
-                                        Icon(Icons.Default.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.outline)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            } else if (activeSubTab == 2) {
-                // 🏷️ CATEGORIES VIEW
-                Column(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                        Text("Backed Up Cloud Files", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
-                        Surface(shape = RoundedCornerShape(8.dp), color = TelegramEmerald.copy(alpha = 0.15f)) {
-                            Text("✓ ${cloudFileList.size} Files", style = MaterialTheme.typography.labelSmall.copy(color = TelegramEmerald, fontWeight = FontWeight.Bold), modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(10.dp))
-
-                    if (isDataLoading) {
-                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-                    } else if (cloudFileList.isEmpty()) {
-                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(24.dp)) {
-                                Icon(Icons.Default.CloudOff, contentDescription = null, tint = TelegramBlue, modifier = Modifier.size(64.dp))
-                                Spacer(modifier = Modifier.height(16.dp))
-                                Text("No Files Backed Up Yet", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
-                            }
-                        }
-                    } else {
-                        LazyColumn(
-                            verticalArrangement = Arrangement.spacedBy(10.dp),
-                            contentPadding = PaddingValues(bottom = 24.dp)
-                        ) {
-                            items(categoriesData) { cat ->
-                                Surface(
-                                    shape = RoundedCornerShape(16.dp),
-                                    color = MaterialTheme.colorScheme.surface,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clickable {
+                                items(recentCloudFiles) { file ->
+                                    RecentFileGoogleCard(
+                                        cloudFile = file,
+                                        onClick = {
                                             triggerHapticFeedback(context, haptic)
-                                            selectedCategoryTitle = cat.title
-                                            onCategorySelected(cat.title)
+                                            val idx = activeDisplayFiles.indexOfFirst { it.telegramFileId == file.telegramFileId }
+                                            if (idx != -1) {
+                                                activeViewerIndex = idx
+                                            } else {
+                                                FileViewerHelper.openFile(context, file.path, file.fileName)
+                                            }
+                                        },
+                                        onMoreOptions = {
+                                            triggerHapticFeedback(context, haptic)
+                                            actionMenuFile = file
                                         }
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // 3. Categories (2-Column Grid)
+                item {
+                    Column {
+                        Text(
+                            text = "Categories",
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                        )
+                        Spacer(modifier = Modifier.height(10.dp))
+                        val pairs = categoriesData.chunked(2)
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            pairs.forEach { pair ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
-                                    Row(
-                                        modifier = Modifier.padding(14.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Box(
-                                            modifier = Modifier.size(42.dp).clip(CircleShape).background(cat.iconTint.copy(alpha = 0.12f)),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Icon(imageVector = cat.icon, contentDescription = null, tint = cat.iconTint, modifier = Modifier.size(22.dp))
-                                        }
-
-                                        Spacer(modifier = Modifier.width(14.dp))
-
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Text(cat.title, style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold))
-                                            Text("${cat.count} files", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
-                                        }
-
-                                        Icon(Icons.Default.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.outline)
+                                    GoogleCategoryCard(
+                                        category = pair[0],
+                                        onClick = {
+                                            triggerHapticFeedback(context, haptic)
+                                            if (pair[0].title == "Monthly Archive") {
+                                                currentFolderDirectoryPath = "Timeline"
+                                            } else {
+                                                selectedCategoryTitle = pair[0].title
+                                                onCategorySelected(pair[0].title)
+                                            }
+                                        },
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    if (pair.size > 1) {
+                                        GoogleCategoryCard(
+                                            category = pair[1],
+                                            onClick = {
+                                                triggerHapticFeedback(context, haptic)
+                                                if (pair[1].title == "Monthly Archive") {
+                                                    currentFolderDirectoryPath = "Timeline"
+                                                } else {
+                                                    selectedCategoryTitle = pair[1].title
+                                                    onCategorySelected(pair[1].title)
+                                                }
+                                            },
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                    } else {
+                                        Spacer(modifier = Modifier.weight(1f))
                                     }
                                 }
                             }
                         }
                     }
                 }
-            } else {
-                // 📂 PHONE STORAGE REPLICA VIEW
-                Column(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
-                    Spacer(modifier = Modifier.height(12.dp))
 
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                        Text(currentFolderDirectoryPath, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
+                // 4. Collections (Starred & Safe folder)
+                item {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(
+                            text = "Collections",
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        GoogleCollectionItemCard(
+                            title = "Starred",
+                            subtitle = "${prefs.starredFilePaths.size} files",
+                            icon = Icons.Default.Star,
+                            iconTint = Color(0xFFF59E0B),
+                            iconBg = Color(0xFFFEF3C7),
+                            onClick = {
+                                triggerHapticFeedback(context, haptic)
+                                selectedCategoryTitle = "Starred"
+                                onCategorySelected("Starred")
+                            }
+                        )
+                        GoogleCollectionItemCard(
+                            title = "Safe folder",
+                            subtitle = "PIN or fingerprint protected",
+                            icon = Icons.Default.Lock,
+                            iconTint = TelegramBlue,
+                            iconBg = TelegramBlue.copy(alpha = 0.12f),
+                            onClick = {
+                                triggerHapticFeedback(context, haptic)
+                                val activity = context as? FragmentActivity
+                                if (activity != null) {
+                                    BiometricHelper.showBiometricPrompt(
+                                        activity = activity,
+                                        title = "Unlock Safe Folder",
+                                        subtitle = "Verify your identity to access private safe",
+                                        onSuccess = {
+                                            currentFolderDirectoryPath = "Internal Storage/Private Safe Vault"
+                                            folderPathHistory.add("Internal Storage/Private Safe Vault")
+                                        },
+                                        onError = { err ->
+                                            Toast.makeText(context, "Authentication failed: $err", Toast.LENGTH_SHORT).show()
+                                        }
+                                    )
+                                } else {
+                                    currentFolderDirectoryPath = "Internal Storage/Private Safe Vault"
+                                    folderPathHistory.add("Internal Storage/Private Safe Vault")
+                                }
+                            }
+                        )
+                    }
+                }
+
+                // 5. Storage devices (Internal storage & Telegram Cloud Storage)
+                item {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(
+                            text = "Storage devices",
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        GoogleStorageDeviceCard(
+                            title = "Internal storage",
+                            subtitle = "${deviceStorage.freeFormatted} free • ${deviceStorage.totalFormatted}",
+                            progress = deviceStorage.usedPercentage,
+                            icon = Icons.Default.Smartphone,
+                            iconTint = TelegramBlue,
+                            iconBg = TelegramBlue.copy(alpha = 0.12f),
+                            onClick = {
+                                triggerHapticFeedback(context, haptic)
+                                currentFolderDirectoryPath = "Internal Storage/Phone Folders"
+                                folderPathHistory.add("Internal Storage/Phone Folders")
+                            }
+                        )
+                        GoogleStorageDeviceCard(
+                            title = "Telegram Cloud Storage",
+                            subtitle = "${cloudFileList.size} files backed up • ${formatFileSize(cloudFileList.sumOf { it.size })}",
+                            progress = null,
+                            icon = Icons.Default.Cloud,
+                            iconTint = TelegramEmerald,
+                            iconBg = TelegramEmerald.copy(alpha = 0.12f),
+                            onClick = {
+                                triggerHapticFeedback(context, haptic)
+                                selectedCategoryTitle = "All Files"
+                                onCategorySelected("All Files")
+                            }
+                        )
+                    }
+                }
+            }
+        } else if (currentFolderDirectoryPath == "Timeline") {
+            // 📅 MONTHLY CLOUD ARCHIVE VIEW
+            Column(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(
+                            onClick = {
+                                triggerHapticFeedback(context, haptic)
+                                currentFolderDirectoryPath = "Internal Storage"
+                            },
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "Back",
+                                tint = TelegramBlue,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Monthly Cloud Archive", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                        TextButton(
+                            onClick = {
+                                triggerHapticFeedback(context, haptic)
+                                showDuplicateCleaner = true
+                            },
+                            shape = RoundedCornerShape(8.dp),
+                            colors = ButtonDefaults.textButtonColors(containerColor = TelegramEmerald.copy(alpha = 0.12f))
+                        ) {
+                            Icon(Icons.Default.CleaningServices, contentDescription = null, tint = TelegramEmerald, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Deduplicate", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, color = TelegramEmerald))
+                        }
                         Surface(shape = RoundedCornerShape(8.dp), color = TelegramBlue.copy(alpha = 0.15f)) {
-                            Text("${currentPathSubFolders.size} Folders", style = MaterialTheme.typography.labelSmall.copy(color = TelegramBlue, fontWeight = FontWeight.Bold), modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
+                            Text("${monthlyTimelineFolders.size} Months", style = MaterialTheme.typography.labelSmall.copy(color = TelegramBlue, fontWeight = FontWeight.Bold), modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
                         }
                     }
+                }
 
-                    Spacer(modifier = Modifier.height(10.dp))
+                Spacer(modifier = Modifier.height(10.dp))
 
-                    if (isDataLoading) {
-                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-                    } else if (currentPathSubFolders.isEmpty() && currentPathFiles.isEmpty()) {
-                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(24.dp)) {
-                                Icon(Icons.Default.FolderZip, contentDescription = null, tint = TelegramBlue, modifier = Modifier.size(64.dp))
-                                Spacer(modifier = Modifier.height(16.dp))
-                                Text("Empty Storage Folder", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
+                if (isDataLoading) {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+                } else if (monthlyTimelineFolders.isEmpty()) {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(24.dp)) {
+                            Icon(Icons.Default.EventBusy, contentDescription = null, tint = TelegramBlue, modifier = Modifier.size(64.dp))
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Text("No Backups Recorded", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
+                        }
+                    }
+                } else {
+                    LazyColumn(
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        contentPadding = PaddingValues(bottom = 24.dp)
+                    ) {
+                        items(monthlyTimelineFolders) { folder ->
+                            Surface(
+                                shape = RoundedCornerShape(16.dp),
+                                color = MaterialTheme.colorScheme.surface,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .combinedClickable(
+                                        onClick = {
+                                            triggerHapticFeedback(context, haptic)
+                                            currentFolderDirectoryPath = folder.folderPath
+                                            folderPathHistory.add(folder.folderPath)
+                                        },
+                                        onLongClick = {
+                                            triggerHapticFeedback(context, haptic)
+                                            infoSheetFolder = folder
+                                        }
+                                    )
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(14.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Box(
+                                        modifier = Modifier.size(44.dp).clip(CircleShape).background(TelegramBlue.copy(alpha = 0.12f)),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(Icons.Default.CalendarMonth, contentDescription = null, tint = TelegramBlue, modifier = Modifier.size(24.dp))
+                                    }
+
+                                    Spacer(modifier = Modifier.width(14.dp))
+
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(folder.folderName, style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold))
+                                        Text("${folder.filesCount} items • ${formatFileSize(folder.totalSizeBytes)}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+                                    }
+
+                                    Icon(Icons.Default.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.outline)
+                                }
                             }
                         }
-                    } else {
-                        LazyColumn(
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
-                            contentPadding = PaddingValues(bottom = 24.dp)
+                    }
+                }
+            }
+        } else if (currentFolderDirectoryPath == "Internal Storage/Phone Folders") {
+            // 📂 PHONE STORAGE REPLICA VIEW
+            Column(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(
+                            onClick = {
+                                triggerHapticFeedback(context, haptic)
+                                currentFolderDirectoryPath = "Internal Storage"
+                                folderPathHistory.clear()
+                                folderPathHistory.add("Internal Storage")
+                            },
+                            modifier = Modifier.size(36.dp)
                         ) {
-                            items(currentPathSubFolders) { folder ->
-                                Surface(
-                                    shape = RoundedCornerShape(14.dp),
-                                    color = MaterialTheme.colorScheme.surface,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .combinedClickable(
-                                            onClick = {
-                                                triggerHapticFeedback(context, haptic)
-                                                currentFolderDirectoryPath = folder.folderPath
-                                                folderPathHistory.add(folder.folderPath)
-                                            },
-                                            onLongClick = {
-                                                triggerHapticFeedback(context, haptic)
-                                                infoSheetFolder = folder
-                                            }
-                                        )
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "Back",
+                                tint = TelegramBlue,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Internal Storage", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
+                    }
+                    Surface(shape = RoundedCornerShape(8.dp), color = TelegramBlue.copy(alpha = 0.15f)) {
+                        Text("${currentPathSubFolders.size} Folders", style = MaterialTheme.typography.labelSmall.copy(color = TelegramBlue, fontWeight = FontWeight.Bold), modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                if (isDataLoading) {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+                } else if (currentPathSubFolders.isEmpty() && currentPathFiles.isEmpty()) {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(24.dp)) {
+                            Icon(Icons.Default.FolderZip, contentDescription = null, tint = TelegramBlue, modifier = Modifier.size(64.dp))
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Text("Empty Storage Folder", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
+                        }
+                    }
+                } else {
+                    LazyColumn(
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        contentPadding = PaddingValues(bottom = 24.dp)
+                    ) {
+                        items(currentPathSubFolders) { folder ->
+                            Surface(
+                                shape = RoundedCornerShape(14.dp),
+                                color = MaterialTheme.colorScheme.surface,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .combinedClickable(
+                                        onClick = {
+                                            triggerHapticFeedback(context, haptic)
+                                            currentFolderDirectoryPath = folder.folderPath
+                                            folderPathHistory.add(folder.folderPath)
+                                        },
+                                        onLongClick = {
+                                            triggerHapticFeedback(context, haptic)
+                                            infoSheetFolder = folder
+                                        }
+                                    )
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Row(
-                                        modifier = Modifier.padding(12.dp),
-                                        verticalAlignment = Alignment.CenterVertically
+                                    Box(
+                                        modifier = Modifier.size(40.dp),
+                                        contentAlignment = Alignment.Center
                                     ) {
-                                        Box(
-                                            modifier = Modifier.size(40.dp),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            OsFolderIcon(size = 38.dp)
-                                        }
-
-                                        Spacer(modifier = Modifier.width(12.dp))
-
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Text(folder.folderName, style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold))
-                                            Text("${folder.filesCount} cloud files", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
-                                        }
-
-                                        Icon(Icons.Default.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.outline)
+                                        OsFolderIcon(size = 38.dp)
                                     }
+
+                                    Spacer(modifier = Modifier.width(12.dp))
+
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(folder.folderName, style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold))
+                                        Text("${folder.filesCount} cloud files", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+                                    }
+
+                                    Icon(Icons.Default.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.outline)
                                 }
                             }
                         }
@@ -831,7 +1054,7 @@ fun BackupExplorerScreen(
                 }
             }
         } else {
-            val titleText = if (isSearching) "Search: \"$externalSearchQuery\"" else (selectedCategoryTitle ?: File(currentFolderDirectoryPath).name)
+            val titleText = if (isSearching) "Search: \"$effectiveSearchQuery\"" else (selectedCategoryTitle ?: File(currentFolderDirectoryPath).name)
 
             Box(modifier = Modifier.fillMaxSize()) {
                 Column(
@@ -853,20 +1076,40 @@ fun BackupExplorerScreen(
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
                                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-                                    Icon(
-                                        imageVector = if (selectedCategoryTitle != null) Icons.Default.Category else Icons.Default.Folder,
-                                        contentDescription = null,
-                                        tint = TelegramBlue,
-                                        modifier = Modifier.size(22.dp)
-                                    )
+                                    IconButton(
+                                        onClick = {
+                                            triggerHapticFeedback(context, haptic)
+                                            if (localSearchQuery.isNotEmpty()) {
+                                                localSearchQuery = ""
+                                            } else if (selectedCategoryTitle != null) {
+                                                selectedCategoryTitle = null
+                                                onCategorySelected(null)
+                                            } else if (folderPathHistory.size > 1) {
+                                                folderPathHistory.removeAt(folderPathHistory.size - 1)
+                                                currentFolderDirectoryPath = folderPathHistory.last()
+                                            } else {
+                                                currentFolderDirectoryPath = "Internal Storage"
+                                                folderPathHistory.clear()
+                                                folderPathHistory.add("Internal Storage")
+                                            }
+                                        },
+                                        modifier = Modifier.size(36.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                            contentDescription = "Back",
+                                            tint = TelegramBlue,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
 
-                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
 
                                     Column {
                                         Text(titleText, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold), maxLines = 1)
                                         Text("${activeDisplayFiles.size} items", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
                                     }
-                                }
+                                }                   }
 
                                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                                     FilterChip(
@@ -1320,3 +1563,312 @@ private fun ListCloudFileCard(
         }
     }
 }
+
+@Composable
+fun GoogleFilesSearchPill(
+    query: String,
+    onQueryChange: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        shape = CircleShape,
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f),
+        modifier = modifier
+            .fillMaxWidth()
+            .height(50.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = Icons.Default.Search,
+                contentDescription = "Search",
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(22.dp)
+            )
+            Spacer(modifier = Modifier.width(12.dp))
+            BasicTextField(
+                value = query,
+                onValueChange = onQueryChange,
+                modifier = Modifier.weight(1f),
+                singleLine = true,
+                textStyle = MaterialTheme.typography.bodyLarge.copy(
+                    color = MaterialTheme.colorScheme.onSurface
+                ),
+                decorationBox = { innerTextField ->
+                    if (query.isEmpty()) {
+                        Text(
+                            text = "Search in Files",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                        )
+                    }
+                    innerTextField()
+                }
+            )
+            if (query.isNotEmpty()) {
+                IconButton(
+                    onClick = { onQueryChange("") },
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = "Clear",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun RecentFileGoogleCard(
+    cloudFile: UploadedFile,
+    onClick: () -> Unit,
+    onMoreOptions: () -> Unit
+) {
+    Surface(
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
+        modifier = Modifier
+            .width(118.dp)
+            .clickable(onClick = onClick)
+    ) {
+        Column(modifier = Modifier.padding(8.dp)) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(90.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)),
+                contentAlignment = Alignment.Center
+            ) {
+                FileThumbnailView(
+                    fileName = cloudFile.fileName,
+                    filePath = cloudFile.path,
+                    telegramFileId = cloudFile.telegramFileId,
+                    iconSize = 44.dp,
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+            Spacer(modifier = Modifier.height(6.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = cloudFile.fileName,
+                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = formatFileSize(cloudFile.size),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.outline
+                    )
+                }
+                IconButton(
+                    onClick = onMoreOptions,
+                    modifier = Modifier.size(24.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.MoreVert,
+                        contentDescription = "Options",
+                        modifier = Modifier.size(16.dp),
+                        tint = MaterialTheme.colorScheme.outline
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun GoogleCategoryCard(
+    category: ExplorerCategoryModel,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
+        modifier = modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(category.containerTint),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = category.icon,
+                    contentDescription = null,
+                    tint = category.iconTint,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+            Spacer(modifier = Modifier.width(10.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = category.title,
+                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                val subtitle = if (category.totalSizeBytes > 0) {
+                    formatFileSize(category.totalSizeBytes)
+                } else {
+                    "${category.count} files"
+                }
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.outline,
+                    maxLines = 1
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun GoogleCollectionItemCard(
+    title: String,
+    subtitle: String,
+    icon: ImageVector,
+    iconTint: Color,
+    iconBg: Color,
+    onClick: () -> Unit
+) {
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+    ) {
+        Row(
+            modifier = Modifier.padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(42.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(iconBg),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = iconTint,
+                    modifier = Modifier.size(22.dp)
+                )
+            }
+            Spacer(modifier = Modifier.width(14.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold)
+                )
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.outline
+                )
+            }
+            Icon(
+                imageVector = Icons.Default.ChevronRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.outline
+            )
+        }
+    }
+}
+
+@Composable
+fun GoogleStorageDeviceCard(
+    title: String,
+    subtitle: String,
+    progress: Float?,
+    icon: ImageVector,
+    iconTint: Color,
+    iconBg: Color,
+    onClick: () -> Unit
+) {
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+    ) {
+        Column(modifier = Modifier.padding(14.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(42.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(iconBg),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = null,
+                        tint = iconTint,
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.width(14.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold)
+                    )
+                    Text(
+                        text = subtitle,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.outline
+                    )
+                }
+                Icon(
+                    imageVector = Icons.Default.ChevronRight,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.outline
+                )
+            }
+
+            if (progress != null) {
+                Spacer(modifier = Modifier.height(10.dp))
+                LinearProgressIndicator(
+                    progress = { progress.coerceIn(0f, 1f) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(6.dp)
+                        .clip(RoundedCornerShape(3.dp)),
+                    color = iconTint,
+                    trackColor = iconTint.copy(alpha = 0.15f)
+                )
+            }
+        }
+    }
+}
+

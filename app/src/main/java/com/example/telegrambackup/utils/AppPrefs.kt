@@ -60,6 +60,27 @@ class AppPrefs(private val context: Context) {
             }
         }
 
+    var starredFilePaths: Set<String>
+        get() = prefs.getStringSet("starred_file_paths", emptySet()) ?: emptySet()
+        set(value) = prefs.edit().putStringSet("starred_file_paths", value).apply()
+
+    fun toggleStarredFile(filePath: String): Boolean {
+        val current = starredFilePaths.toMutableSet()
+        val isNowStarred = if (current.contains(filePath)) {
+            current.remove(filePath)
+            false
+        } else {
+            current.add(filePath)
+            true
+        }
+        starredFilePaths = current
+        return isNowStarred
+    }
+
+    fun isFileStarred(filePath: String): Boolean {
+        return starredFilePaths.contains(filePath)
+    }
+
     fun forceSetEncryptionKey(key: String) {
         if (key.isNotBlank()) {
             prefs.edit().putString("encryption_key", key).apply()
