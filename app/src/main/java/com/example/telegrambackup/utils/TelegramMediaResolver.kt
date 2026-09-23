@@ -143,6 +143,24 @@ object TelegramMediaResolver {
             }
         }
 
+        // Fallback: If not all chunks were found by exact file.path, search by filename
+        if (chunkMap.size < file.totalChunks) {
+            try {
+                val allChunks = chunkDao.getAllChunks()
+                val matches = allChunks.filter {
+                    it.sourcePath.endsWith(file.fileName) || it.sourcePath.equals(file.path, ignoreCase = true)
+                }
+                for (c in matches) {
+                    if (c.telegramFileId.isNotBlank() && !chunkMap.containsKey(c.chunkIndex)) {
+                        chunkMap[c.chunkIndex] = c.telegramFileId
+                        if (c.botTokenUsed.isNotBlank()) {
+                            tokenMap[c.chunkIndex] = c.botTokenUsed
+                        }
+                    }
+                }
+            } catch (_: Exception) {}
+        }
+
         // If all chunks are present in Room DB, return them sorted
         if (chunkMap.size >= file.totalChunks) {
             return@withContext (1..file.totalChunks).mapNotNull { idx ->

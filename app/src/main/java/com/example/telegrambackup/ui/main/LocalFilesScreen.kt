@@ -141,6 +141,19 @@ fun LocalFilesScreen() {
     var currentFolderDir by remember { mutableStateOf<File?>(null) }
     val folderHistory = remember { mutableStateListOf<File>() }
 
+    BackHandler(enabled = isSelectionMode || (selectedTabState == 1 && currentFolderDir != null)) {
+        if (isSelectionMode) {
+            selectedPaths.clear()
+            isSelectionMode = false
+        } else if (selectedTabState == 1 && currentFolderDir != null) {
+            if (folderHistory.isNotEmpty()) {
+                currentFolderDir = folderHistory.removeAt(folderHistory.size - 1)
+            } else {
+                currentFolderDir = null
+            }
+        }
+    }
+
     // Scanner logic
     val loadUnbackedFiles = {
         scope.launch(Dispatchers.IO) {
@@ -465,9 +478,16 @@ fun LocalFilesScreen() {
                             }
                         },
                         onFileLongClick = { item ->
+                            try { haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress) } catch (_: Exception) {}
                             if (!isSelectionMode) {
                                 isSelectionMode = true
-                                selectedPaths.add(item.path)
+                                if (!selectedPaths.contains(item.path)) {
+                                    selectedPaths.add(item.path)
+                                }
+                            } else {
+                                if (selectedPaths.contains(item.path)) selectedPaths.remove(item.path)
+                                else selectedPaths.add(item.path)
+                                if (selectedPaths.isEmpty()) isSelectionMode = false
                             }
                         },
                         onMoreOptions = { item ->
@@ -507,9 +527,16 @@ fun LocalFilesScreen() {
                             }
                         },
                         onFileLongClick = { item ->
+                            try { haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress) } catch (_: Exception) {}
                             if (!isSelectionMode) {
                                 isSelectionMode = true
-                                selectedPaths.add(item.path)
+                                if (!selectedPaths.contains(item.path)) {
+                                    selectedPaths.add(item.path)
+                                }
+                            } else {
+                                if (selectedPaths.contains(item.path)) selectedPaths.remove(item.path)
+                                else selectedPaths.add(item.path)
+                                if (selectedPaths.isEmpty()) isSelectionMode = false
                             }
                         },
                         onMoreOptions = { item ->
@@ -620,10 +647,17 @@ private fun CategoryWiseView(
                                     .padding(vertical = 10.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Checkbox(
-                                    checked = isSelected,
-                                    onCheckedChange = { onFileClick(item) }
-                                )
+                                if (isSelectionMode) {
+                                    Checkbox(
+                                        checked = isSelected,
+                                        onCheckedChange = { onFileClick(item) }
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                }
+                                Box(modifier = Modifier.size(38.dp), contentAlignment = Alignment.Center) {
+                                    FileThumbnailView(fileName = item.name, filePath = item.path, iconSize = 34.dp, modifier = Modifier.size(36.dp))
+                                }
+                                Spacer(modifier = Modifier.width(12.dp))
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(
                                         text = item.name,
@@ -766,8 +800,10 @@ private fun FolderWiseView(
                         modifier = Modifier.padding(12.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Checkbox(checked = isSelected, onCheckedChange = { onFileClick(item) })
-                        Spacer(modifier = Modifier.width(6.dp))
+                        if (isSelectionMode) {
+                            Checkbox(checked = isSelected, onCheckedChange = { onFileClick(item) })
+                            Spacer(modifier = Modifier.width(8.dp))
+                        }
                         Box(modifier = Modifier.size(38.dp), contentAlignment = Alignment.Center) {
                             FileThumbnailView(fileName = item.name, filePath = item.path, iconSize = 34.dp, modifier = Modifier.size(36.dp))
                         }

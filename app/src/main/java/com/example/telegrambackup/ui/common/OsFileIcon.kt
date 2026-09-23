@@ -9,22 +9,25 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.RoundRect
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.*
-import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
+private data class IconColorPalette(
+    val light: Color,
+    val primary: Color,
+    val dark: Color,
+    val fold: Color
+)
+
 /**
- * Modern Windows 11 / Fluent Style Blue File Icon.
+ * Modern Windows 11 / Fluent Style Format-Specific File Icon.
  * Features:
  * - Geometric 3D document sheet with a dog-ear folded top-right corner
- * - Authentic Windows 11 Fluent Blue Gradient (#38BDF8 -> #0078D4 -> #005A9E)
+ * - Authentic Fluent Gradients tailored to format (PDF red, Video rose, Audio amber, Zip purple, APK green, etc.)
  * - Inner document preview lines
  * - Bold extension badge chip (PDF, JPG, MP4, APK, ZIP, DOCX, TXT, etc.)
  */
@@ -35,14 +38,47 @@ fun OsFileIcon(
     size: Dp = 48.dp,
     customExtension: String? = null
 ) {
-    val ext = (customExtension ?: fileName.substringAfterLast('.', "")).uppercase().take(5)
-    val displayExt = if (ext.isEmpty() || ext == fileName.uppercase()) "FILE" else ext
+    val rawExt = (customExtension ?: fileName.substringAfterLast('.', "")).uppercase().take(5)
+    val displayExt = if (rawExt.isEmpty() || rawExt == fileName.uppercase()) "FILE" else rawExt
+    val extLower = rawExt.lowercase()
 
-    // Windows 11 Fluent Blue Palette
-    val blueLight = Color(0xFF38BDF8)
-    val bluePrimary = Color(0xFF0078D4)
-    val blueDark = Color(0xFF005A9E)
-    val foldColor = Color(0xFFBAE6FD)
+    // Format-tailored Fluent Palettes
+    val palette = when {
+        extLower in listOf("pdf") -> IconColorPalette(
+            light = Color(0xFFFCA5A5), primary = Color(0xFFEF4444), dark = Color(0xFFB91C1C), fold = Color(0xFFFEE2E2)
+        )
+        extLower in listOf("jpg", "jpeg", "png", "gif", "webp", "bmp", "svg", "heic") -> IconColorPalette(
+            light = Color(0xFF67E8F9), primary = Color(0xFF06B6D4), dark = Color(0xFF0E7490), fold = Color(0xFFCFFAFE)
+        )
+        extLower in listOf("mp4", "mkv", "avi", "mov", "wmv", "webm", "3gp") -> IconColorPalette(
+            light = Color(0xFFFDA4AF), primary = Color(0xFFF43F5E), dark = Color(0xFFBE123C), fold = Color(0xFFFFE4E6)
+        )
+        extLower in listOf("mp3", "wav", "aac", "flac", "ogg", "m4a", "opus") -> IconColorPalette(
+            light = Color(0xFFFDE68A), primary = Color(0xFFF59E0B), dark = Color(0xFFB45309), fold = Color(0xFFFEF3C7)
+        )
+        extLower in listOf("zip", "rar", "7z", "tar", "gz", "bz2") -> IconColorPalette(
+            light = Color(0xFFC4B5FD), primary = Color(0xFF8B5CF6), dark = Color(0xFF6D28D9), fold = Color(0xFFEDE9FE)
+        )
+        extLower in listOf("apk", "xapk", "apks") -> IconColorPalette(
+            light = Color(0xFF6EE7B7), primary = Color(0xFF10B981), dark = Color(0xFF047857), fold = Color(0xFFD1FAE5)
+        )
+        extLower in listOf("xls", "xlsx", "csv") -> IconColorPalette(
+            light = Color(0xFF5EEAD4), primary = Color(0xFF14B8A6), dark = Color(0xFF0F766E), fold = Color(0xFFCCFBF1)
+        )
+        extLower in listOf("ppt", "pptx") -> IconColorPalette(
+            light = Color(0xFFFDBA74), primary = Color(0xFFF97316), dark = Color(0xFFC2410C), fold = Color(0xFFFFEDD5)
+        )
+        extLower in listOf("doc", "docx", "txt", "rtf", "odt") -> IconColorPalette(
+            light = Color(0xFF93C5FD), primary = Color(0xFF3B82F6), dark = Color(0xFF1D4ED8), fold = Color(0xFFDBEAFE)
+        )
+        extLower in listOf("json", "js", "ts", "kt", "java", "py", "html", "css", "c", "cpp", "xml") -> IconColorPalette(
+            light = Color(0xFFA5B4FC), primary = Color(0xFF6366F1), dark = Color(0xFF4338CA), fold = Color(0xFFE0E7FF)
+        )
+        else -> IconColorPalette(
+            light = Color(0xFF94A3B8), primary = Color(0xFF64748B), dark = Color(0xFF334155), fold = Color(0xFFE2E8F0)
+        )
+    }
+
     val foldShadow = Color(0x33000000)
 
     Box(
@@ -81,11 +117,11 @@ fun OsFileIcon(
                 color = Color(0x22000000)
             )
 
-            // Draw Main Blue Document Body
+            // Draw Format-Tailored Fluent Document Body
             drawPath(
                 path = docPath,
                 brush = Brush.verticalGradient(
-                    colors = listOf(blueLight, bluePrimary, blueDark),
+                    colors = listOf(palette.light, palette.primary, palette.dark),
                     startY = 0f,
                     endY = h
                 )
@@ -115,7 +151,7 @@ fun OsFileIcon(
             drawPath(
                 path = foldFlapPath,
                 brush = Brush.linearGradient(
-                    colors = listOf(Color.White, foldColor),
+                    colors = listOf(Color.White, palette.fold),
                     start = Offset(w * 0.88f - foldSize, h * 0.06f),
                     end = Offset(w * 0.88f, h * 0.06f + foldSize)
                 )
@@ -154,7 +190,7 @@ fun OsFileIcon(
         // 4. Centered Extension Badge Chip
         Surface(
             shape = RoundedCornerShape(size * 0.08f),
-            color = Color.White.copy(alpha = 0.92f),
+            color = Color.White.copy(alpha = 0.94f),
             shadowElevation = 2.dp,
             modifier = Modifier
                 .padding(top = size * 0.38f)
@@ -164,7 +200,7 @@ fun OsFileIcon(
                 text = displayExt,
                 style = MaterialTheme.typography.labelSmall.copy(
                     fontWeight = FontWeight.Black,
-                    color = Color(0xFF005A9E),
+                    color = palette.dark,
                     fontSize = (size.value * 0.18f).coerceIn(8f, 13f).sp,
                     letterSpacing = 0.4.sp
                 ),

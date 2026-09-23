@@ -703,7 +703,7 @@ class BackupWorker(
             }
 
             val notif = NotificationCompat.Builder(applicationContext, channelId)
-                .setSmallIcon(R.mipmap.ic_launcher)
+                .setSmallIcon(R.drawable.ic_notif_cloud_done)
                 .setContentTitle("☁️ Telegram Cloud Backup Complete")
                 .setContentText(summaryMsg)
                 .setPriority(NotificationCompat.PRIORITY_DEFAULT)

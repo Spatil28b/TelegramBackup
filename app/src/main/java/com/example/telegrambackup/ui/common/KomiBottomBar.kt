@@ -76,31 +76,11 @@ fun <T> KomiBottomBar(
             .padding(horizontal = 20.dp, vertical = 6.dp),
         contentAlignment = Alignment.Center
     ) {
-        // Floating pill capsule
+        // Clean Floating bar (active tab pill provides visual accent)
         Row(
             modifier = Modifier
                 .height(barHeight)
-                .shadow(
-                    elevation = 12.dp,
-                    shape = RoundedCornerShape(28.dp),
-                    spotColor = Color.Black.copy(alpha = 0.28f),
-                    ambientColor = Color.Black.copy(alpha = 0.10f)
-                )
-                .clip(RoundedCornerShape(28.dp))
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(
-                            MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.96f),
-                            MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.92f)
-                        )
-                    )
-                )
-                .border(
-                    width = 1.dp,
-                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f),
-                    shape = RoundedCornerShape(28.dp)
-                )
-                .padding(horizontal = 8.dp, vertical = 5.dp),
+                .padding(horizontal = 8.dp, vertical = 4.dp),
             horizontalArrangement = Arrangement.SpaceEvenly,
             verticalAlignment = Alignment.CenterVertically
         ) {

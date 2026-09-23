@@ -41,7 +41,7 @@ class StopBackupNotificationWorker(
         }
 
         val notification = NotificationCompat.Builder(applicationContext, channelId)
-            .setSmallIcon(R.mipmap.ic_launcher)
+            .setSmallIcon(R.drawable.ic_notif_pause)
             .setContentTitle("⚠️ Backups Paused for ${stoppedHours}+ Hours")
             .setContentText("Your files are not being backed up. Open the app to resume backup protection.")
             .setStyle(NotificationCompat.BigTextStyle()

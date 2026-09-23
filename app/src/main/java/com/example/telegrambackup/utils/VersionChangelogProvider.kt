@@ -28,6 +28,63 @@ object VersionChangelogProvider {
 
     private val releases = listOf(
         VersionRelease(
+            versionName = "2.2.4",
+            versionCode = 107,
+            releaseDate = "September 2026",
+            highlights = "Large File Streaming & Range Support, Google Files Selection UX, 100% Exact Device Monthly Archive Folder Structure, Modern Monochrome Notifications & Floating UI",
+            entries = listOf(
+                ChangelogEntry(
+                    Icons.Default.CloudDownload,
+                    TelegramBlue,
+                    "High-Speed Large File Link Sharing",
+                    "Added HTTP Range 206 seeking support for instant video/audio playback, parallel chunk pre-resolution, and dedicated single-chunk endpoints for unlimited file sizes.",
+                    "STREAMING"
+                ),
+                ChangelogEntry(
+                    Icons.Default.FolderZip,
+                    Color(0xFF8B5CF6),
+                    "100% Exact Device Monthly Folder Tree",
+                    "Monthly Archive now mirrors the real internal storage directory tree down to every subfolder, with breadcrumb navigation, subfolder drilldown, and Category view toggle.",
+                    "ARCHIVE"
+                ),
+                ChangelogEntry(
+                    Icons.Default.TouchApp,
+                    TelegramEmerald,
+                    "Google Files Multi-Select UX",
+                    "Removed permanent checkboxes across local files & archive. Long-press triggers haptic feedback, enters selection mode, and reveals checkboxes for multi-select.",
+                    "SELECTION"
+                ),
+                ChangelogEntry(
+                    Icons.Default.NotificationsActive,
+                    Color(0xFFF59E0B),
+                    "Modern White Notification Icons",
+                    "Replaced legacy tinted drawables with pure white monochrome vector icons (ic_notif_*) for crisp, distortion-free status bar rendering on Android 12-15.",
+                    "NOTIFICATIONS"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Animation,
+                    Color(0xFF06B6D4),
+                    "Silky Smooth Shared-Axis Transitions",
+                    "Upgraded tab switching to Material 3 Shared Axis fade & scale animations for zero-stutter, butter-smooth navigation across screens.",
+                    "ANIMATION"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Security,
+                    Color(0xFF10B981),
+                    "Sequential Permission Request Flow",
+                    "Storage and Notification permissions are requested strictly step-by-step so system intents never collide or cancel each other out.",
+                    "PERMISSIONS"
+                ),
+                ChangelogEntry(
+                    Icons.Default.InsertDriveFile,
+                    Color(0xFFEC4899),
+                    "Format-Specific Fluent File Icons",
+                    "PDFs, Videos, Audios, APKs, Archives, and Code now feature custom Fluent color-coded vector icons with borderless floating styling.",
+                    "ICONS"
+                )
+            )
+        ),
+        VersionRelease(
             versionName = "2.2.3",
             versionCode = 106,
             releaseDate = "September 2026",

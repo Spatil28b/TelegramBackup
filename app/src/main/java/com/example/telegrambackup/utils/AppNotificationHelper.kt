@@ -162,7 +162,7 @@ object AppNotificationHelper {
         }
 
         val builder = NotificationCompat.Builder(context, CHANNEL_ID_CONTROLLER)
-            .setSmallIcon(if (isRunning) R.drawable.ic_cloud_upload else R.drawable.ic_cloud_done)
+            .setSmallIcon(if (isRunning) R.drawable.ic_notif_cloud_upload else R.drawable.ic_notif_cloud_done)
             .setColor(if (isRunning) COLOR_PRIMARY else COLOR_SUCCESS)
             .setSubText("☁️ • ⚡")
             .setContentTitle(title)
@@ -218,7 +218,7 @@ object AppNotificationHelper {
         val subtextSpeed = if (speedStr.isNotBlank()) "⚡ $speedStr" else "☁️ Sync"
 
         val notification = NotificationCompat.Builder(context, CHANNEL_ID_UPLOADS)
-            .setSmallIcon(R.drawable.ic_cloud_upload)
+            .setSmallIcon(R.drawable.ic_notif_cloud_upload)
             .setColor(COLOR_PRIMARY)
             .setSubText(subtextSpeed)
             .setContentTitle(displayTitle)
@@ -260,7 +260,7 @@ object AppNotificationHelper {
         val subtext = if (speedStr.isNotBlank()) "⚡ $speedStr" else "⬇️ Cloud"
 
         val notification = NotificationCompat.Builder(context, CHANNEL_ID_DOWNLOADS)
-            .setSmallIcon(R.drawable.ic_download)
+            .setSmallIcon(R.drawable.ic_notif_download)
             .setColor(COLOR_PRIMARY)
             .setSubText(subtext)
             .setContentTitle("⬇️ $cleanName")
@@ -344,7 +344,7 @@ object AppNotificationHelper {
         val cleanName = if (fileName.length > 26) fileName.take(14) + "…" + fileName.takeLast(10) else fileName
 
         val notification = NotificationCompat.Builder(context, CHANNEL_ID_DOWNLOADS)
-            .setSmallIcon(R.drawable.ic_cloud_done)
+            .setSmallIcon(R.drawable.ic_notif_cloud_done)
             .setColor(COLOR_SUCCESS)
             .setSubText("⬇️ ✓ Done")
             .setContentTitle("✓ $cleanName")
@@ -383,7 +383,7 @@ object AppNotificationHelper {
         val startPendingIntent = createControlPendingIntent(context, BackupControlReceiver.ACTION_START_BACKUP, 401)
 
         val notification = NotificationCompat.Builder(context, CHANNEL_ID_ALERTS)
-            .setSmallIcon(R.drawable.ic_cloud_done)
+            .setSmallIcon(R.drawable.ic_notif_cloud_done)
             .setColor(COLOR_SUCCESS)
             .setSubText("☁️ ✓ Done")
             .setContentTitle(if (totalCount > 0) "✓ Synced • ☁️ $totalCount Files" else "✓ Synced • ☁️ Cloud")
@@ -410,7 +410,7 @@ object AppNotificationHelper {
         val startPendingIntent = createControlPendingIntent(context, BackupControlReceiver.ACTION_START_BACKUP, 411)
 
         val notification = NotificationCompat.Builder(context, CHANNEL_ID_ALERTS)
-            .setSmallIcon(R.drawable.ic_pause)
+            .setSmallIcon(R.drawable.ic_notif_pause)
             .setColor(COLOR_WARNING)
             .setSubText("⏸️ Paused")
             .setContentTitle("⏸️ Uploads Paused")
@@ -432,7 +432,7 @@ object AppNotificationHelper {
         val openAppPendingIntent = createNavPendingIntent(context, "SETTINGS", 420)
 
         val notification = NotificationCompat.Builder(context, CHANNEL_ID_ALERTS)
-            .setSmallIcon(R.drawable.ic_cloud_upload)
+            .setSmallIcon(R.drawable.ic_notif_cloud_upload)
             .setColor(COLOR_PRIMARY)
             .setSubText("⚠️ System")
             .setContentTitle("⚠️ $title")

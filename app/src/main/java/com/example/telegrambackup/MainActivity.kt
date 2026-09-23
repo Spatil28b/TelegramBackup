@@ -58,6 +58,8 @@ import androidx.compose.animation.*
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.FastOutLinearInEasing
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import com.example.telegrambackup.ui.common.KomiBottomBar
 import com.example.telegrambackup.ui.common.KomiNavItemData
@@ -368,23 +370,30 @@ fun MainApp(
         }
     }
 
-    // Direct system permission launchers
+    // Sequential system permission launchers
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { _ -> }
 
-    val storageLegacyLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission()
-    ) { _ -> }
-
-    val manageStorageLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.StartActivityForResult()
-    ) { _ -> }
-
-    fun requestPermissionsDirectly() {
+    fun checkAndRequestNotificationPermission() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !com.example.telegrambackup.ui.auth.isNotificationPermissionGranted(context)) {
             notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
+    }
+
+    val storageLegacyLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { _ ->
+        checkAndRequestNotificationPermission()
+    }
+
+    val manageStorageLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { _ ->
+        checkAndRequestNotificationPermission()
+    }
+
+    fun requestPermissionsDirectly() {
         if (!com.example.telegrambackup.ui.auth.isStoragePermissionGranted(context)) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                 try {
@@ -401,6 +410,8 @@ fun MainApp(
             } else {
                 storageLegacyLauncher.launch(Manifest.permission.READ_EXTERNAL_STORAGE)
             }
+        } else {
+            checkAndRequestNotificationPermission()
         }
     }
 
@@ -1037,29 +1048,11 @@ fun MainApp(
                     AnimatedContent(
                         targetState = selectedTab,
                         transitionSpec = {
-                            val fromIndex = getTabNavigationIndex(initialState)
-                            val toIndex = getTabNavigationIndex(targetState)
-                            if (toIndex >= fromIndex) {
-                                (slideInHorizontally(
-                                    initialOffsetX = { fullWidth -> (fullWidth * 0.16f).toInt() },
-                                    animationSpec = spring(stiffness = Spring.StiffnessMediumLow, dampingRatio = Spring.DampingRatioNoBouncy)
-                                ) + fadeIn(animationSpec = tween(180))).togetherWith(
-                                    slideOutHorizontally(
-                                        targetOffsetX = { fullWidth -> -(fullWidth * 0.16f).toInt() },
-                                        animationSpec = spring(stiffness = Spring.StiffnessMediumLow, dampingRatio = Spring.DampingRatioNoBouncy)
-                                    ) + fadeOut(animationSpec = tween(140))
-                                )
-                            } else {
-                                (slideInHorizontally(
-                                    initialOffsetX = { fullWidth -> -(fullWidth * 0.16f).toInt() },
-                                    animationSpec = spring(stiffness = Spring.StiffnessMediumLow, dampingRatio = Spring.DampingRatioNoBouncy)
-                                ) + fadeIn(animationSpec = tween(180))).togetherWith(
-                                    slideOutHorizontally(
-                                        targetOffsetX = { fullWidth -> (fullWidth * 0.16f).toInt() },
-                                        animationSpec = spring(stiffness = Spring.StiffnessMediumLow, dampingRatio = Spring.DampingRatioNoBouncy)
-                                    ) + fadeOut(animationSpec = tween(140))
-                                )
-                            }.using(SizeTransform(clip = false))
+                            (fadeIn(animationSpec = tween(220, easing = FastOutSlowInEasing)) +
+                             scaleIn(initialScale = 0.96f, animationSpec = tween(220, easing = FastOutSlowInEasing))).togetherWith(
+                                fadeOut(animationSpec = tween(160, easing = FastOutLinearInEasing)) +
+                                scaleOut(targetScale = 1.02f, animationSpec = tween(160, easing = FastOutLinearInEasing))
+                            ).using(SizeTransform(clip = false))
                         },
                         label = "MainTabAnimatedContent",
                         modifier = Modifier.fillMaxSize()

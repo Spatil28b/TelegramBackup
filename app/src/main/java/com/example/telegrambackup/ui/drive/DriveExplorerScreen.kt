@@ -1251,30 +1251,30 @@ private fun ListDriveItemCard(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
-                modifier = Modifier.size(46.dp),
+                modifier = Modifier.size(52.dp),
                 contentAlignment = Alignment.Center
             ) {
                 if (isSelected) {
                     Box(
-                        modifier = Modifier.size(38.dp).clip(CircleShape).background(TelegramBlue),
+                        modifier = Modifier.size(40.dp).clip(CircleShape).background(TelegramBlue),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(Icons.Default.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
                     }
                 } else if (isDir) {
-                    OsFolderIcon(size = 44.dp)
+                    OsFolderIcon(size = 48.dp)
                 } else {
                     FileThumbnailView(
                         fileName = item.fileName,
                         filePath = item.path,
                         telegramFileId = item.telegramFileId,
-                        iconSize = 40.dp,
-                        modifier = Modifier.size(44.dp)
+                        iconSize = 42.dp,
+                        modifier = Modifier.size(48.dp)
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.width(12.dp))
+            Spacer(modifier = Modifier.width(14.dp))
 
             Column(modifier = Modifier.weight(1f)) {
                 Text(
@@ -1285,7 +1285,7 @@ private fun ListDriveItemCard(
                 )
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
-                    text = if (isDir) "Directory Folder" else "${formatFileSize(item.size)} • ${ext.ifEmpty { "FILE" }}",
+                    text = if (isDir) "Folder" else "${formatFileSize(item.size)} • ${ext.ifEmpty { "FILE" }}",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.outline
                 )

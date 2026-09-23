@@ -203,30 +203,27 @@ fun WhatsNewDialog(
                                 Spacer(modifier = Modifier.width(12.dp))
 
                                 Column(modifier = Modifier.weight(1f)) {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
+                                    Surface(
+                                        shape = RoundedCornerShape(6.dp),
+                                        color = item.iconTint.copy(alpha = 0.15f)
                                     ) {
                                         Text(
-                                            item.title,
-                                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold)
+                                            item.tag,
+                                            style = MaterialTheme.typography.labelSmall.copy(
+                                                fontWeight = FontWeight.Bold,
+                                                color = item.iconTint,
+                                                fontSize = 10.sp
+                                            ),
+                                            maxLines = 1,
+                                            softWrap = false,
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                                         )
-                                        Surface(
-                                            shape = RoundedCornerShape(6.dp),
-                                            color = item.iconTint.copy(alpha = 0.15f)
-                                        ) {
-                                            Text(
-                                                item.tag,
-                                                style = MaterialTheme.typography.labelSmall.copy(
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = item.iconTint,
-                                                    fontSize = 10.sp
-                                                ),
-                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                            )
-                                        }
                                     }
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        item.title,
+                                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold)
+                                    )
                                     Spacer(modifier = Modifier.height(4.dp))
                                     Text(
                                         item.description,
