@@ -27,6 +27,42 @@ object VersionChangelogProvider {
 
     private val releases = listOf(
         VersionRelease(
+            versionName = "2.1.98",
+            versionCode = 101,
+            releaseDate = "September 2026",
+            highlights = "100% System-Wide Google Material 3 UI/UX: Full M3 Typography, Surface Container Elevation Tokens, Floating Pill Search Bar, Real Thumbnail Strips & Rounded Components",
+            entries = listOf(
+                ChangelogEntry(
+                    Icons.Default.Palette,
+                    TelegramBlue,
+                    "System-Wide Material 3 Theming",
+                    "Complete adoption of Google Material 3 surface container elevation tokens (surfaceContainerLowest to Highest), refined M3 typography scale, and authentic tonal color schemes.",
+                    "NEW"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Search,
+                    TelegramEmerald,
+                    "Google Files Floating Search Bar",
+                    "Authentic floating M3 SearchBar pill on Clean and Browse tabs with drawer access, real-time cloud sync status pill, and avatar integration.",
+                    "DESIGN"
+                ),
+                ChangelogEntry(
+                    Icons.Default.CleaningServices,
+                    Color(0xFFF59E0B),
+                    "Material 3 Clean Cards & Visual Previews",
+                    "Storage gauge card with 24dp corners, thumbnail preview strips for Junk, Backed Up Media, Duplicates, and Large Files, with M3 CircleShape pill action buttons.",
+                    "FEATURE"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Navigation,
+                    TelegramBlue,
+                    "Refined Navigation & Sheets",
+                    "M3 bottom NavigationBar with secondaryContainer pill active indicators, 28dp rounded ModalBottomSheets, and unified drawer styling across all themes.",
+                    "UX"
+                )
+            )
+        ),
+        VersionRelease(
             versionName = "2.1.97",
             versionCode = 100,
             releaseDate = "September 2026",

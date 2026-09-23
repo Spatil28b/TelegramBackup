@@ -18,6 +18,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -35,10 +36,10 @@ import com.example.telegrambackup.data.AppDatabase
 import com.example.telegrambackup.data.UploadedFile
 import com.example.telegrambackup.theme.TelegramBlue
 import com.example.telegrambackup.theme.TelegramEmerald
+import com.example.telegrambackup.ui.common.FileThumbnailView
 import com.example.telegrambackup.ui.explorer.DuplicateCleanerDialog
 import com.example.telegrambackup.ui.explorer.formatFileSize
 import com.example.telegrambackup.ui.settings.FreeUpSpaceDialog
-import com.example.telegrambackup.ui.settings.spotiGroupCardColor
 import com.example.telegrambackup.utils.DeviceStorageInfo
 import com.example.telegrambackup.utils.StorageCategoryUsage
 import com.example.telegrambackup.utils.StorageStatsHelper
@@ -202,7 +203,7 @@ fun DashboardHomeScreen(
         item {
             Surface(
                 shape = RoundedCornerShape(24.dp),
-                color = spotiGroupCardColor(),
+                color = MaterialTheme.colorScheme.surfaceContainerLow,
                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
                 modifier = Modifier.fillMaxWidth()
             ) {
@@ -238,13 +239,13 @@ fun DashboardHomeScreen(
                         }
 
                         Surface(
-                            shape = RoundedCornerShape(10.dp),
+                            shape = CircleShape,
                             color = TelegramBlue.copy(alpha = 0.12f)
                         ) {
                             Text(
                                 text = "${(storageInfo.usedPercentage * 100).toInt()}% Used",
                                 style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, color = TelegramBlue),
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
                             )
                         }
                     }
@@ -331,13 +332,13 @@ fun DashboardHomeScreen(
                             )
                         }
                         Surface(
-                            shape = RoundedCornerShape(8.dp),
+                            shape = CircleShape,
                             color = TelegramEmerald.copy(alpha = 0.12f)
                         ) {
                             Text(
                                 "∞ Unlimited (${formatFileSize(totalCloudBytes)})",
                                 style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, color = TelegramEmerald),
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
                             )
                         }
                     }
@@ -371,6 +372,16 @@ fun DashboardHomeScreen(
                 actionColor = Color(0xFFF59E0B),
                 isCompleted = isJunkCleaned,
                 isLoading = isJunkCleaning,
+                previewContent = {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        JunkTypeChip(Icons.Default.Cached, "Cache", Color(0xFFF59E0B), Modifier.weight(1f))
+                        JunkTypeChip(Icons.AutoMirrored.Filled.Article, "Logs", Color(0xFF3B82F6), Modifier.weight(1f))
+                        JunkTypeChip(Icons.Default.FolderOpen, "Temp", Color(0xFF10B981), Modifier.weight(1f))
+                    }
+                },
                 onClick = {
                     if (!isJunkCleaned && !isJunkCleaning) {
                         scope.launch {
@@ -398,6 +409,63 @@ fun DashboardHomeScreen(
                 subtitle = "Files already safely backed up to Telegram Cloud can be removed from phone",
                 actionLabel = if (localBackedUpFiles.isNotEmpty()) "Free up ${formatFileSize(localBackedUpBytes)}" else "Free up space",
                 actionColor = TelegramEmerald,
+                previewContent = if (localBackedUpFiles.isNotEmpty()) {
+                    {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            val previewItems = localBackedUpFiles.take(4)
+                            previewItems.forEachIndexed { index, file ->
+                                Box(
+                                    modifier = Modifier
+                                        .size(62.dp)
+                                        .clip(RoundedCornerShape(14.dp))
+                                        .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                                ) {
+                                    FileThumbnailView(
+                                        fileName = file.fileName,
+                                        filePath = file.path,
+                                        telegramFileId = file.telegramFileId,
+                                        iconSize = 36.dp,
+                                        shape = RoundedCornerShape(14.dp),
+                                        modifier = Modifier.fillMaxSize()
+                                    )
+                                    Box(
+                                        modifier = Modifier
+                                            .align(Alignment.BottomEnd)
+                                            .padding(3.dp)
+                                            .size(16.dp)
+                                            .clip(CircleShape)
+                                            .background(Color.White),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.CheckCircle,
+                                            contentDescription = null,
+                                            tint = TelegramEmerald,
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                    }
+                                    if (index == 3 && localBackedUpFiles.size > 4) {
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .background(Color.Black.copy(alpha = 0.55f)),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(
+                                                "+${localBackedUpFiles.size - 3}",
+                                                color = Color.White,
+                                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } else null,
                 onClick = {
                     showFreeUpSpaceDialog = true
                 }
@@ -415,6 +483,45 @@ fun DashboardHomeScreen(
                 subtitle = "Find and delete duplicate photos, videos & downloads",
                 actionLabel = "Review duplicates",
                 actionColor = Color(0xFF6366F1),
+                previewContent = {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Surface(
+                            shape = RoundedCornerShape(14.dp),
+                            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            modifier = Modifier.size(60.dp)
+                        ) {
+                            Column(
+                                modifier = Modifier.fillMaxSize(),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Center
+                            ) {
+                                Icon(Icons.Default.Image, contentDescription = null, tint = Color(0xFF6366F1), modifier = Modifier.size(24.dp))
+                                Text("Original", style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp, fontWeight = FontWeight.SemiBold), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Icon(Icons.AutoMirrored.Filled.CompareArrows, contentDescription = null, tint = Color(0xFF6366F1), modifier = Modifier.size(22.dp))
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Surface(
+                            shape = RoundedCornerShape(14.dp),
+                            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            modifier = Modifier.size(60.dp)
+                        ) {
+                            Column(
+                                modifier = Modifier.fillMaxSize(),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Center
+                            ) {
+                                Icon(Icons.Default.Image, contentDescription = null, tint = Color(0xFF6366F1), modifier = Modifier.size(24.dp))
+                                Text("Duplicate", style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp, fontWeight = FontWeight.SemiBold), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                    }
+                },
                 onClick = {
                     showDuplicateCleanerDialog = true
                 }
@@ -432,6 +539,45 @@ fun DashboardHomeScreen(
                 subtitle = if (largeFiles.isNotEmpty()) "${largeFiles.size} files larger than 25 MB taking ${formatFileSize(largeFilesBytes)}" else "Files larger than 25 MB",
                 actionLabel = "Select & free up",
                 actionColor = Color(0xFF8B5CF6),
+                previewContent = if (largeFiles.isNotEmpty()) {
+                    {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            val previewItems = largeFiles.take(4)
+                            previewItems.forEach { file ->
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    modifier = Modifier.width(62.dp)
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(60.dp)
+                                            .clip(RoundedCornerShape(14.dp))
+                                            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                                    ) {
+                                        FileThumbnailView(
+                                            fileName = file.fileName,
+                                            filePath = file.path,
+                                            telegramFileId = file.telegramFileId,
+                                            iconSize = 34.dp,
+                                            shape = RoundedCornerShape(14.dp),
+                                            modifier = Modifier.fillMaxSize()
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        formatFileSize(file.size),
+                                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, fontWeight = FontWeight.Bold),
+                                        color = Color(0xFF8B5CF6),
+                                        maxLines = 1
+                                    )
+                                }
+                            }
+                        }
+                    }
+                } else null,
                 onClick = {
                     onViewAllClick()
                 }
@@ -453,6 +599,25 @@ fun DashboardHomeScreen(
                     onQuickActionClick(-1) // Signal to navigate to Trash
                 }
             )
+        }
+    }
+}
+
+@Composable
+private fun JunkTypeChip(icon: ImageVector, label: String, tint: Color, modifier: Modifier = Modifier) {
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        modifier = modifier
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center
+        ) {
+            Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(16.dp))
+            Spacer(modifier = Modifier.width(4.dp))
+            Text(label, style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold, fontSize = 11.sp), color = MaterialTheme.colorScheme.onSurface, maxLines = 1)
         }
     }
 }
@@ -488,11 +653,12 @@ private fun GoogleCleanCard(
     actionColor: Color,
     isCompleted: Boolean = false,
     isLoading: Boolean = false,
+    previewContent: (@Composable () -> Unit)? = null,
     onClick: () -> Unit
 ) {
     Surface(
-        shape = RoundedCornerShape(20.dp),
-        color = spotiGroupCardColor(),
+        shape = RoundedCornerShape(24.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
         modifier = Modifier.fillMaxWidth()
     ) {
@@ -500,8 +666,8 @@ private fun GoogleCleanCard(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(
                     modifier = Modifier
-                        .size(46.dp)
-                        .clip(RoundedCornerShape(14.dp))
+                        .size(48.dp)
+                        .clip(RoundedCornerShape(16.dp))
                         .background(iconTint.copy(alpha = 0.12f)),
                     contentAlignment = Alignment.Center
                 ) {
@@ -528,7 +694,7 @@ private fun GoogleCleanCard(
                     Text(
                         text = subtitle,
                         style = MaterialTheme.typography.bodySmall.copy(
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             fontSize = 12.5.sp,
                             lineHeight = 16.sp
                         )
@@ -536,7 +702,12 @@ private fun GoogleCleanCard(
                 }
             }
 
-            Spacer(modifier = Modifier.height(14.dp))
+            if (previewContent != null) {
+                Spacer(modifier = Modifier.height(14.dp))
+                previewContent()
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
 
             Button(
                 onClick = onClick,
@@ -545,7 +716,7 @@ private fun GoogleCleanCard(
                     containerColor = actionColor,
                     disabledContainerColor = if (isCompleted) TelegramEmerald.copy(alpha = 0.15f) else actionColor.copy(alpha = 0.4f)
                 ),
-                shape = RoundedCornerShape(12.dp),
+                shape = CircleShape,
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(44.dp)
@@ -557,13 +728,21 @@ private fun GoogleCleanCard(
                         strokeWidth = 2.dp
                     )
                     Spacer(modifier = Modifier.width(8.dp))
+                } else if (isCompleted) {
+                    Icon(
+                        imageVector = Icons.Default.Check,
+                        contentDescription = null,
+                        tint = TelegramEmerald,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
                 }
                 Text(
                     text = actionLabel,
-                    style = MaterialTheme.typography.labelMedium.copy(
+                    style = MaterialTheme.typography.labelLarge.copy(
                         fontWeight = FontWeight.Bold,
                         color = if (isCompleted) TelegramEmerald else Color.White,
-                        fontSize = 13.5.sp
+                        fontSize = 14.sp
                     )
                 )
             }

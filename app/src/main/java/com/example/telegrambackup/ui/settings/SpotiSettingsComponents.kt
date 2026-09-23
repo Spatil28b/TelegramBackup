@@ -24,34 +24,17 @@ import com.example.telegrambackup.theme.TelegramBlue
 import com.example.telegrambackup.theme.TelegramEmerald
 
 /**
- * Computes SpotiFLAC-style card background fill:
- * Subtle translucent elevation blended onto theme surface for AMOLED, dark, and light modes.
+ * Computes Google Material 3 surface elevation token for card backgrounds:
+ * surfaceContainerLow adapts dynamically across Light, Dark, and AMOLED themes.
  */
 @Composable
 fun spotiGroupCardColor(): Color {
-    val isDark = isSystemInDarkTheme()
-    val surface = MaterialTheme.colorScheme.surface
-    return if (isDark) {
-        // High-contrast clean dark card background
-        Color(
-            red = (surface.red * 0.92f + 0.08f).coerceIn(0f, 1f),
-            green = (surface.green * 0.92f + 0.08f).coerceIn(0f, 1f),
-            blue = (surface.blue * 0.92f + 0.08f).coerceIn(0f, 1f),
-            alpha = 1f
-        )
-    } else {
-        Color(
-            red = (surface.red * 0.96f).coerceIn(0f, 1f),
-            green = (surface.green * 0.96f).coerceIn(0f, 1f),
-            blue = (surface.blue * 0.96f).coerceIn(0f, 1f),
-            alpha = 1f
-        )
-    }
+    return MaterialTheme.colorScheme.surfaceContainerLow
 }
 
 /**
- * SpotiFLAC Settings Group Card Container
- * Encloses related settings in a unified, beautifully rounded, subtle-bordered card.
+ * Settings Group Card Container
+ * Encloses related settings in a unified, beautifully rounded Material 3 surfaceContainerLow card.
  */
 @Composable
 fun SpotiSettingsGroup(
@@ -62,7 +45,7 @@ fun SpotiSettingsGroup(
     Surface(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(20.dp),
-        color = spotiGroupCardColor(),
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
         border = BorderStroke(1.dp, borderColor)
     ) {
         Column(
@@ -318,7 +301,7 @@ fun SpotiChoiceChip(
     }
 
     Surface(
-        shape = RoundedCornerShape(12.dp),
+        shape = CircleShape,
         color = containerColor,
         border = if (isSelected) {
             BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f))
@@ -436,8 +419,8 @@ fun SpotiSearchField(
     placeholder: String = "Search settings, rules, features..."
 ) {
     Surface(
-        shape = RoundedCornerShape(26.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.40f),
+        shape = CircleShape,
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.30f)),
         modifier = modifier.fillMaxWidth()
     ) {

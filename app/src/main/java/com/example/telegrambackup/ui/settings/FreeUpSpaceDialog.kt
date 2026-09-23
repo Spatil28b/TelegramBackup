@@ -63,7 +63,7 @@ fun FreeUpSpaceDialog(
 
     ModalBottomSheet(
         onDismissRequest = { if (!isCleaning) onDismiss() },
-        containerColor = MaterialTheme.colorScheme.surface,
+        containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
         shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
     ) {
         Column(
@@ -151,18 +151,18 @@ fun FreeUpSpaceDialog(
                 Spacer(modifier = Modifier.height(24.dp))
                 Button(
                     onClick = onDismiss,
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier.fillMaxWidth().height(44.dp),
+                    shape = CircleShape,
                     colors = ButtonDefaults.buttonColors(containerColor = TelegramEmerald)
                 ) {
-                    Text("Done")
+                    Text("Done", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold))
                 }
             } else {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(16.dp),
+                    shape = RoundedCornerShape(20.dp),
                     colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
                     )
                 ) {
                     Column(
@@ -237,17 +237,17 @@ fun FreeUpSpaceDialog(
                     OutlinedButton(
                         onClick = onDismiss,
                         enabled = !isCleaning,
-                        modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(14.dp)
+                        modifier = Modifier.weight(1f).height(44.dp),
+                        shape = CircleShape
                     ) {
-                        Text("Cancel")
+                        Text("Cancel", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold))
                     }
 
                     Button(
                         onClick = { startCleaning() },
                         enabled = !isCleaning && report.files.isNotEmpty(),
-                        modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier.weight(1f).height(44.dp),
+                        shape = CircleShape,
                         colors = ButtonDefaults.buttonColors(containerColor = TelegramEmerald)
                     ) {
                         if (isCleaning) {
@@ -261,7 +261,7 @@ fun FreeUpSpaceDialog(
                         } else {
                             Icon(imageVector = Icons.Default.DeleteSweep, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("Free Up (${report.formattedTotal()})")
+                            Text("Free Up (${report.formattedTotal()})", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold))
                         }
                     }
                 }

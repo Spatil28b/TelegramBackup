@@ -24,6 +24,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.*
@@ -319,6 +320,8 @@ fun MainApp(
         } else if (isSearchActive) {
             isSearchActive = false
             topSearchQuery = ""
+        } else if (targetCategoryTitle != null) {
+            targetCategoryTitle = null
         } else if (selectedTab != MainTab.HOME) {
             targetCategoryTitle = null
             selectedTab = MainTab.HOME
@@ -494,8 +497,8 @@ fun MainApp(
             drawerState = drawerState,
             drawerContent = {
                 ModalDrawerSheet(
-                    drawerContainerColor = Color(0xFF0F172A),
-                    modifier = Modifier.width(300.dp)
+                    drawerContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                    modifier = Modifier.width(320.dp)
                 ) {
                     Spacer(modifier = Modifier.height(24.dp))
 
@@ -504,7 +507,7 @@ fun MainApp(
                             .fillMaxWidth()
                             .padding(horizontal = 16.dp, vertical = 8.dp)
                             .clip(RoundedCornerShape(16.dp))
-                            .background(Color.White.copy(alpha = 0.06f))
+                            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
                             .clickable {
                                 triggerHapticFeedback(context, haptic)
                                 selectedTab = MainTab.PROFILE
@@ -539,21 +542,21 @@ fun MainApp(
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
                                 displayUserName,
-                                style = MaterialTheme.typography.bodyMedium.copy(color = Color.White, fontWeight = FontWeight.Bold),
+                                style = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Bold),
                                 maxLines = 1,
                                 overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                             )
                             Text(
                                 userEmail,
-                                style = MaterialTheme.typography.labelSmall.copy(color = Color.White.copy(alpha = 0.6f)),
+                                style = MaterialTheme.typography.labelSmall.copy(color = MaterialTheme.colorScheme.onSurfaceVariant),
                                 maxLines = 1,
                                 overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                             )
                         }
-                        Icon(Icons.Default.ChevronRight, contentDescription = null, tint = Color.White.copy(alpha = 0.5f), modifier = Modifier.size(16.dp))
+                        Icon(Icons.Default.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(16.dp))
                     }
 
-                    HorizontalDivider(modifier = Modifier.padding(vertical = 10.dp), color = Color.White.copy(alpha = 0.1f))
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 10.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
 
                     Column(
                         modifier = Modifier
@@ -562,11 +565,20 @@ fun MainApp(
                         verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
                         // Section: CORE
-                        Text("CORE", style = MaterialTheme.typography.labelSmall.copy(color = Color.White.copy(alpha = 0.5f), fontWeight = FontWeight.Bold), modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
+                        Text("CORE", style = MaterialTheme.typography.labelSmall.copy(color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold, letterSpacing = 1.1.sp), modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
+
+                        val drawerItemColors = NavigationDrawerItemDefaults.colors(
+                            selectedContainerColor = MaterialTheme.colorScheme.secondaryContainer,
+                            selectedIconColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                            selectedTextColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                            unselectedContainerColor = Color.Transparent,
+                            unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                            unselectedTextColor = MaterialTheme.colorScheme.onSurface
+                        )
 
                         NavigationDrawerItem(
-                            icon = { Icon(Icons.Default.CleaningServices, contentDescription = null, tint = Color.White) },
-                            label = { Text("Clean (Storage)", color = Color.White, fontWeight = FontWeight.Medium) },
+                            icon = { Icon(Icons.Default.CleaningServices, contentDescription = null) },
+                            label = { Text("Clean (Storage)", fontWeight = FontWeight.Medium) },
                             selected = selectedTab == MainTab.HOME,
                             onClick = {
                                 triggerHapticFeedback(context, haptic)
@@ -574,12 +586,13 @@ fun MainApp(
                                 selectedTab = MainTab.HOME
                                 scope.launch { drawerState.close() }
                             },
-                            colors = NavigationDrawerItemDefaults.colors(unselectedContainerColor = Color.Transparent, selectedContainerColor = Color.White.copy(alpha = 0.15f))
+                            shape = CircleShape,
+                            colors = drawerItemColors
                         )
 
                         NavigationDrawerItem(
-                            icon = { Icon(Icons.Default.Folder, contentDescription = null, tint = Color.White) },
-                            label = { Text("Browse (Files)", color = Color.White, fontWeight = FontWeight.Medium) },
+                            icon = { Icon(Icons.Default.Folder, contentDescription = null) },
+                            label = { Text("Browse (Files)", fontWeight = FontWeight.Medium) },
                             selected = selectedTab == MainTab.FILES,
                             onClick = {
                                 triggerHapticFeedback(context, haptic)
@@ -587,143 +600,154 @@ fun MainApp(
                                 selectedTab = MainTab.FILES
                                 scope.launch { drawerState.close() }
                             },
-                            colors = NavigationDrawerItemDefaults.colors(unselectedContainerColor = Color.Transparent, selectedContainerColor = Color.White.copy(alpha = 0.15f))
+                            shape = CircleShape,
+                            colors = drawerItemColors
                         )
 
                         NavigationDrawerItem(
-                            icon = { Icon(Icons.Default.CloudQueue, contentDescription = null, tint = Color.White) },
-                            label = { Text("Cloud Drive", color = Color.White, fontWeight = FontWeight.Medium) },
+                            icon = { Icon(Icons.Default.CloudQueue, contentDescription = null) },
+                            label = { Text("Cloud Drive", fontWeight = FontWeight.Medium) },
                             selected = selectedTab == MainTab.DRIVE,
                             onClick = {
                                 triggerHapticFeedback(context, haptic)
                                 selectedTab = MainTab.DRIVE
                                 scope.launch { drawerState.close() }
                             },
-                            colors = NavigationDrawerItemDefaults.colors(unselectedContainerColor = Color.Transparent, selectedContainerColor = Color.White.copy(alpha = 0.15f))
+                            shape = CircleShape,
+                            colors = drawerItemColors
                         )
 
                         NavigationDrawerItem(
-                            icon = { Icon(Icons.Default.CalendarMonth, contentDescription = null, tint = Color.White) },
-                            label = { Text("Monthly Backup", color = Color.White, fontWeight = FontWeight.Medium) },
+                            icon = { Icon(Icons.Default.CalendarMonth, contentDescription = null) },
+                            label = { Text("Monthly Backup", fontWeight = FontWeight.Medium) },
                             selected = selectedTab == MainTab.MONTHLY_ARCHIVE,
                             onClick = {
                                 triggerHapticFeedback(context, haptic)
                                 selectedTab = MainTab.MONTHLY_ARCHIVE
                                 scope.launch { drawerState.close() }
                             },
-                            colors = NavigationDrawerItemDefaults.colors(unselectedContainerColor = Color.Transparent, selectedContainerColor = Color.White.copy(alpha = 0.15f))
+                            shape = CircleShape,
+                            colors = drawerItemColors
                         )
 
                         NavigationDrawerItem(
-                            icon = { Icon(Icons.Default.Smartphone, contentDescription = null, tint = Color.White) },
-                            label = { Text("Local Storage", color = Color.White, fontWeight = FontWeight.Medium) },
+                            icon = { Icon(Icons.Default.Smartphone, contentDescription = null) },
+                            label = { Text("Local Storage", fontWeight = FontWeight.Medium) },
                             selected = selectedTab == MainTab.LOCAL,
                             onClick = {
                                 triggerHapticFeedback(context, haptic)
                                 selectedTab = MainTab.LOCAL
                                 scope.launch { drawerState.close() }
                             },
-                            colors = NavigationDrawerItemDefaults.colors(unselectedContainerColor = Color.Transparent, selectedContainerColor = Color.White.copy(alpha = 0.15f))
+                            shape = CircleShape,
+                            colors = drawerItemColors
                         )
 
                         Spacer(modifier = Modifier.height(8.dp))
-                        HorizontalDivider(color = Color.White.copy(alpha = 0.08f), modifier = Modifier.padding(horizontal = 12.dp))
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f), modifier = Modifier.padding(horizontal = 12.dp))
                         Spacer(modifier = Modifier.height(4.dp))
 
                         // Section: BACKUP & TOOLS
-                        Text("TOOLS & SYNC", style = MaterialTheme.typography.labelSmall.copy(color = Color.White.copy(alpha = 0.5f), fontWeight = FontWeight.Bold), modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
+                        Text("TOOLS & SYNC", style = MaterialTheme.typography.labelSmall.copy(color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold, letterSpacing = 1.1.sp), modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
 
                         NavigationDrawerItem(
-                            icon = { Icon(Icons.Default.HourglassTop, contentDescription = null, tint = Color.White) },
-                            label = { Text("Upload Progress", color = Color.White, fontWeight = FontWeight.Medium) },
+                            icon = { Icon(Icons.Default.HourglassTop, contentDescription = null) },
+                            label = { Text("Upload Progress", fontWeight = FontWeight.Medium) },
                             selected = selectedTab == MainTab.PROGRESS,
                             onClick = {
                                 triggerHapticFeedback(context, haptic)
                                 selectedTab = MainTab.PROGRESS
                                 scope.launch { drawerState.close() }
                             },
-                            colors = NavigationDrawerItemDefaults.colors(unselectedContainerColor = Color.Transparent, selectedContainerColor = Color.White.copy(alpha = 0.15f))
+                            shape = CircleShape,
+                            colors = drawerItemColors
                         )
 
                         NavigationDrawerItem(
-                            icon = { Icon(Icons.Default.DeleteSweep, contentDescription = null, tint = Color.White) },
-                            label = { Text("Trash Bin", color = Color.White, fontWeight = FontWeight.Medium) },
+                            icon = { Icon(Icons.Default.DeleteSweep, contentDescription = null) },
+                            label = { Text("Trash Bin", fontWeight = FontWeight.Medium) },
                             selected = selectedTab == MainTab.TRASH,
                             onClick = {
                                 triggerHapticFeedback(context, haptic)
                                 selectedTab = MainTab.TRASH
                                 scope.launch { drawerState.close() }
                             },
-                            colors = NavigationDrawerItemDefaults.colors(unselectedContainerColor = Color.Transparent, selectedContainerColor = Color.White.copy(alpha = 0.15f))
+                            shape = CircleShape,
+                            colors = drawerItemColors
                         )
 
                         NavigationDrawerItem(
-                            icon = { Icon(Icons.Default.Block, contentDescription = null, tint = Color.White) },
-                            label = { Text("Backup Exceptions", color = Color.White, fontWeight = FontWeight.Medium) },
+                            icon = { Icon(Icons.Default.Block, contentDescription = null) },
+                            label = { Text("Backup Exceptions", fontWeight = FontWeight.Medium) },
                             selected = selectedTab == MainTab.EXCEPTIONS,
                             onClick = {
                                 triggerHapticFeedback(context, haptic)
                                 selectedTab = MainTab.EXCEPTIONS
                                 scope.launch { drawerState.close() }
                             },
-                            colors = NavigationDrawerItemDefaults.colors(unselectedContainerColor = Color.Transparent, selectedContainerColor = Color.White.copy(alpha = 0.15f))
+                            shape = CircleShape,
+                            colors = drawerItemColors
                         )
 
                         NavigationDrawerItem(
-                            icon = { Icon(Icons.Default.Notifications, contentDescription = null, tint = Color.White) },
-                            label = { Text("Activity Log", color = Color.White, fontWeight = FontWeight.Medium) },
+                            icon = { Icon(Icons.Default.Notifications, contentDescription = null) },
+                            label = { Text("Activity Log", fontWeight = FontWeight.Medium) },
                             selected = selectedTab == MainTab.ACTIVITY,
                             onClick = {
                                 triggerHapticFeedback(context, haptic)
                                 selectedTab = MainTab.ACTIVITY
                                 scope.launch { drawerState.close() }
                             },
-                            colors = NavigationDrawerItemDefaults.colors(unselectedContainerColor = Color.Transparent, selectedContainerColor = Color.White.copy(alpha = 0.15f))
+                            shape = CircleShape,
+                            colors = drawerItemColors
                         )
 
                         Spacer(modifier = Modifier.height(8.dp))
-                        HorizontalDivider(color = Color.White.copy(alpha = 0.08f), modifier = Modifier.padding(horizontal = 12.dp))
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f), modifier = Modifier.padding(horizontal = 12.dp))
                         Spacer(modifier = Modifier.height(4.dp))
 
                         // Section: SYSTEM
-                        Text("SYSTEM", style = MaterialTheme.typography.labelSmall.copy(color = Color.White.copy(alpha = 0.5f), fontWeight = FontWeight.Bold), modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
+                        Text("SYSTEM", style = MaterialTheme.typography.labelSmall.copy(color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold, letterSpacing = 1.1.sp), modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
 
                         NavigationDrawerItem(
-                            icon = { Icon(Icons.AutoMirrored.Filled.MenuBook, contentDescription = null, tint = Color.White) },
-                            label = { Text("Setup Guide", color = Color.White, fontWeight = FontWeight.Medium) },
+                            icon = { Icon(Icons.AutoMirrored.Filled.MenuBook, contentDescription = null) },
+                            label = { Text("Setup Guide", fontWeight = FontWeight.Medium) },
                             selected = selectedTab == MainTab.GUIDE,
                             onClick = {
                                 triggerHapticFeedback(context, haptic)
                                 selectedTab = MainTab.GUIDE
                                 scope.launch { drawerState.close() }
                             },
-                            colors = NavigationDrawerItemDefaults.colors(unselectedContainerColor = Color.Transparent, selectedContainerColor = Color.White.copy(alpha = 0.15f))
+                            shape = CircleShape,
+                            colors = drawerItemColors
                         )
 
                         NavigationDrawerItem(
-                            icon = { Icon(Icons.Default.Settings, contentDescription = null, tint = Color.White) },
-                            label = { Text("Settings", color = Color.White, fontWeight = FontWeight.Medium) },
+                            icon = { Icon(Icons.Default.Settings, contentDescription = null) },
+                            label = { Text("Settings", fontWeight = FontWeight.Medium) },
                             selected = selectedTab == MainTab.SETTINGS,
                             onClick = {
                                 triggerHapticFeedback(context, haptic)
                                 selectedTab = MainTab.SETTINGS
                                 scope.launch { drawerState.close() }
                             },
-                            colors = NavigationDrawerItemDefaults.colors(unselectedContainerColor = Color.Transparent, selectedContainerColor = Color.White.copy(alpha = 0.15f))
+                            shape = CircleShape,
+                            colors = drawerItemColors
                         )
                     }
 
-                    HorizontalDivider(color = Color.White.copy(alpha = 0.1f), modifier = Modifier.padding(vertical = 8.dp))
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f), modifier = Modifier.padding(vertical = 8.dp))
 
                     NavigationDrawerItem(
-                        icon = { Icon(Icons.AutoMirrored.Filled.ExitToApp, contentDescription = null, tint = Color(0xFFEF4444)) },
-                        label = { Text("Log Out", color = Color(0xFFEF4444)) },
+                        icon = { Icon(Icons.AutoMirrored.Filled.ExitToApp, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
+                        label = { Text("Log Out", color = MaterialTheme.colorScheme.error) },
                         selected = false,
                         onClick = {
                             triggerHapticFeedback(context, haptic)
                             scope.launch { drawerState.close() }
                             authRepository.logout()
                         },
+                        shape = CircleShape,
                         colors = NavigationDrawerItemDefaults.colors(unselectedContainerColor = Color.Transparent)
                     )
 
@@ -733,130 +757,178 @@ fun MainApp(
         ) {
             Scaffold(
                 topBar = {
-                    CenterAlignedTopAppBar(
-                        title = {
-                            if (isSearchActive) {
-                                Surface(
-                                    shape = RoundedCornerShape(24.dp),
-                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.85f),
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(42.dp)
-                                ) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        modifier = Modifier
-                                            .fillMaxSize()
-                                            .padding(horizontal = 12.dp)
-                                    ) {
+                    val isCleanOrBrowseRoot = (selectedTab == MainTab.HOME || selectedTab == MainTab.FILES) && targetCategoryTitle == null
+
+                    if (isCleanOrBrowseRoot) {
+                        Surface(
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            shadowElevation = 2.dp,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 8.dp)
+                                .statusBarsPadding()
+                                .height(52.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(horizontal = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                if (isSearchActive) {
+                                    IconButton(onClick = {
+                                        triggerHapticFeedback(context, haptic)
+                                        isSearchActive = false
+                                        topSearchQuery = ""
+                                    }) {
                                         Icon(
-                                            Icons.Default.Search,
-                                            contentDescription = null,
-                                            tint = TelegramBlue,
-                                            modifier = Modifier.size(18.dp)
+                                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                            contentDescription = "Back",
+                                            tint = MaterialTheme.colorScheme.onSurface
                                         )
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        androidx.compose.foundation.text.BasicTextField(
-                                            value = topSearchQuery,
-                                            onValueChange = { topSearchQuery = it },
-                                            singleLine = true,
-                                            textStyle = MaterialTheme.typography.bodyMedium.copy(
-                                                color = MaterialTheme.colorScheme.onSurface,
-                                                fontSize = 14.sp
-                                            ),
-                                            cursorBrush = androidx.compose.ui.graphics.SolidColor(TelegramBlue),
-                                            modifier = Modifier.weight(1f),
-                                            decorationBox = { innerTextField ->
-                                                Box(contentAlignment = Alignment.CenterStart) {
-                                                    if (topSearchQuery.isEmpty()) {
-                                                        Text(
-                                                            "Search files by name, size, type...",
-                                                            style = MaterialTheme.typography.bodyMedium.copy(
-                                                                color = MaterialTheme.colorScheme.outline,
-                                                                fontSize = 14.sp
-                                                            )
+                                    }
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    androidx.compose.foundation.text.BasicTextField(
+                                        value = topSearchQuery,
+                                        onValueChange = { topSearchQuery = it },
+                                        singleLine = true,
+                                        textStyle = MaterialTheme.typography.bodyLarge.copy(
+                                            color = MaterialTheme.colorScheme.onSurface,
+                                            fontSize = 15.sp
+                                        ),
+                                        cursorBrush = androidx.compose.ui.graphics.SolidColor(MaterialTheme.colorScheme.primary),
+                                        modifier = Modifier.weight(1f),
+                                        decorationBox = { innerTextField ->
+                                            Box(contentAlignment = Alignment.CenterStart) {
+                                                if (topSearchQuery.isEmpty()) {
+                                                    Text(
+                                                        "Search in Files...",
+                                                        style = MaterialTheme.typography.bodyLarge.copy(
+                                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                                            fontSize = 15.sp
                                                         )
-                                                    }
-                                                    innerTextField()
+                                                    )
+                                                }
+                                                innerTextField()
+                                            }
+                                        }
+                                    )
+                                    if (topSearchQuery.isNotEmpty()) {
+                                        IconButton(onClick = { topSearchQuery = "" }) {
+                                            Icon(Icons.Default.Close, contentDescription = "Clear", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
+                                        }
+                                    }
+                                } else {
+                                    IconButton(onClick = {
+                                        triggerHapticFeedback(context, haptic)
+                                        scope.launch { drawerState.open() }
+                                    }) {
+                                        Icon(Icons.Default.Menu, contentDescription = "Open Navigation Menu", tint = MaterialTheme.colorScheme.onSurface)
+                                    }
+
+                                    Box(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .fillMaxHeight()
+                                            .clickable {
+                                                triggerHapticFeedback(context, haptic)
+                                                isSearchActive = true
+                                                if (selectedTab != MainTab.FILES) {
+                                                    selectedTab = MainTab.FILES
                                                 }
                                             }
+                                            .padding(horizontal = 8.dp),
+                                        contentAlignment = Alignment.CenterStart
+                                    ) {
+                                        Text(
+                                            text = "Search in Files",
+                                            style = MaterialTheme.typography.bodyLarge.copy(
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
+                                                fontSize = 15.sp
+                                            )
                                         )
-                                        if (topSearchQuery.isNotEmpty()) {
-                                            IconButton(
-                                                onClick = { topSearchQuery = "" },
-                                                modifier = Modifier.size(28.dp)
-                                            ) {
-                                                Icon(Icons.Default.Close, contentDescription = "Clear", modifier = Modifier.size(16.dp))
-                                            }
+                                    }
+
+                                    com.example.telegrambackup.ui.common.SyncStatusPill(
+                                        modifier = Modifier.padding(end = 6.dp),
+                                        onClick = {
+                                            triggerHapticFeedback(context, haptic)
+                                            selectedTab = MainTab.PROGRESS
+                                        }
+                                    )
+
+                                    Box(
+                                        modifier = Modifier
+                                            .size(34.dp)
+                                            .clip(CircleShape)
+                                            .background(TelegramBlue.copy(alpha = 0.2f))
+                                            .clickable {
+                                                triggerHapticFeedback(context, haptic)
+                                                selectedTab = MainTab.PROFILE
+                                            },
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        val avatarFile = remember(displayUserAvatarUri) { com.example.telegrambackup.utils.ProfileManager.getAvatarFile(context) }
+                                        if (avatarFile.exists() && avatarFile.length() > 0) {
+                                            coil.compose.AsyncImage(
+                                                model = avatarFile,
+                                                contentDescription = "Profile",
+                                                contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                                                modifier = Modifier.fillMaxSize()
+                                            )
+                                        } else {
+                                            Text(
+                                                text = displayUserName.take(1).uppercase(),
+                                                style = MaterialTheme.typography.titleSmall.copy(
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = MaterialTheme.colorScheme.primary
+                                                )
+                                            )
                                         }
                                     }
                                 }
-                            } else {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier.clickable {
+                            }
+                        }
+                    } else {
+                        TopAppBar(
+                            title = {
+                                Text(
+                                    text = when {
+                                        targetCategoryTitle != null -> targetCategoryTitle ?: "Files"
+                                        selectedTab == MainTab.DRIVE -> "Cloud Drive"
+                                        selectedTab == MainTab.LOCAL -> "Local Storage"
+                                        selectedTab == MainTab.PROGRESS -> "Upload Progress"
+                                        selectedTab == MainTab.MONTHLY_ARCHIVE -> "Monthly Archive"
+                                        selectedTab == MainTab.GUIDE -> "Setup Guide"
+                                        selectedTab == MainTab.TRASH -> "Trash Bin"
+                                        selectedTab == MainTab.EXCEPTIONS -> "Backup Exceptions"
+                                        selectedTab == MainTab.ACTIVITY -> "Activity Log"
+                                        selectedTab == MainTab.SETTINGS -> "Settings"
+                                        selectedTab == MainTab.PROFILE -> "My Profile"
+                                        else -> "Files"
+                                    },
+                                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold)
+                                )
+                            },
+                            navigationIcon = {
+                                if (targetCategoryTitle != null) {
+                                    IconButton(onClick = {
                                         triggerHapticFeedback(context, haptic)
-                                        selectedTab = MainTab.PROFILE
+                                        targetCategoryTitle = null
+                                    }) {
+                                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                                     }
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(32.dp)
-                                            .clip(CircleShape)
-                                            .background(TelegramBlue.copy(alpha = 0.2f)),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Icon(
-                                            imageVector = when (selectedTab) {
-                                                MainTab.HOME -> Icons.Default.CleaningServices
-                                                MainTab.DRIVE -> Icons.Default.CloudQueue
-                                                MainTab.LOCAL -> Icons.Default.Smartphone
-                                                MainTab.PROGRESS -> Icons.Default.HourglassTop
-                                                MainTab.FILES -> Icons.Default.Folder
-                                                MainTab.MONTHLY_ARCHIVE -> Icons.Default.CalendarMonth
-                                                MainTab.GUIDE -> Icons.AutoMirrored.Filled.MenuBook
-                                                MainTab.TRASH -> Icons.Default.DeleteSweep
-                                                MainTab.EXCEPTIONS -> Icons.Default.Block
-                                                MainTab.ACTIVITY -> Icons.Default.Notifications
-                                                MainTab.SETTINGS -> Icons.Default.Settings
-                                                MainTab.PROFILE -> Icons.Default.Person
-                                            },
-                                            contentDescription = "Section Icon",
-                                            tint = TelegramBlue,
-                                            modifier = Modifier.size(18.dp)
-                                        )
+                                } else {
+                                    IconButton(onClick = {
+                                        triggerHapticFeedback(context, haptic)
+                                        scope.launch { drawerState.open() }
+                                    }) {
+                                        Icon(Icons.Default.Menu, contentDescription = "Open Navigation Menu")
                                     }
-                                    Spacer(modifier = Modifier.width(10.dp))
-                                    Text(
-                                        text = when (selectedTab) {
-                                            MainTab.HOME -> "Clean"
-                                            MainTab.FILES -> "Browse"
-                                            MainTab.DRIVE -> "Cloud Drive"
-                                            MainTab.LOCAL -> "Local Unbacked Storage"
-                                            MainTab.PROGRESS -> "Live Upload Progress"
-                                            MainTab.MONTHLY_ARCHIVE -> "Monthly Archive"
-                                            MainTab.GUIDE -> "Complete Setup Guide"
-                                            MainTab.TRASH -> "Trash Bin"
-                                            MainTab.EXCEPTIONS -> "Backup Exceptions"
-                                            MainTab.ACTIVITY -> "Sync Activity"
-                                            MainTab.SETTINGS -> "Settings"
-                                            MainTab.PROFILE -> "My Profile"
-                                        },
-                                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
-                                    )
                                 }
-                            }
-                        },
-                        navigationIcon = {
-                            IconButton(onClick = {
-                                triggerHapticFeedback(context, haptic)
-                                scope.launch { drawerState.open() }
-                            }) {
-                                Icon(Icons.Default.Menu, contentDescription = "Open Navigation Menu")
-                            }
-                        },
-                        actions = {
-                            if (!isSearchActive) {
+                            },
+                            actions = {
                                 com.example.telegrambackup.ui.common.SyncStatusPill(
                                     modifier = Modifier.padding(end = 4.dp),
                                     onClick = {
@@ -864,45 +936,47 @@ fun MainApp(
                                         selectedTab = MainTab.PROGRESS
                                     }
                                 )
-                            }
-                            IconButton(onClick = {
-                                triggerHapticFeedback(context, haptic)
-                                if (isSearchActive) {
-                                    isSearchActive = false
-                                    topSearchQuery = ""
-                                } else {
-                                    isSearchActive = true
-                                    if (selectedTab != MainTab.DRIVE && selectedTab != MainTab.FILES) {
-                                        selectedTab = MainTab.FILES
+                                IconButton(onClick = {
+                                    triggerHapticFeedback(context, haptic)
+                                    if (prefs.botToken.isEmpty() || prefs.chatId.isEmpty()) {
+                                        Toast.makeText(context, "Please configure Bot Token & Chat ID in Settings first!", Toast.LENGTH_LONG).show()
+                                        selectedTab = MainTab.SETTINGS
+                                        return@IconButton
                                     }
+                                    try {
+                                        val workRequest = OneTimeWorkRequestBuilder<BackupWorker>()
+                                            .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
+                                            .build()
+                                        WorkManager.getInstance(context).enqueueUniqueWork("ManualSyncWork", ExistingWorkPolicy.KEEP, workRequest)
+                                        Toast.makeText(context, "Syncing files to Telegram Cloud...", Toast.LENGTH_SHORT).show()
+                                    } catch (e: Exception) {
+                                        Toast.makeText(context, "Sync Error: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+                                    }
+                                }) {
+                                    Icon(Icons.Default.Sync, contentDescription = "Sync Cloud", tint = TelegramBlue)
                                 }
-                            }) {
-                                Icon(if (isSearchActive) Icons.Default.Close else Icons.Default.Search, contentDescription = "Search", tint = MaterialTheme.colorScheme.onSurface)
-                            }
-                            IconButton(onClick = {
-                                triggerHapticFeedback(context, haptic)
-                                if (prefs.botToken.isEmpty() || prefs.chatId.isEmpty()) {
-                                    Toast.makeText(context, "Please configure Bot Token & Chat ID in Settings first!", Toast.LENGTH_LONG).show()
-                                    selectedTab = MainTab.SETTINGS
-                                    return@IconButton
-                                }
-                                try {
-                                    val workRequest = OneTimeWorkRequestBuilder<BackupWorker>()
-                                        .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
-                                        .build()
-                                    WorkManager.getInstance(context).enqueueUniqueWork("ManualSyncWork", ExistingWorkPolicy.KEEP, workRequest)
-                                    Toast.makeText(context, "Syncing files to Telegram Cloud...", Toast.LENGTH_SHORT).show()
-                                } catch (e: Exception) {
-                                    Toast.makeText(context, "Sync Error: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
-                                }
-                            }) {
-                                Icon(Icons.Default.Sync, contentDescription = "Sync Cloud", tint = TelegramBlue)
-                            }
-                        }
-                    )
+                            },
+                            colors = TopAppBarDefaults.topAppBarColors(
+                                containerColor = MaterialTheme.colorScheme.background,
+                                titleContentColor = MaterialTheme.colorScheme.onBackground,
+                                navigationIconContentColor = MaterialTheme.colorScheme.onBackground
+                            )
+                        )
+                    }
                 },
                 bottomBar = {
-                    NavigationBar {
+                    NavigationBar(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainer,
+                        tonalElevation = 3.dp
+                    ) {
+                        val navItemColors = NavigationBarItemDefaults.colors(
+                            indicatorColor = MaterialTheme.colorScheme.secondaryContainer,
+                            selectedIconColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                            selectedTextColor = MaterialTheme.colorScheme.onSurface,
+                            unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                            unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+
                         NavigationBarItem(
                             selected = selectedTab == MainTab.HOME,
                             onClick = {
@@ -911,7 +985,8 @@ fun MainApp(
                                 selectedTab = MainTab.HOME
                             },
                             icon = { Icon(Icons.Default.CleaningServices, contentDescription = "Clean") },
-                            label = { Text("Clean") }
+                            label = { Text("Clean", style = MaterialTheme.typography.labelMedium.copy(fontWeight = if (selectedTab == MainTab.HOME) FontWeight.Bold else FontWeight.Medium)) },
+                            colors = navItemColors
                         )
                         NavigationBarItem(
                             selected = selectedTab == MainTab.FILES,
@@ -921,7 +996,8 @@ fun MainApp(
                                 selectedTab = MainTab.FILES
                             },
                             icon = { Icon(Icons.Default.Folder, contentDescription = "Browse") },
-                            label = { Text("Browse") }
+                            label = { Text("Browse", style = MaterialTheme.typography.labelMedium.copy(fontWeight = if (selectedTab == MainTab.FILES) FontWeight.Bold else FontWeight.Medium)) },
+                            colors = navItemColors
                         )
                         NavigationBarItem(
                             selected = selectedTab == MainTab.DRIVE,
@@ -930,7 +1006,8 @@ fun MainApp(
                                 selectedTab = MainTab.DRIVE
                             },
                             icon = { Icon(Icons.Default.CloudQueue, contentDescription = "Drive") },
-                            label = { Text("Drive") }
+                            label = { Text("Drive", style = MaterialTheme.typography.labelMedium.copy(fontWeight = if (selectedTab == MainTab.DRIVE) FontWeight.Bold else FontWeight.Medium)) },
+                            colors = navItemColors
                         )
                         NavigationBarItem(
                             selected = selectedTab == MainTab.MONTHLY_ARCHIVE,
@@ -940,7 +1017,8 @@ fun MainApp(
                                 selectedTab = MainTab.MONTHLY_ARCHIVE
                             },
                             icon = { Icon(Icons.Default.CalendarMonth, contentDescription = "Monthly") },
-                            label = { Text("Monthly") }
+                            label = { Text("Monthly", style = MaterialTheme.typography.labelMedium.copy(fontWeight = if (selectedTab == MainTab.MONTHLY_ARCHIVE) FontWeight.Bold else FontWeight.Medium)) },
+                            colors = navItemColors
                         )
                         NavigationBarItem(
                             selected = selectedTab == MainTab.SETTINGS,
@@ -949,7 +1027,8 @@ fun MainApp(
                                 selectedTab = MainTab.SETTINGS
                             },
                             icon = { Icon(Icons.Default.Settings, contentDescription = "Settings") },
-                            label = { Text("Settings") }
+                            label = { Text("Settings", style = MaterialTheme.typography.labelMedium.copy(fontWeight = if (selectedTab == MainTab.SETTINGS) FontWeight.Bold else FontWeight.Medium)) },
+                            colors = navItemColors
                         )
                     }
                 }
