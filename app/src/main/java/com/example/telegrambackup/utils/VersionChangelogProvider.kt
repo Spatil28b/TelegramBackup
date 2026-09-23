@@ -27,6 +27,49 @@ object VersionChangelogProvider {
 
     private val releases = listOf(
         VersionRelease(
+            versionName = "2.1.94",
+            versionCode = 97,
+            releaseDate = "September 2026",
+            highlights = "Trash Bin Real-Time Flow & Resilience, Guaranteed Deletion & Material 3 UX",
+            entries = listOf(
+                ChangelogEntry(
+                    Icons.Default.DeleteSweep,
+                    TelegramEmerald,
+                    "Real-Time Reactive Flow",
+                    "Trash Bin now collects a real-time Room DB Flow. Files trashed, restored, or emptied update instantly across all screens with zero manual refresh.",
+                    "NEW"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Shield,
+                    TelegramBlue,
+                    "Guaranteed Permanent Purge",
+                    "Added forceLocalDelete engine ensuring local cache, database, and chunk progress are reliably cleared even if Telegram channel bot rights are limited.",
+                    "STABILITY"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Warning,
+                    Color(0xFFEF4444),
+                    "Material 3 Safety Dialogs",
+                    "Confirmation dialogs before Empty Trash, batch deletion, and single permanent deletion prevent accidental data loss.",
+                    "SAFETY"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Tune,
+                    Color(0xFF8B5CF6),
+                    "Quick Auto-Clean Selector",
+                    "Adjust auto-clean retention (Never, 7d, 14d, 30d, 60d, 90d) directly from the Trash Bin with automated timestamp healing.",
+                    "CONFIG"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Search,
+                    Color(0xFF10B981),
+                    "Search & 'Select All' Batching",
+                    "Find deleted files instantly with live search filtering, and select all items with a single tap for batch restore or purge.",
+                    "UX"
+                )
+            )
+        ),
+        VersionRelease(
             versionName = "2.1.88",
             versionCode = 91,
             releaseDate = "September 2026",

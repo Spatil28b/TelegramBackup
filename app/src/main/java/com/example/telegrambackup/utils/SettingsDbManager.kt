@@ -193,9 +193,12 @@ object SettingsDbManager {
             val cloudFiles = serverApi.listFiles(prefs.serverUrl, userEmail, since = sinceTimestamp)
 
             if (cloudFiles.isNotEmpty()) {
-                val existingTrashMap = try { dao.getTrashFiles().associateBy { it.path } } catch (_: Exception) { emptyMap() }
+                val existingTrashList = try { dao.getTrashFiles() } catch (_: Exception) { emptyList() }
+                val trashByPath = existingTrashList.associateBy { it.path }
+                val trashByTgId = existingTrashList.filter { it.telegramFileId.isNotEmpty() }.associateBy { it.telegramFileId }
                 val filesToInsert = cloudFiles.map { cloudFile ->
-                    val trashRecord = existingTrashMap[cloudFile.path]
+                    val trashRecord = trashByPath[cloudFile.path]
+                        ?: (if (cloudFile.telegramFileId.isNotEmpty()) trashByTgId[cloudFile.telegramFileId] else null)
                     if (trashRecord != null) {
                         cloudFile.isDeleted = true
                         cloudFile.deletedAt = trashRecord.deletedAt

@@ -28,6 +28,15 @@ interface UploadedFileDao {
     @Query("SELECT * FROM uploaded_files WHERE isDeleted = 1 ORDER BY deletedAt DESC")
     fun getTrashFiles(): List<UploadedFile>
 
+    @Query("SELECT * FROM uploaded_files WHERE isDeleted = 1 ORDER BY deletedAt DESC")
+    fun getTrashFilesFlow(): kotlinx.coroutines.flow.Flow<List<UploadedFile>>
+
+    @Query("SELECT * FROM uploaded_files WHERE isDeleted = 1 AND deletedAt > 0 AND deletedAt < :cutoffTimestamp")
+    fun getExpiredTrashFiles(cutoffTimestamp: Long): List<UploadedFile>
+
+    @Query("UPDATE uploaded_files SET deletedAt = :now WHERE isDeleted = 1 AND (deletedAt <= 0 OR deletedAt IS NULL)")
+    fun fixMissingDeletedAt(now: Long)
+
     @Query("SELECT * FROM uploaded_files WHERE path = :path LIMIT 1")
     fun getFileByPath(path: String): UploadedFile?
 
@@ -46,11 +55,17 @@ interface UploadedFileDao {
     @Query("UPDATE uploaded_files SET isDeleted = 0, deletedAt = 0 WHERE path = :path OR (telegramFileId != '' AND telegramFileId = :telegramFileId)")
     fun restoreFile(path: String, telegramFileId: String)
 
+    @Query("UPDATE uploaded_files SET isDeleted = 0, deletedAt = 0 WHERE path IN (:paths)")
+    fun restoreFilesByPaths(paths: List<String>)
+
     @Query("DELETE FROM uploaded_files WHERE telegramFileId = :telegramFileId AND telegramFileId != ''")
     fun deleteByTelegramFileId(telegramFileId: String)
 
     @Query("DELETE FROM uploaded_files WHERE path = :path")
     fun deleteByPath(path: String)
+
+    @Query("DELETE FROM uploaded_files WHERE path IN (:paths)")
+    fun deleteByPaths(paths: List<String>)
 
     @Query("DELETE FROM uploaded_files WHERE isDeleted = 1 AND deletedAt > 0 AND deletedAt < :cutoffTimestamp")
     fun deleteExpiredTrash(cutoffTimestamp: Long)

@@ -888,7 +888,8 @@ class ServerApi {
         context: android.content.Context,
         botToken: String,
         chatId: String,
-        file: com.example.telegrambackup.data.UploadedFile
+        file: com.example.telegrambackup.data.UploadedFile,
+        forceLocalDelete: Boolean = false
     ): Boolean = withContext(Dispatchers.IO) {
         val cleanToken = file.botTokenUsed.ifBlank { botToken }.trim()
         val cleanChatId = file.channelId.ifBlank { chatId }.trim()
@@ -969,9 +970,8 @@ class ServerApi {
             }
         } catch (_: Exception) {}
 
-        // CRITICAL: Only clear Room DB records if Telegram deletion was NOT blocked by permissions
-        // If permission was denied, keep DB records so files appear in the app (they still exist in channel)
-        if (!permissionBlocked) {
+        // Clear Room DB records if Telegram deletion was NOT blocked or forceLocalDelete is requested
+        if (!permissionBlocked || forceLocalDelete) {
             try {
                 val db = com.example.telegrambackup.data.AppDatabase.getDatabase(context)
                 db.chunkProgressDao().deleteChunksForFile(file.path)
@@ -979,7 +979,7 @@ class ServerApi {
                 if (file.telegramFileId.isNotEmpty()) {
                     db.uploadedFileDao().deleteByTelegramFileId(file.telegramFileId)
                 }
-                Log.d("ServerApi", "Cleared Room DB records for ${file.fileName} (Telegram deletion verified)")
+                Log.d("ServerApi", "Cleared Room DB records for ${file.fileName} (Telegram deletion verified or forceLocalDelete=$forceLocalDelete)")
             } catch (e: Exception) {
                 Log.e("ServerApi", "Error deleting local DB record for ${file.path}", e)
             }
@@ -992,14 +992,15 @@ class ServerApi {
 
     /**
      * Purge an unlisted file or path from Telegram Cloud Chat even if no UploadedFile record exists in Room DB.
-     * Only clears Room DB records after verified Telegram deletion.
+     * Only clears Room DB records after verified Telegram deletion or if forceLocalDelete is true.
      */
     suspend fun purgeUnlistedPathFromTelegram(
         context: android.content.Context,
         botToken: String,
         chatId: String,
         path: String,
-        telegramFileId: String = ""
+        telegramFileId: String = "",
+        forceLocalDelete: Boolean = false
     ): Boolean = withContext(Dispatchers.IO) {
         val cleanToken = botToken.trim()
         val cleanChatId = chatId.trim()
@@ -1045,8 +1046,8 @@ class ServerApi {
             }
         }
 
-        // Only clear DB records if Telegram didn't block the deletion
-        if (!permissionBlocked) {
+        // Clear DB records if Telegram didn't block the deletion or forceLocalDelete is requested
+        if (!permissionBlocked || forceLocalDelete) {
             try {
                 val db = com.example.telegrambackup.data.AppDatabase.getDatabase(context)
                 db.chunkProgressDao().deleteChunksForFile(path)

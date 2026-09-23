@@ -643,7 +643,19 @@ class BackupWorker(
                 val db = AppDatabase.getDatabase(applicationContext)
                 if (workerPrefs.trashAutoCleanDays > 0) {
                     val cutoff = System.currentTimeMillis() - (workerPrefs.trashAutoCleanDays.toLong() * 86400000L)
-                    db.uploadedFileDao().deleteExpiredTrash(cutoff)
+                    val expired = db.uploadedFileDao().getExpiredTrashFiles(cutoff)
+                    if (expired.isNotEmpty()) {
+                        val serverApi = com.example.telegrambackup.network.ServerApi()
+                        val authPrefs = applicationContext.getSharedPreferences("auth_prefs", android.content.Context.MODE_PRIVATE)
+                        val userEmail = authPrefs.getString("user_email", "") ?: workerPrefs.recoveryEmail
+                        expired.forEach { expFile ->
+                            try { db.chunkProgressDao().deleteChunksForFile(expFile.path) } catch (_: Exception) {}
+                            if (userEmail.isNotEmpty()) {
+                                try { serverApi.deleteFile(workerPrefs.serverUrl, userEmail, expFile.telegramFileId, expFile.path) } catch (_: Exception) {}
+                            }
+                        }
+                        db.uploadedFileDao().deleteExpiredTrash(cutoff)
+                    }
                 }
                 db.chunkProgressDao().pruneOrphanedChunks()
             } catch (_: Exception) {}
