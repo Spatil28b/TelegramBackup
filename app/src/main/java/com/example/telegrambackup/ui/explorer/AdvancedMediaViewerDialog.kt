@@ -157,6 +157,7 @@ fun AdvancedMediaViewerDialog(
     var resolvedDirectUrl by remember(currentFile.telegramFileId) { mutableStateOf<String?>(null) }
     var cachedDownloadedFile by remember(currentFile.telegramFileId) { mutableStateOf<File?>(null) }
     var isCloudResolving by remember(currentFile.telegramFileId) { mutableStateOf(false) }
+    var showShareModal by remember { mutableStateOf(false) }
 
     LaunchedEffect(currentFile) {
         if ((!localFileExists || isPdf || isAudio) && currentFile.telegramFileId.isNotBlank() && currentFile.telegramFileId != "DIR_MARKER") {
@@ -200,6 +201,12 @@ fun AdvancedMediaViewerDialog(
                     }
 
                     Row {
+                        IconButton(onClick = {
+                            triggerHapticFeedback(context, haptic)
+                            showShareModal = true
+                        }) {
+                            Icon(Icons.Default.Share, contentDescription = "Share Cloud Link", tint = TelegramBlue, modifier = Modifier.size(22.dp))
+                        }
                         IconButton(onClick = {
                             triggerHapticFeedback(context, haptic)
                             Toast.makeText(context, "Saving ${currentFile.fileName} to Downloads...", Toast.LENGTH_SHORT).show()
@@ -481,6 +488,13 @@ fun AdvancedMediaViewerDialog(
                     }
                 }
             }
+        }
+
+        if (showShareModal) {
+            ShareLinkModal(
+                file = currentFile,
+                onDismiss = { showShareModal = false }
+            )
         }
     }
 }
