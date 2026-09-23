@@ -2768,7 +2768,7 @@ fun BackupSettingsScreen(
                     )
 
                     Text(
-                        "CHOOSE YOUR THEME (10 PREMIUM STYLES)",
+                        "CHOOSE YOUR THEME (14 PREMIUM STYLES)",
                         style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, letterSpacing = 0.8.sp)
                     )
 

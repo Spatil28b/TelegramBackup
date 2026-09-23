@@ -27,6 +27,35 @@ object VersionChangelogProvider {
 
     private val releases = listOf(
         VersionRelease(
+            versionName = "2.1.99",
+            versionCode = 102,
+            releaseDate = "September 2026",
+            highlights = "14 Premium M3 Themes, Instant Zero-Lag Browse Loading & Crash Resilience Engine",
+            entries = listOf(
+                ChangelogEntry(
+                    Icons.Default.Palette,
+                    TelegramBlue,
+                    "14 Premium Material 3 Themes",
+                    "Added 4 new luxury palettes (Nordic Glacier, Sakura Blossom, Matrix Terminal, Mocha Espresso) and enhanced existing Emerald, Cyberpunk, Sunset, Crimson, Arctic, and Lavender themes with rich M3 surface elevation tokens.",
+                    "NEW"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Folder,
+                    TelegramEmerald,
+                    "Instant Zero-Lag Browse Loading",
+                    "Resolved browse unresponsive loading by un-nesting the main layout hierarchy and streaming Room DB flows with 0ms first-frame response.",
+                    "FIX"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Shield,
+                    Color(0xFFF59E0B),
+                    "Full App Crash Prevention",
+                    "Guarded media viewers, dynamic file lists, and gestures with strict boundary checks to eliminate out-of-bounds and asynchronous mutation crashes.",
+                    "STABILITY"
+                )
+            )
+        ),
+        VersionRelease(
             versionName = "2.1.98",
             versionCode = 101,
             releaseDate = "September 2026",

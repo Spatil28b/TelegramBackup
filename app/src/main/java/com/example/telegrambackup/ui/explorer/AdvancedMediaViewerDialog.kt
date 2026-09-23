@@ -103,13 +103,21 @@ fun AdvancedMediaViewerDialog(
     onDeleteRequested: (UploadedFile) -> Unit,
     onInfoRequested: (UploadedFile) -> Unit
 ) {
-    if (initialIndex < 0 || initialIndex >= filesList.size) return
+    if (initialIndex < 0 || initialIndex >= filesList.size || filesList.isEmpty()) return
 
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val prefs = remember { AppPrefs(context) }
     val haptic = LocalHapticFeedback.current
-    var currentIndex by remember(initialIndex) { mutableIntStateOf(initialIndex) }
+    var currentIndex by remember(initialIndex, filesList.size) { mutableIntStateOf(initialIndex.coerceIn(0, (filesList.size - 1).coerceAtLeast(0))) }
+
+    LaunchedEffect(filesList.size) {
+        if (filesList.isEmpty()) {
+            onDismiss()
+        } else if (currentIndex >= filesList.size) {
+            currentIndex = (filesList.size - 1).coerceAtLeast(0)
+        }
+    }
 
     var targetZoomScale by remember { mutableFloatStateOf(1f) }
     var rawPanX by remember { mutableFloatStateOf(0f) }
@@ -141,7 +149,10 @@ fun AdvancedMediaViewerDialog(
         dragAccumulator = 0f
     }
 
-    val currentFile = filesList[currentIndex]
+    val currentFile = filesList.getOrNull(currentIndex) ?: run {
+        LaunchedEffect(Unit) { onDismiss() }
+        return
+    }
     val nameLower = currentFile.fileName.lowercase()
     val isImage = nameLower.endsWith(".jpg") || nameLower.endsWith(".jpeg") || nameLower.endsWith(".png") || nameLower.endsWith(".webp") || nameLower.endsWith(".heic") || nameLower.endsWith(".gif") || nameLower.endsWith(".bmp")
     val isVideo = nameLower.endsWith(".mp4") || nameLower.endsWith(".mkv") || nameLower.endsWith(".avi") || nameLower.endsWith(".mov") || nameLower.endsWith(".webm") || nameLower.endsWith(".3gp")

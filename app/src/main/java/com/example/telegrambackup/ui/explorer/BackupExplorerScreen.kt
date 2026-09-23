@@ -198,38 +198,44 @@ fun BackupExplorerScreen(
     var actionMenuFile by remember { mutableStateOf<UploadedFile?>(null) }
     var isZippingFolder by remember { mutableStateOf(false) }
 
-    BackHandler(enabled = localSearchQuery.isNotEmpty() || selectedCategoryTitle != null || currentFolderDirectoryPath != "Internal Storage" || isSelectionModeActive) {
-        if (isSelectionModeActive) {
-            isSelectionModeActive = false
-            selectedFilesList.clear()
-        } else if (localSearchQuery.isNotEmpty()) {
-            localSearchQuery = ""
-        } else if (selectedCategoryTitle != null) {
-            selectedCategoryTitle = null
-            onCategorySelected(null)
-        } else if (folderPathHistory.size > 1) {
-            folderPathHistory.removeAt(folderPathHistory.size - 1)
-            currentFolderDirectoryPath = folderPathHistory.last()
-        } else {
-            currentFolderDirectoryPath = "Internal Storage"
-            folderPathHistory.clear()
-            folderPathHistory.add("Internal Storage")
+    val database = remember { AppDatabase.getDatabase(context) }
+    val roomFiles by database.uploadedFileDao().getAllFilesFlow().collectAsState(initial = emptyList())
+
+    LaunchedEffect(roomFiles) {
+        if (roomFiles.isNotEmpty()) {
+            cloudFileList = roomFiles
+            isDataLoading = false
         }
     }
 
     fun refreshCloudData() {
         scope.launch {
-            isDataLoading = true
-            val files = withContext(Dispatchers.IO) {
+            val localFiles = withContext(Dispatchers.IO) {
                 try {
-                    SettingsDbManager.restoreCloudFileIndexToRoom(context)
-                    AppDatabase.getDatabase(context).uploadedFileDao().getAllFiles()
-                } catch (e: Exception) {
+                    database.uploadedFileDao().getAllFiles()
+                } catch (_: Exception) {
                     emptyList()
                 }
             }
-            cloudFileList = files
-            isDataLoading = false
+            if (localFiles.isNotEmpty()) {
+                cloudFileList = localFiles
+                isDataLoading = false
+            }
+
+            withContext(Dispatchers.IO) {
+                try {
+                    SettingsDbManager.restoreCloudFileIndexToRoom(context)
+                    val syncedFiles = database.uploadedFileDao().getAllFiles()
+                    withContext(Dispatchers.Main) {
+                        cloudFileList = syncedFiles
+                        isDataLoading = false
+                    }
+                } catch (_: Exception) {
+                    withContext(Dispatchers.Main) {
+                        isDataLoading = false
+                    }
+                }
+            }
         }
     }
 
@@ -664,7 +670,9 @@ fun BackupExplorerScreen(
                 infoSheetFile = fileInfo
             }
         )
-      Column(modifier = Modifier.fillMaxSize()) {
+    }
+
+    Column(modifier = Modifier.fillMaxSize()) {
         if (!isSearching && selectedCategoryTitle == null && currentFolderDirectoryPath == "Internal Storage") {
             // GOOGLE FILES BROWSE HUB
             LazyColumn(
@@ -1386,7 +1394,6 @@ fun BackupExplorerScreen(
             }
         }
     }
-}
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
