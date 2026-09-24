@@ -42,10 +42,19 @@ object ShareLinkManager {
 
         val expiresAtMs = if (expiryHours > 0) System.currentTimeMillis() + (expiryHours * 3600 * 1000L) else 0L
 
+        val computedFromSize = if (file.size > FileChunker.CHUNK_SIZE) {
+            ((file.size + FileChunker.CHUNK_SIZE - 1) / FileChunker.CHUNK_SIZE).toInt()
+        } else 1
+        val expectedChunks = maxOf(file.totalChunks, computedFromSize)
+
         // Resolve all sequential chunks (handles multi-chunk files of any size)
         val rawChunks = TelegramMediaResolver.resolveChunksForFile(context, file)
-        val resolvedChunks = if (rawChunks.isEmpty() && file.telegramFileId.isNotBlank()) {
-            listOf(Triple(1, file.telegramFileId, file.botTokenUsed.ifBlank { botToken }))
+        val resolvedChunks = if (rawChunks.isEmpty()) {
+            if (expectedChunks <= 1 && file.telegramFileId.isNotBlank()) {
+                listOf(Triple(1, file.telegramFileId, file.botTokenUsed.ifBlank { botToken }))
+            } else {
+                emptyList()
+            }
         } else {
             rawChunks.map { c ->
                 if (c.third.isBlank()) Triple(c.first, c.second, file.botTokenUsed.ifBlank { botToken }) else c

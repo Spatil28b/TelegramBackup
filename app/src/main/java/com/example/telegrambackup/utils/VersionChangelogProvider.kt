@@ -28,6 +28,42 @@ object VersionChangelogProvider {
 
     private val releases = listOf(
         VersionRelease(
+            versionName = "2.3.1",
+            versionCode = 115,
+            releaseDate = "September 2026",
+            highlights = "Comprehensive Multi-Chunk Link Sharing & On-Device Download Invariant Fix",
+            entries = listOf(
+                ChangelogEntry(
+                    Icons.Default.Share,
+                    TelegramEmerald,
+                    "Link Sharing Multi-Chunk Resolution",
+                    "Server dynamically auto-heals chunk metadata from cloud database. Prohibits premature 1-chunk fallback stream cut-off at 4.19 MB.",
+                    "FIX"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Download,
+                    TelegramBlue,
+                    "Strict Chunk Completeness Guard",
+                    "TelegramMediaResolver strictly validates that all sequential parts (1..N) exist before assembling. Eliminates false-success incomplete file saves.",
+                    "FIX"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Shield,
+                    Color(0xFF4CAF50),
+                    "Corrupted Download & Re-backup Prevention",
+                    "Downloads verify post-decryption size against declared metadata (90% threshold) and immediately purge any truncated downloads, preventing BackupWorker index poisoning.",
+                    "SECURITY"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Edit,
+                    Color(0xFF9C27B0),
+                    "Preserve Metadata on Rename & Actions",
+                    "Renaming files in Drive Explorer and File Options retains chunksJson, channelId, totalChunks, and botToken across cloud index and local Room database.",
+                    "REFINEMENT"
+                )
+            )
+        ),
+        VersionRelease(
             versionName = "2.3.0",
             versionCode = 114,
             releaseDate = "September 2026",

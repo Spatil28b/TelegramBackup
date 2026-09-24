@@ -540,12 +540,20 @@ fun LocalFilesScreen() {
                             }
                         },
                         onMoreOptions = { item ->
-                            fileForMenu = UploadedFile(
-                                path = item.path,
-                                fileName = item.name,
-                                size = item.size,
-                                timestamp = item.file.lastModified()
-                            )
+                            scope.launch(Dispatchers.IO) {
+                                val db = com.example.telegrambackup.data.AppDatabase.getDatabase(context)
+                                val existing = db.uploadedFileDao().getFileByPath(item.path)
+                                    ?: db.uploadedFileDao().getFileByName(item.name)
+                                val fileObj = existing ?: UploadedFile(
+                                    path = item.path,
+                                    fileName = item.name,
+                                    size = item.size,
+                                    timestamp = item.file.lastModified()
+                                )
+                                withContext(Dispatchers.Main) {
+                                    fileForMenu = fileObj
+                                }
+                            }
                         }
                     )
                 }

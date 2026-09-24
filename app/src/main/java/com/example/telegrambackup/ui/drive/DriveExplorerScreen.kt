@@ -569,25 +569,26 @@ fun DriveExplorerScreen(
                                 if (isFolder) {
                                     val allFiles = dbDao.getDriveFiles()
                                     val children = allFiles.filter { it.path.startsWith("$oldPath/") }
+                                    val chunkDao = AppDatabase.getDatabase(context).chunkProgressDao()
                                     children.forEach { child ->
                                         val newChildPath = child.path.replaceFirst(oldPath, newPath)
                                         dbDao.deleteByPath(child.path)
-                                        dbDao.insert(child.apply { path = newChildPath; isDriveUpload = true })
+                                        dbDao.insert(child.copy(path = newChildPath).apply { isDriveUpload = true })
+                                        try { chunkDao.updateSourcePath(child.path, newChildPath) } catch (_: Exception) {}
                                     }
                                 }
 
-                                val updated = UploadedFile(
-                                    newPath,
-                                    newName,
-                                    targetItem.telegramFileId,
-                                    targetItem.timestamp,
-                                    targetItem.size,
-                                    targetItem.messageId
+                                val updated = targetItem.copy(
+                                    path = newPath,
+                                    fileName = newName
                                 ).apply {
                                     isDriveUpload = true
                                 }
                                 dbDao.deleteByPath(oldPath)
                                 dbDao.insert(updated)
+                                try {
+                                    AppDatabase.getDatabase(context).chunkProgressDao().updateSourcePath(oldPath, newPath)
+                                } catch (_: Exception) {}
 
                                 val userEmail = AppPrefs(context).userEmail
                                 if (userEmail.isNotEmpty()) {
@@ -602,7 +603,11 @@ fun DriveExplorerScreen(
                                             newPath,
                                             targetItem.timestamp,
                                             targetItem.messageId,
-                                            true
+                                            true,
+                                            chunksJson = targetItem.chunksJson,
+                                            channelId = targetItem.channelId,
+                                            botTokenUsed = targetItem.botTokenUsed,
+                                            totalChunks = targetItem.totalChunks
                                         )
                                     } catch (_: Exception) {}
                                 }

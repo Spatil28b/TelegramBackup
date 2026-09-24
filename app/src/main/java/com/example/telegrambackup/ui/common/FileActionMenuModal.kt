@@ -550,15 +550,19 @@ fun FileActionMenuModal(
                                     val serverApi = ServerApi()
                                     serverApi.deleteFile(serverUrl, userEmail, file.telegramFileId, oldPath)
                                     serverApi.indexFile(
-                                        serverUrl,
-                                        userEmail,
-                                        trimmed,
-                                        file.telegramFileId,
-                                        file.size,
-                                        newPath,
-                                        file.timestamp,
-                                        file.messageId,
-                                        file.isDriveUpload
+                                        serverUrl = serverUrl,
+                                        email = userEmail,
+                                        fileName = trimmed,
+                                        telegramFileId = file.telegramFileId,
+                                        size = file.size,
+                                        path = newPath,
+                                        timestamp = file.timestamp,
+                                        messageId = file.messageId,
+                                        isDriveUpload = file.isDriveUpload,
+                                        chunksJson = file.chunksJson,
+                                        channelId = file.channelId,
+                                        botTokenUsed = file.botTokenUsed,
+                                        totalChunks = file.totalChunks
                                     )
                                 } catch (_: Exception) {}
                             }
