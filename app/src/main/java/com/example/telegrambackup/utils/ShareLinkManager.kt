@@ -48,7 +48,22 @@ object ShareLinkManager {
         val expectedChunks = maxOf(file.totalChunks, computedFromSize)
 
         // Resolve all sequential chunks (handles multi-chunk files of any size)
-        val rawChunks = TelegramMediaResolver.resolveChunksForFile(context, file)
+        var rawChunks = TelegramMediaResolver.resolveChunksForFile(context, file)
+        if (rawChunks.isEmpty() && expectedChunks > 1) {
+            // Check if another local entity with the same filename has the complete chunks
+            val alt = try {
+                db.uploadedFileDao().getAllFiles().firstOrNull {
+                    it.fileName.equals(file.fileName, ignoreCase = true) &&
+                    it.totalChunks >= expectedChunks &&
+                    it.chunksJson.isNotBlank() &&
+                    it.chunksJson != "[]"
+                }
+            } catch (_: Exception) { null }
+            if (alt != null) {
+                rawChunks = TelegramMediaResolver.resolveChunksForFile(context, alt)
+            }
+        }
+
         val resolvedChunks = if (rawChunks.isEmpty()) {
             if (expectedChunks <= 1 && file.telegramFileId.isNotBlank()) {
                 listOf(Triple(1, file.telegramFileId, file.botTokenUsed.ifBlank { botToken }))

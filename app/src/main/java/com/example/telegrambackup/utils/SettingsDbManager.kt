@@ -179,6 +179,7 @@ object SettingsDbManager {
 
             val db = AppDatabase.getDatabase(context)
             val dao = db.uploadedFileDao()
+            val chunkDao = db.chunkProgressDao()
 
             // Calculate delta sync threshold if local database already has records
             val existingCount = try { dao.getCount() } catch (_: Exception) { 0 }
@@ -219,7 +220,6 @@ object SettingsDbManager {
                 }
 
                 // Also populate chunk_upload_progress for multi-part files so streaming and downloads work seamlessly
-                val chunkDao = db.chunkProgressDao()
                 for (file in filesToInsert) {
                     val parsed = file.parseChunks()
                     if (parsed.isNotEmpty()) {
@@ -244,8 +244,35 @@ object SettingsDbManager {
 
             // High-Speed Two-Way Synchronization: Push any unsynced local records using Batch API
             val localFiles = dao.getAllFiles()
-            val cloudPathMap = cloudFiles.map { it.path }.toSet()
-            val unsyncedLocal = localFiles.filter { !cloudPathMap.contains(it.path) }
+            // Hydrate local files from chunkDao if chunksJson was not populated
+            for (local in localFiles) {
+                if (local.chunksJson.isBlank() || local.chunksJson == "[]" || local.totalChunks <= 1) {
+                    try {
+                        val savedChunks = chunkDao.getUploadedChunksForFile(local.path)
+                        val completed = savedChunks.filter { it.status == "COMPLETED" && it.telegramFileId.isNotBlank() }
+                        if (completed.isNotEmpty()) {
+                            val chunkList = completed.map { Triple(it.chunkIndex, it.telegramFileId, it.botTokenUsed) }
+                            local.setChunks(chunkList)
+                            local.totalChunks = maxOf(local.totalChunks, completed.size, savedChunks.maxOfOrNull { it.totalChunks } ?: 1)
+                            dao.insert(local)
+                        }
+                    } catch (_: Exception) {}
+                }
+            }
+
+            val cloudFileMap = cloudFiles.associateBy { it.path }
+            val unsyncedLocal = localFiles.filter { local ->
+                val cloud = cloudFileMap[local.path]
+                if (cloud == null) {
+                    true // entirely new local file not in cloud
+                } else {
+                    // Backfill chunk metadata to cloud if cloud record is missing chunks or has fewer chunks
+                    val localHasChunks = local.chunksJson.isNotBlank() && local.chunksJson != "[]"
+                    val cloudMissingChunks = cloud.chunksJson.isBlank() || cloud.chunksJson == "[]"
+                    val localHasMoreChunks = local.totalChunks > cloud.totalChunks
+                    (localHasChunks && cloudMissingChunks) || localHasMoreChunks
+                }
+            }
             if (unsyncedLocal.isNotEmpty()) {
                 serverApi.indexFilesBatch(prefs.serverUrl, userEmail, unsyncedLocal)
             }

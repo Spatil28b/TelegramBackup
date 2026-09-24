@@ -482,8 +482,8 @@ class ServerApi {
             val url = cleanUrl(serverUrl, "/api/files/index-batch")
             var totalSynced = 0
 
-            // Send in batches of 400 to maintain optimal payload sizes
-            for (batch in files.chunked(400)) {
+            // Send in batches of 100 to maintain optimal payload sizes and sub-second DB execution
+            for (batch in files.chunked(100)) {
                 val array = org.json.JSONArray()
                 for (f in batch) {
                     val obj = JSONObject().apply {

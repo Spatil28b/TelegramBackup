@@ -28,6 +28,42 @@ object VersionChangelogProvider {
 
     private val releases = listOf(
         VersionRelease(
+            versionName = "2.3.2",
+            versionCode = 116,
+            releaseDate = "September 2026",
+            highlights = "Permanent Fix for Incomplete Downloads, Share Links & Cloud Sync",
+            entries = listOf(
+                ChangelogEntry(
+                    Icons.Default.CloudSync,
+                    TelegramEmerald,
+                    "Delta Sync Chunk Backfill",
+                    "Delta sync now hydrates and pushes chunk metadata for existing cloud files, ensuring multi-part records in Neon DB are always complete.",
+                    "CORE"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Shield,
+                    Color(0xFF4CAF50),
+                    "BackupWorker Partial Download Guard",
+                    "Excludes app download/cache folders and strictly prevents partial or truncated files on disk from overwriting complete cloud backups.",
+                    "SECURITY"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Speed,
+                    TelegramBlue,
+                    "High-Speed Batch Database Indexing",
+                    "Refactored backend sync to multi-row parameterized queries running in < 200ms, completely eliminating Vercel 504 gateway timeouts.",
+                    "PERFORMANCE"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Download,
+                    Color(0xFF2196F3),
+                    "Universal Multi-Chunk Assembly",
+                    "All preview and download operations query both local and cloud metadata to assemble multi-part files with full AES-256 decryption.",
+                    "FIX"
+                )
+            )
+        ),
+        VersionRelease(
             versionName = "2.3.1",
             versionCode = 115,
             releaseDate = "September 2026",

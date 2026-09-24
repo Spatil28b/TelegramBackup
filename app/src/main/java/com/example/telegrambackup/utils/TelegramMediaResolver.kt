@@ -697,51 +697,48 @@ object TelegramMediaResolver {
         }
 
         val db = AppDatabase.getDatabase(context)
-        val fileRecord = db.uploadedFileDao().getFileByTelegramFileId(telegramFileId)
+        var fileRecord = db.uploadedFileDao().getFileByTelegramFileId(telegramFileId)
             ?: db.uploadedFileDao().getFileByPath(telegramFileId)
             ?: db.uploadedFileDao().getFileByName(fileName)
+            ?: run {
+                try {
+                    db.uploadedFileDao().getAllFiles().firstOrNull {
+                        it.fileName.equals(fileName, ignoreCase = true) || it.telegramFileId == telegramFileId
+                    }
+                } catch (_: Exception) { null }
+            }
+
+        // Check cloud if not found locally
+        if (fileRecord == null) {
+            try {
+                val prefs = AppPrefs(context)
+                if (prefs.userEmail.isNotBlank()) {
+                    val cloudFiles = ServerApi().listFiles(prefs.serverUrl, prefs.userEmail)
+                    fileRecord = cloudFiles.firstOrNull { it.telegramFileId == telegramFileId }
+                        ?: cloudFiles.firstOrNull { it.fileName.equals(fileName, ignoreCase = true) }
+                    if (fileRecord != null) {
+                        try { db.uploadedFileDao().insert(fileRecord) } catch (_: Exception) {}
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Cloud file lookup for $fileName failed: ${e.message}")
+            }
+        }
 
         if (fileRecord != null) {
             return@withContext fetchToTempCache(context, fileRecord, onProgress)
         }
 
-        // Fallback for standalone single file_id without database record
-        val cacheDir = File(context.cacheDir, "cloud_preview_cache")
-        if (!cacheDir.exists()) cacheDir.mkdirs()
-        val safeName = fileName.replace(Regex("[^a-zA-Z0-9._-]"), "_").ifBlank { "file" }
-        val targetFile = File(cacheDir, "${telegramFileId.hashCode()}_$safeName")
-        if (targetFile.exists() && targetFile.length() > 0) {
-            if (!FileEncryptor.isLikelyPlainFile(targetFile, fileName)) {
-                val ok = FileEncryptor.ensureDecrypted(targetFile, context, fileName)
-                if (ok && FileEncryptor.isLikelyPlainFile(targetFile, fileName)) {
-                    return@withContext targetFile
-                } else {
-                    targetFile.delete()
-                }
-            } else {
-                return@withContext targetFile
-            }
-        }
-
-        val directUrl = resolveDirectUrl(context, telegramFileId) ?: return@withContext null
-        val tempDownloadFile = File(cacheDir, "${targetFile.name}.downloading")
-        try {
-            BackupProgressTracker.startDownload(fileName)
-            val ok = downloadUrlToFile(directUrl, tempDownloadFile, onProgress)
-            if (ok && tempDownloadFile.exists() && tempDownloadFile.length() > 0) {
-                FileEncryptor.ensureDecrypted(tempDownloadFile, context, fileName)
-                if (tempDownloadFile.renameTo(targetFile) || (tempDownloadFile.exists() && run { tempDownloadFile.copyTo(targetFile, true); tempDownloadFile.delete(); true })) {
-                    FileEncryptor.ensureDecrypted(targetFile, context, fileName)
-                    BackupProgressTracker.finishDownload()
-                    return@withContext targetFile
-                }
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error downloading $fileName", e)
-        } finally {
-            BackupProgressTracker.finishDownload()
-        }
-        return@withContext null
+        // Standalone fallback: construct UploadedFile and route through full multi-chunk assembly pipeline
+        val pseudoFile = UploadedFile(
+            path = fileName,
+            fileName = fileName,
+            telegramFileId = telegramFileId,
+            timestamp = System.currentTimeMillis(),
+            size = 0L,
+            messageId = 0L
+        )
+        return@withContext fetchToTempCache(context, pseudoFile, onProgress)
     }
 
     private fun downloadUrlToFile(

@@ -215,7 +215,21 @@ class BackupWorker(
                                     val isExc = excludedSet.any { exc -> absPath == exc || absPath.startsWith("$exc/") }
                                     if (isExc) return@filter false
 
+                                    // Guard: Skip app-internal cache, preview temp, and downloaded restored files
+                                    val absLower = absPath.lowercase()
+                                    if (absLower.contains("cloud_preview_cache") ||
+                                        absLower.contains("backup_temp") ||
+                                        absLower.contains("/download/telegrambackup") ||
+                                        absLower.contains("/downloads/telegrambackup")) {
+                                        return@filter false
+                                    }
+
                                     val name = file.name.lowercase()
+                                    if (name.endsWith(".downloading") || name.endsWith(".tmp") ||
+                                        name.endsWith(".part") || name.endsWith(".crdownload")) {
+                                        return@filter false
+                                    }
+
                                     val hideHidden = !prefs.showHiddenFiles
                                     val isNotHidden = if (hideHidden) !name.startsWith(".") else true
                                     file.isFile && isNotHidden
@@ -280,6 +294,19 @@ class BackupWorker(
                         existingNameSizePairs.contains(nameSize)
 
                 if (isPathOrNameMatch) {
+                    continue
+                }
+
+                // Guard: Incomplete partial download protection
+                // If a complete backup with the same filename exists with substantially larger size,
+                // this candidate file on disk is an incomplete download. Never re-upload it!
+                val existingBigger = existingFiles.firstOrNull {
+                    it.fileName.equals(candidate.name, ignoreCase = true) &&
+                    it.size > 0 &&
+                    it.size >= (candidate.length() * 1.5).toLong()
+                }
+                if (existingBigger != null) {
+                    Log.w(TAG, "🛡️ Incomplete download guard: Skipping ${candidate.name} (${candidate.length()} B) because cloud already holds complete file (${existingBigger.size} B).")
                     continue
                 }
 
