@@ -562,6 +562,10 @@ class BackupWorker(
                                 val firstChunkMessageId = firstChunk?.messageId ?: 0L
                                 val primaryBotTokenUsed = firstChunk?.botTokenUsed ?: botToken
 
+                                val chunkList = (1..totalChunks).mapNotNull { idx ->
+                                    uploadedChunksMap[idx]?.let { Triple(idx, it.telegramFileId, it.botTokenUsed) }
+                                }
+
                                 val entity = UploadedFile(
                                     file.absolutePath,
                                     file.name,
@@ -572,9 +576,10 @@ class BackupWorker(
                                 ).apply {
                                     this.channelId = destinationChatId
                                     this.botTokenUsed = primaryBotTokenUsed
-                                }
-                                if (isChunked) {
-                                    entity.totalChunks = totalChunks
+                                    this.totalChunks = totalChunks
+                                    if (chunkList.isNotEmpty()) {
+                                        this.setChunks(chunkList)
+                                    }
                                 }
                                 uploadedDao.insert(entity)
                                 // Retain chunk records in chunk_upload_progress so multi-part files can be downloaded/streamed complete
@@ -595,7 +600,11 @@ class BackupWorker(
                                             path = file.absolutePath,
                                             timestamp = fileModTime,
                                             messageId = firstChunkMessageId,
-                                            isDriveUpload = false
+                                            isDriveUpload = false,
+                                            chunksJson = entity.chunksJson,
+                                            channelId = destinationChatId,
+                                            botTokenUsed = primaryBotTokenUsed,
+                                            totalChunks = totalChunks
                                         )
                                     } catch (e: Exception) {
                                         Log.w(TAG, "Cloud index sync failed for ${file.name}, local record intact", e)

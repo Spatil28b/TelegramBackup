@@ -317,7 +317,7 @@ object FileViewerHelper {
         if (telegramFileId.isNotBlank() && telegramFileId != "DIR_MARKER") {
             Toast.makeText(context, "Preparing $fileName to share...", Toast.LENGTH_SHORT).show()
             CoroutineScope(Dispatchers.IO).launch {
-                val downloaded = TelegramMediaResolver.fetchToTempCache(context, telegramFileId, fileName)
+                val downloaded = TelegramMediaResolver.fetchToTempCache(context, file)
                 if (downloaded != null && downloaded.exists()) {
                     FileEncryptor.ensureDecrypted(downloaded, context, fileName)
                 }

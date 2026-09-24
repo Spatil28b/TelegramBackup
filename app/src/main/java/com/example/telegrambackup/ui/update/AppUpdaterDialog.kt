@@ -44,6 +44,7 @@ import com.example.telegrambackup.theme.TelegramEmerald
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.json.JSONObject
 import okhttp3.Request
 import java.io.File
 import java.io.FileOutputStream
@@ -517,31 +518,70 @@ fun AppUpdaterDialog(
                         downloadStatusText = "Connecting to update server..."
 
                         scope.launch(Dispatchers.IO) {
-                            val candidateUrls = listOfNotNull(
-                                versionInfo.downloadUrl.ifEmpty { null },
-                                "https://telegram-backup-backend.vercel.app/api/app/download-latest",
-                                "https://github.com/sid-codes28/telegram_backup_backend/releases/download/v${versionInfo.versionName}/TelegramBackup-v${versionInfo.versionName}.apk",
-                                "https://github.com/sid-codes28/telegram_backup_backend/releases/download/v${versionInfo.versionName}/TelegramBackup-latest.apk",
-                                "https://github.com/sid-codes28/telegram_backup_backend/raw/main/Releases/TelegramBackup-latest.apk"
-                            ).distinct()
+                            val ghToken = "REDACTED_GITHUB_PERSONAL_ACCESS_TOKEN_01"
 
-                            var downloadSuccess = false
-                            var lastErrorMsg = ""
-
-                            val client = HttpClientProvider.client.newBuilder()
+                            val client = okhttp3.OkHttpClient.Builder()
+                                .connectionPool(okhttp3.ConnectionPool(5, 10, java.util.concurrent.TimeUnit.MINUTES))
+                                .connectTimeout(45, java.util.concurrent.TimeUnit.SECONDS)
+                                .readTimeout(10, java.util.concurrent.TimeUnit.MINUTES)
+                                .writeTimeout(10, java.util.concurrent.TimeUnit.MINUTES)
                                 .followRedirects(true)
                                 .followSslRedirects(true)
+                                .retryOnConnectionFailure(true)
                                 .build()
+
+                            val candidateUrls = mutableListOf<String>()
+                            if (versionInfo.downloadUrl.isNotBlank()) {
+                                candidateUrls.add(versionInfo.downloadUrl)
+                            }
+                            candidateUrls.add("https://telegram-backup-backend.vercel.app/api/app/download-latest")
+                            candidateUrls.add("https://github.com/sid-codes28/telegram_backup_backend/releases/download/v${versionInfo.versionName}/TelegramBackup-v${versionInfo.versionName}.apk")
+                            candidateUrls.add("https://github.com/sid-codes28/telegram_backup_backend/releases/download/v${versionInfo.versionName}/TelegramBackup-latest.apk")
+                            candidateUrls.add("https://github.com/sid-codes28/telegram_backup_backend/raw/main/Releases/TelegramBackup-latest.apk")
+
+                            // Query GitHub Releases API for direct browser download and asset URLs
+                            try {
+                                val ghApiReq = Request.Builder()
+                                    .url("https://api.github.com/repos/sid-codes28/telegram_backup_backend/releases/latest")
+                                    .header("User-Agent", "TelegramBackup-Updater/2.2")
+                                    .header("Authorization", "Bearer $ghToken")
+                                    .header("Accept", "application/vnd.github.v3+json")
+                                    .build()
+                                val ghApiRes = client.newCall(ghApiReq).execute()
+                                if (ghApiRes.isSuccessful) {
+                                    val ghBody = ghApiRes.body?.string() ?: ""
+                                    val ghJson = JSONObject(ghBody)
+                                    val assets = ghJson.optJSONArray("assets")
+                                    if (assets != null) {
+                                        for (i in 0 until assets.length()) {
+                                            val asset = assets.optJSONObject(i)
+                                            val aName = asset?.optString("name", "") ?: ""
+                                            val aUrl = asset?.optString("url", "") ?: ""
+                                            val bUrl = asset?.optString("browser_download_url", "") ?: ""
+                                            if (aName.endsWith(".apk", ignoreCase = true)) {
+                                                if (bUrl.isNotBlank() && !candidateUrls.contains(bUrl)) {
+                                                    candidateUrls.add(0, bUrl)
+                                                }
+                                                if (aUrl.isNotBlank() && !candidateUrls.contains(aUrl)) {
+                                                    candidateUrls.add(aUrl)
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            } catch (_: Exception) {}
+
+                            val distinctUrls = candidateUrls.distinct()
+                            var downloadSuccess = false
+                            var lastErrorMsg = ""
 
                             val updateDir = File(context.cacheDir, "updates").apply { mkdirs() }
                             val updateFile = File(updateDir, "TelegramBackup_v${versionInfo.versionName}.apk")
 
-                            val ghToken = "REDACTED_GITHUB_PERSONAL_ACCESS_TOKEN_01"
-
-                            for ((index, targetUrl) in candidateUrls.withIndex()) {
+                            for ((index, targetUrl) in distinctUrls.withIndex()) {
                                 try {
                                     withContext(Dispatchers.Main) {
-                                        downloadStatusText = if (index == 0) "Connecting to update server..." else "Trying fallback source (${index + 1}/${candidateUrls.size})..."
+                                        downloadStatusText = if (index == 0) "Connecting to update server..." else "Trying fallback source (${index + 1}/${distinctUrls.size})..."
                                     }
 
                                     if (updateFile.exists()) {
@@ -550,9 +590,11 @@ fun AppUpdaterDialog(
 
                                     val req = Request.Builder()
                                         .url(targetUrl)
-                                        .header("User-Agent", "TelegramBackup-Updater/2.0")
+                                        .header("User-Agent", "TelegramBackup-Updater/2.2")
                                         .apply {
-                                            if (targetUrl.contains("github.com") || targetUrl.contains("githubusercontent.com")) {
+                                            // Only send Authorization header to api.github.com asset API endpoints
+                                            // Sending Authorization to public github.com/releases/download/... URLs causes 404
+                                            if (targetUrl.contains("api.github.com/repos") && targetUrl.contains("/assets/")) {
                                                 header("Authorization", "Bearer $ghToken")
                                                 header("Accept", "application/octet-stream")
                                             }
@@ -568,6 +610,8 @@ fun AppUpdaterDialog(
                                     }
 
                                     val totalBytes = body.contentLength()
+                                    var lastProgressUpdateMs = 0L
+
                                     body.byteStream().use { input ->
                                         FileOutputStream(updateFile).use { output ->
                                             val buffer = ByteArray(32768)
@@ -578,18 +622,22 @@ fun AppUpdaterDialog(
                                                 output.write(buffer, 0, bytesRead)
                                                 downloadedBytes += bytesRead
 
-                                                if (totalBytes > 0) {
-                                                    val progress = downloadedBytes.toFloat() / totalBytes.toFloat()
-                                                    val mbDownloaded = String.format(Locale.US, "%.1f", downloadedBytes / (1024f * 1024f))
-                                                    val mbTotal = String.format(Locale.US, "%.1f", totalBytes / (1024f * 1024f))
-                                                    withContext(Dispatchers.Main) {
-                                                        downloadProgress = progress
-                                                        downloadStatusText = "Downloading update... $mbDownloaded MB / $mbTotal MB (${(progress * 100).toInt()}%)"
-                                                    }
-                                                } else {
-                                                    val mbDownloaded = String.format(Locale.US, "%.1f", downloadedBytes / (1024f * 1024f))
-                                                    withContext(Dispatchers.Main) {
-                                                        downloadStatusText = "Downloading update... $mbDownloaded MB"
+                                                val now = System.currentTimeMillis()
+                                                if (now - lastProgressUpdateMs >= 200 || (totalBytes > 0 && downloadedBytes == totalBytes)) {
+                                                    lastProgressUpdateMs = now
+                                                    if (totalBytes > 0) {
+                                                        val progress = (downloadedBytes.toFloat() / totalBytes.toFloat()).coerceIn(0f, 1f)
+                                                        val mbDownloaded = String.format(Locale.US, "%.1f", downloadedBytes / (1024f * 1024f))
+                                                        val mbTotal = String.format(Locale.US, "%.1f", totalBytes / (1024f * 1024f))
+                                                        withContext(Dispatchers.Main) {
+                                                            downloadProgress = progress
+                                                            downloadStatusText = "Downloading update... $mbDownloaded MB / $mbTotal MB (${(progress * 100).toInt()}%)"
+                                                        }
+                                                    } else {
+                                                        val mbDownloaded = String.format(Locale.US, "%.1f", downloadedBytes / (1024f * 1024f))
+                                                        withContext(Dispatchers.Main) {
+                                                            downloadStatusText = "Downloading update... $mbDownloaded MB"
+                                                        }
                                                     }
                                                 }
                                             }

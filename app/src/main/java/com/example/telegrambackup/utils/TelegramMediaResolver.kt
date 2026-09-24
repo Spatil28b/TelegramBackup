@@ -10,6 +10,7 @@ import com.example.telegrambackup.data.ChunkProgressEntity
 import com.example.telegrambackup.data.UploadedFile
 import com.example.telegrambackup.network.BotFleetManager
 import com.example.telegrambackup.network.HttpClientProvider
+import com.example.telegrambackup.network.ServerApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.joinAll
@@ -123,35 +124,31 @@ object TelegramMediaResolver {
 
         val db = AppDatabase.getDatabase(context)
         val chunkDao = db.chunkProgressDao()
-        val recorded = try { chunkDao.getUploadedChunksForFile(file.path) } catch (_: Exception) { emptyList() }
-        val recordedMax = recorded.maxOfOrNull { it.chunkIndex } ?: 1
-        val recordedTotal = recorded.firstOrNull { it.totalChunks > 1 }?.totalChunks ?: 1
-
-        val targetTotalChunks = maxOf(file.totalChunks, computedFromSize, recordedMax, recordedTotal)
-
-        // Only genuine 1-chunk small files without chunk records exit early
-        if (targetTotalChunks <= 1 && recorded.isEmpty()) {
-            return@withContext if (file.telegramFileId.isNotBlank()) listOf(Triple(1, file.telegramFileId, file.botTokenUsed)) else emptyList()
-        }
-
-        // If targetTotalChunks is greater than stored file.totalChunks, update the DB record so it stays multi-chunk
-        if (file.totalChunks < targetTotalChunks) {
-            file.totalChunks = targetTotalChunks
-            try {
-                db.uploadedFileDao().insert(file)
-            } catch (_: Exception) {}
-        }
 
         val chunkMap = mutableMapOf<Int, String>()
         val tokenMap = mutableMapOf<Int, String>()
+
+        // 1. First check chunksJson directly on the UploadedFile entity
+        val fromJson = file.parseChunks()
+        for (c in fromJson) {
+            chunkMap[c.first] = c.second
+            if (c.third.isNotBlank()) tokenMap[c.first] = c.third
+        }
+
+        // 2. Query chunk_upload_progress in Room DB
+        val recorded = try { chunkDao.getUploadedChunksForFile(file.path) } catch (_: Exception) { emptyList() }
         for (c in recorded) {
             if (c.telegramFileId.isNotBlank()) {
-                chunkMap[c.chunkIndex] = c.telegramFileId
-                if (c.botTokenUsed.isNotBlank()) {
+                if (!chunkMap.containsKey(c.chunkIndex)) chunkMap[c.chunkIndex] = c.telegramFileId
+                if (c.botTokenUsed.isNotBlank() && !tokenMap.containsKey(c.chunkIndex)) {
                     tokenMap[c.chunkIndex] = c.botTokenUsed
                 }
             }
         }
+
+        val recordedMax = recorded.maxOfOrNull { it.chunkIndex } ?: 1
+        val recordedTotal = recorded.firstOrNull { it.totalChunks > 1 }?.totalChunks ?: 1
+        val targetTotalChunks = maxOf(file.totalChunks, computedFromSize, recordedMax, recordedTotal, chunkMap.keys.maxOrNull() ?: 1)
 
         // Part 1 is always available on the main uploaded_files record
         if (file.telegramFileId.isNotBlank() && !chunkMap.containsKey(1)) {
@@ -161,7 +158,27 @@ object TelegramMediaResolver {
             }
         }
 
-        // Fallback: If not all chunks were found by exact file.path, search by filename or end of path
+        // Only genuine 1-chunk small files without chunk records exit early
+        if (targetTotalChunks <= 1 && recorded.isEmpty() && fromJson.isEmpty()) {
+            return@withContext if (file.telegramFileId.isNotBlank()) listOf(Triple(1, file.telegramFileId, file.botTokenUsed)) else emptyList()
+        }
+
+        // If all chunks are already resolved from JSON or DB, return immediately
+        if (chunkMap.size >= targetTotalChunks) {
+            val list = (1..targetTotalChunks).mapNotNull { idx ->
+                chunkMap[idx]?.let { Triple(idx, it, tokenMap[idx] ?: file.botTokenUsed) }
+            }
+            if (list.size >= targetTotalChunks) {
+                // Ensure file.chunksJson is in sync if it was empty
+                if (file.chunksJson.isBlank() || file.chunksJson == "[]") {
+                    file.setChunks(list)
+                    try { db.uploadedFileDao().insert(file) } catch (_: Exception) {}
+                }
+                return@withContext list
+            }
+        }
+
+        // 3. Fallback: Search all chunks by matching filename or path in chunkDao
         if (chunkMap.size < targetTotalChunks) {
             try {
                 val allChunks = chunkDao.getAllChunks()
@@ -173,7 +190,7 @@ object TelegramMediaResolver {
                 for (c in matches) {
                     if (c.telegramFileId.isNotBlank() && !chunkMap.containsKey(c.chunkIndex)) {
                         chunkMap[c.chunkIndex] = c.telegramFileId
-                        if (c.botTokenUsed.isNotBlank()) {
+                        if (c.botTokenUsed.isNotBlank() && !tokenMap.containsKey(c.chunkIndex)) {
                             tokenMap[c.chunkIndex] = c.botTokenUsed
                         }
                     }
@@ -181,17 +198,21 @@ object TelegramMediaResolver {
             } catch (_: Exception) {}
         }
 
-        // If some chunks are still missing from DB, query Telegram channel messages starting from file.messageId
-        if (chunkMap.size < targetTotalChunks && file.messageId > 0L) {
-            recoverMissingChunksFromTelegram(context, file, chunkMap, targetTotalChunks)
+        // 4. If some chunks are still missing, recover directly from Telegram channel
+        if (chunkMap.size < targetTotalChunks) {
+            recoverMissingChunksFromTelegram(context, file, chunkMap, tokenMap, targetTotalChunks)
         }
 
         val finalTotal = maxOf(targetTotalChunks, chunkMap.keys.maxOrNull() ?: 1)
         val resolvedList = (1..finalTotal).mapNotNull { idx ->
-            chunkMap[idx]?.let { Triple(idx, it, tokenMap[idx] ?: "") }
+            chunkMap[idx]?.let { Triple(idx, it, tokenMap[idx] ?: file.botTokenUsed) }
         }
 
         if (resolvedList.isNotEmpty()) {
+            if (resolvedList.size >= finalTotal && (file.chunksJson.isBlank() || file.chunksJson == "[]")) {
+                file.setChunks(resolvedList)
+                try { db.uploadedFileDao().insert(file) } catch (_: Exception) {}
+            }
             return@withContext resolvedList
         }
 
@@ -200,12 +221,15 @@ object TelegramMediaResolver {
 
     /**
      * Recovers missing chunk file IDs for older backups directly from Telegram channel messages.
-     * Inserts any discovered chunks into Room DB so future resolutions are instant.
+     * Decrypts AES-256 encrypted captions to identify parts, and scans both backwards and forwards
+     * relative to message ID to catch concurrently dispatched chunks.
+     * Inserts any discovered chunks into Room DB and updates the cloud index.
      */
     private suspend fun recoverMissingChunksFromTelegram(
         context: Context,
         file: UploadedFile,
         chunkMap: MutableMap<Int, String>,
+        tokenMap: MutableMap<Int, String>,
         targetTotalChunks: Int = file.totalChunks
     ) = withContext(Dispatchers.IO) {
         val candidateTokens = getCandidateBotTokens(context)
@@ -220,11 +244,34 @@ object TelegramMediaResolver {
         val client = HttpClientProvider.client
 
         val effectiveTotal = maxOf(file.totalChunks, targetTotalChunks)
-        val scanWindow = minOf(effectiveTotal * 4 + 10, 60)
-        val startId = file.messageId + 1
-        val endId = file.messageId + scanWindow
 
-        for (mId in startId..endId) {
+        // Find reference message ID
+        var baseMsgId = file.messageId
+        if (baseMsgId <= 0L) {
+            val otherMsgId = try {
+                db.uploadedFileDao().getAllFiles()
+                    .filter { it.channelId == targetChatId && it.messageId > 0L }
+                    .maxOfOrNull { it.messageId } ?: 0L
+            } catch (_: Exception) { 0L }
+            if (otherMsgId > 0L) {
+                baseMsgId = otherMsgId
+            }
+        }
+
+        if (baseMsgId <= 0L) return@withContext
+
+        val scanRadius = minOf(effectiveTotal * 8 + 20, 80)
+        val startId = (baseMsgId - scanRadius).coerceAtLeast(1L)
+        val endId = baseMsgId + scanRadius
+
+        // Priority scan order: closest to baseMsgId first
+        val scanIds = (1..scanRadius).flatMap { offset ->
+            listOf(baseMsgId - offset, baseMsgId + offset)
+        }.filter { it in startId..endId }
+
+        val candidateKeys = FileEncryptor.getCandidateKeys(context)
+
+        for (mId in scanIds) {
             if (chunkMap.size >= effectiveTotal) break
 
             val token = candidateTokens[((mId.toInt()) % candidateTokens.size).coerceAtLeast(0)]
@@ -249,7 +296,7 @@ object TelegramMediaResolver {
                     val docObj = resultObj?.optJSONObject("document")
                     val docFileId = docObj?.optString("file_id") ?: ""
                     val docFileName = docObj?.optString("file_name") ?: ""
-                    val caption = resultObj?.optString("caption") ?: ""
+                    val rawCaption = resultObj?.optString("caption") ?: ""
 
                     // Clean up the forwarded probe message immediately
                     if (forwardedMsgId > 0L) {
@@ -265,33 +312,79 @@ object TelegramMediaResolver {
                     }
 
                     if (docFileId.isNotBlank()) {
-                        for (partIdx in 2..effectiveTotal) {
-                            if (chunkMap.containsKey(partIdx)) continue
-                            val matchPattern = "[Part $partIdx/$effectiveTotal]"
-                            val partPatternAlt = "[Part $partIdx/"
-                            val partExt = ".part%03d".format(partIdx)
-                            val isMatch = (caption.contains(partPatternAlt) && (caption.contains(file.fileName) || caption.contains(file.fileName.take(12)))) ||
-                                          (docFileName.contains(partExt) && (docFileName.contains(file.fileName) || docFileName.contains(file.fileName.take(12))))
-
-                            if (isMatch) {
-                                chunkMap[partIdx] = docFileId
-                                val entity = ChunkProgressEntity(
-                                    sourcePath = file.path,
-                                    chunkIndex = partIdx,
-                                    totalChunks = effectiveTotal,
-                                    telegramFileId = docFileId,
-                                    messageId = mId,
-                                    chunkSize = docObj?.optLong("file_size") ?: 0L,
-                                    status = "COMPLETED",
-                                    botTokenUsed = token,
-                                    channelId = targetChatId,
-                                    uploadedAt = System.currentTimeMillis()
-                                )
-                                chunkDao.insert(entity)
-                                break
+                        // Decrypt encrypted caption if needed
+                        var caption = rawCaption
+                        if (rawCaption.contains("ENC:")) {
+                            val encBody = rawCaption.substringAfter("ENC:").trim()
+                            for (key in candidateKeys) {
+                                try {
+                                    val dec = FileEncryptor.decryptText(encBody, key)
+                                    if (dec.isNotBlank() && (dec.contains("[Part") || dec.contains(file.fileName))) {
+                                        caption = dec
+                                        break
+                                    }
+                                } catch (_: Exception) {}
                             }
                         }
+
+                        val partRegex = Regex("\\[Part\\s*(\\d+)/(\\d+)\\]")
+                        val match = partRegex.find(caption)
+                        val partIdx = match?.groupValues?.get(1)?.toIntOrNull()
+                        val captionTotal = match?.groupValues?.get(2)?.toIntOrNull()
+
+                        val isTargetFile = caption.contains(file.fileName) ||
+                                          caption.contains(file.fileName.take(15)) ||
+                                          (docFileName.isNotBlank() && (docFileName.contains(file.fileName) || docFileName.contains(file.fileName.take(15))))
+
+                        if (isTargetFile && partIdx != null && partIdx in 1..effectiveTotal) {
+                            chunkMap[partIdx] = docFileId
+                            tokenMap[partIdx] = token
+
+                            val entity = ChunkProgressEntity(
+                                sourcePath = file.path,
+                                chunkIndex = partIdx,
+                                totalChunks = captionTotal ?: effectiveTotal,
+                                telegramFileId = docFileId,
+                                messageId = mId,
+                                chunkSize = docObj?.optLong("file_size") ?: 0L,
+                                status = "COMPLETED",
+                                botTokenUsed = token,
+                                channelId = targetChatId,
+                                uploadedAt = System.currentTimeMillis()
+                            )
+                            chunkDao.insert(entity)
+                        }
                     }
+                }
+            } catch (_: Exception) {}
+        }
+
+        // If recovery found all chunks, sync to uploadedFile and push to cloud index
+        if (chunkMap.size >= effectiveTotal) {
+            val chunkList = (1..effectiveTotal).mapNotNull { idx ->
+                chunkMap[idx]?.let { Triple(idx, it, tokenMap[idx] ?: file.botTokenUsed) }
+            }
+            file.setChunks(chunkList)
+            file.totalChunks = effectiveTotal
+            try {
+                db.uploadedFileDao().insert(file)
+                val userEmail = prefs.userEmail
+                if (userEmail.isNotBlank()) {
+                    ServerApi().indexFile(
+                        serverUrl = prefs.serverUrl,
+                        email = userEmail,
+                        fileName = file.fileName,
+                        telegramFileId = chunkMap[1] ?: file.telegramFileId,
+                        size = file.size,
+                        path = file.path,
+                        timestamp = file.timestamp,
+                        messageId = file.messageId,
+                        isDriveUpload = file.isDriveUpload,
+                        chunksJson = file.chunksJson,
+                        channelId = targetChatId,
+                        botTokenUsed = tokenMap[1] ?: file.botTokenUsed,
+                        totalChunks = effectiveTotal
+                    )
                 }
             } catch (_: Exception) {}
         }
@@ -314,11 +407,16 @@ object TelegramMediaResolver {
         val candidateTokens = getCandidateBotTokens(context)
         if (candidateTokens.isEmpty()) return@withContext false
 
+        val computedChunks = if (file.size > FileChunker.CHUNK_SIZE) {
+            ((file.size + FileChunker.CHUNK_SIZE - 1) / FileChunker.CHUNK_SIZE).toInt()
+        } else 1
+        val targetTotalChunks = maxOf(file.totalChunks, computedChunks)
+
         val chunks = resolveChunksForFile(context, file)
         if (chunks.isEmpty()) return@withContext false
 
-        if (file.totalChunks > 1 && chunks.size < file.totalChunks) {
-            Log.e(TAG, "Cannot assemble ${file.fileName}: found only ${chunks.size} of ${file.totalChunks} chunks")
+        if (targetTotalChunks > 1 && chunks.size < targetTotalChunks) {
+            Log.e(TAG, "Cannot assemble ${file.fileName}: found only ${chunks.size} of $targetTotalChunks chunks")
             return@withContext false
         }
 

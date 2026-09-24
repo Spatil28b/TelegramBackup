@@ -409,6 +409,10 @@ object DriveUploadManager {
                 AppCacheManager.autoPruneCache(context)
             } catch (_: Exception) {}
 
+            val chunkList = (1..totalChunks).mapNotNull { idx ->
+                uploadedChunksMap[idx]?.let { Triple(idx, it.telegramFileId, it.botTokenUsed) }
+            }
+
             val entity = UploadedFile(
                 targetPath,
                 fileName,
@@ -420,7 +424,10 @@ object DriveUploadManager {
                 isDriveUpload = true
                 this.channelId = chatId
                 this.botTokenUsed = primaryBotUsed
-                if (totalChunks > 1) this.totalChunks = totalChunks
+                this.totalChunks = totalChunks
+                if (chunkList.isNotEmpty()) {
+                    this.setChunks(chunkList)
+                }
             }
             db.uploadedFileDao().insert(entity)
 
@@ -428,15 +435,19 @@ object DriveUploadManager {
             if (userEmail.isNotEmpty()) {
                 try {
                     ServerApi().indexFile(
-                        prefs.serverUrl,
-                        userEmail,
-                        fileName,
-                        firstChunkFileId,
-                        file.length(),
-                        targetPath,
-                        System.currentTimeMillis(),
-                        firstChunkMsgId,
-                        true
+                        serverUrl = prefs.serverUrl,
+                        email = userEmail,
+                        fileName = fileName,
+                        telegramFileId = firstChunkFileId,
+                        size = file.length(),
+                        path = targetPath,
+                        timestamp = System.currentTimeMillis(),
+                        messageId = firstChunkMsgId,
+                        isDriveUpload = true,
+                        chunksJson = entity.chunksJson,
+                        channelId = chatId,
+                        botTokenUsed = primaryBotUsed,
+                        totalChunks = totalChunks
                     )
                 } catch (_: Exception) {}
             }

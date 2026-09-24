@@ -217,6 +217,29 @@ object SettingsDbManager {
                 filesToInsert.chunked(500).forEach { batch ->
                     dao.insertAll(batch)
                 }
+
+                // Also populate chunk_upload_progress for multi-part files so streaming and downloads work seamlessly
+                val chunkDao = db.chunkProgressDao()
+                for (file in filesToInsert) {
+                    val parsed = file.parseChunks()
+                    if (parsed.isNotEmpty()) {
+                        for (c in parsed) {
+                            val chunkEntity = com.example.telegrambackup.data.ChunkProgressEntity(
+                                sourcePath = file.path,
+                                chunkIndex = c.first,
+                                totalChunks = file.totalChunks,
+                                telegramFileId = c.second,
+                                messageId = if (c.first == 1) file.messageId else 0L,
+                                chunkSize = 0L,
+                                status = "COMPLETED",
+                                botTokenUsed = c.third.ifBlank { file.botTokenUsed },
+                                channelId = file.channelId,
+                                uploadedAt = file.timestamp
+                            )
+                            chunkDao.insert(chunkEntity)
+                        }
+                    }
+                }
             }
 
             // High-Speed Two-Way Synchronization: Push any unsynced local records using Batch API

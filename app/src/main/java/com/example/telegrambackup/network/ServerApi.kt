@@ -436,7 +436,11 @@ class ServerApi {
         path: String,
         timestamp: Long = System.currentTimeMillis(),
         messageId: Long = 0L,
-        isDriveUpload: Boolean = false
+        isDriveUpload: Boolean = false,
+        chunksJson: String = "",
+        channelId: String = "",
+        botTokenUsed: String = "",
+        totalChunks: Int = 1
     ): Boolean = withContext(Dispatchers.IO) {
         try {
             val url = cleanUrl(serverUrl, "/api/files/index")
@@ -449,6 +453,10 @@ class ServerApi {
                 put("timestamp", timestamp)
                 put("messageId", messageId)
                 put("isDriveUpload", isDriveUpload)
+                if (chunksJson.isNotBlank() && chunksJson != "[]") put("chunksJson", chunksJson)
+                if (channelId.isNotBlank()) put("channelId", channelId)
+                if (botTokenUsed.isNotBlank()) put("botTokenUsed", botTokenUsed)
+                if (totalChunks > 1) put("totalChunks", totalChunks)
             }
             val requestBody = json.toString().toRequestBody("application/json".toMediaTypeOrNull())
             val request = Request.Builder().url(url).post(requestBody).build()
@@ -486,6 +494,10 @@ class ServerApi {
                         put("timestamp", f.timestamp)
                         put("messageId", f.messageId)
                         put("isDriveUpload", f.isDriveUpload)
+                        if (f.chunksJson.isNotBlank() && f.chunksJson != "[]") put("chunksJson", f.chunksJson)
+                        if (f.channelId.isNotBlank()) put("channelId", f.channelId)
+                        if (f.botTokenUsed.isNotBlank()) put("botTokenUsed", f.botTokenUsed)
+                        if (f.totalChunks > 1) put("totalChunks", f.totalChunks)
                     }
                     array.put(obj)
                 }
@@ -558,6 +570,10 @@ class ServerApi {
                     } else 1
                     val resolvedChunks = maxOf(obj.optInt("totalChunks", 1), obj.optInt("total_chunks", 1), computedChunks)
 
+                    val chunksJsonStr = obj.optString("chunksJson", "").ifBlank { obj.optString("chunks_json", "") }
+                    val chId = obj.optString("channelId", "").ifBlank { obj.optString("channel_id", "") }
+                    val bToken = obj.optString("botTokenUsed", "").ifBlank { obj.optString("bot_token_used", "") }
+
                     val entity = UploadedFile(
                         pathStr,
                         fName,
@@ -569,6 +585,9 @@ class ServerApi {
                     ).apply {
                         isDriveUpload = isDrive
                         totalChunks = resolvedChunks
+                        if (chunksJsonStr.isNotBlank() && chunksJsonStr != "[]") this.chunksJson = chunksJsonStr
+                        if (chId.isNotBlank()) this.channelId = chId
+                        if (bToken.isNotBlank()) this.botTokenUsed = bToken
                     }
                     list.add(entity)
                 }

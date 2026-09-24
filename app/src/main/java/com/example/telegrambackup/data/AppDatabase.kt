@@ -16,7 +16,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         TelegramChannelEntity::class,
         NetworkAnalysisEntity::class
     ],
-    version = 11,
+    version = 12,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -132,7 +132,15 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
-        private val MIGRATION_1_11 = object : Migration(1, 11) {
+        private val MIGRATION_11_12 = object : Migration(11, 12) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                try {
+                    db.execSQL("ALTER TABLE `uploaded_files` ADD COLUMN `chunksJson` TEXT NOT NULL DEFAULT ''")
+                } catch (_: Exception) {}
+            }
+        }
+
+        private val MIGRATION_1_12 = object : Migration(1, 12) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 // Ensure all latest schema elements exist for legacy users jumping directly from v1
                 createAllTablesAndIndexes(db)
@@ -154,7 +162,8 @@ abstract class AppDatabase : RoomDatabase() {
                         `totalChunks` INTEGER NOT NULL DEFAULT 1,
                         `isDriveUpload` INTEGER NOT NULL DEFAULT 0,
                         `channelId` TEXT NOT NULL DEFAULT '',
-                        `botTokenUsed` TEXT NOT NULL DEFAULT ''
+                        `botTokenUsed` TEXT NOT NULL DEFAULT '',
+                        `chunksJson` TEXT NOT NULL DEFAULT ''
                     )
                 """.trimIndent())
 
@@ -229,6 +238,9 @@ abstract class AppDatabase : RoomDatabase() {
                 db.execSQL("CREATE INDEX IF NOT EXISTS `index_uploaded_files_fileName` ON `uploaded_files` (`fileName`)")
                 db.execSQL("CREATE INDEX IF NOT EXISTS `index_uploaded_files_deletedAt` ON `uploaded_files` (`deletedAt`)")
                 db.execSQL("CREATE INDEX IF NOT EXISTS `index_uploaded_files_telegramFileId` ON `uploaded_files` (`telegramFileId`)")
+                try {
+                    db.execSQL("ALTER TABLE `uploaded_files` ADD COLUMN `chunksJson` TEXT NOT NULL DEFAULT ''")
+                } catch (_: Exception) {}
             } catch (_: Exception) {}
         }
 
@@ -240,7 +252,15 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "telegram_backup_database"
                 )
-                .addMigrations(MIGRATION_1_11, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11)
+                .addMigrations(
+                    MIGRATION_1_12,
+                    MIGRATION_6_7,
+                    MIGRATION_7_8,
+                    MIGRATION_8_9,
+                    MIGRATION_9_10,
+                    MIGRATION_10_11,
+                    MIGRATION_11_12
+                )
                 // NEVER wipe database on normal upgrades; only allow destructive fallback on explicit APK downgrade
                 .fallbackToDestructiveMigrationOnDowngrade()
                 .addCallback(object : RoomDatabase.Callback() {
