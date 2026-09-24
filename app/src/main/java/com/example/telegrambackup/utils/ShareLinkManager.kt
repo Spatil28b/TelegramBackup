@@ -35,6 +35,7 @@ object ShareLinkManager {
         val db = AppDatabase.getDatabase(context)
 
         // Find primary or active bot token
+        val candidateTokens = TelegramMediaResolver.getCandidateBotTokens(context)
         val botToken = db.telegramBotDao().getPrimaryBot()?.botToken
             ?: db.telegramBotDao().getActiveBots().firstOrNull()?.botToken
             ?: prefs.botToken
@@ -46,7 +47,9 @@ object ShareLinkManager {
         val resolvedChunks = if (rawChunks.isEmpty() && file.telegramFileId.isNotBlank()) {
             listOf(Triple(1, file.telegramFileId, file.botTokenUsed.ifBlank { botToken }))
         } else {
-            rawChunks
+            rawChunks.map { c ->
+                if (c.third.isBlank()) Triple(c.first, c.second, file.botTokenUsed.ifBlank { botToken }) else c
+            }
         }
 
         val serverUrl = prefs.serverUrl.ifEmpty { "https://telegram-backup-backend.vercel.app" }.trimEnd('/')
@@ -67,7 +70,8 @@ object ShareLinkManager {
             encryptionKey = prefs.encryptionKey,
             chunks = resolvedChunks,
             pin = passwordPin.trim(),
-            expiresAt = expiresAtMs
+            expiresAt = expiresAtMs,
+            candidateBots = candidateTokens
         )
 
         val finalUrl: String
@@ -87,6 +91,11 @@ object ShareLinkManager {
                 put("fileName", file.fileName)
                 put("fileSize", file.size)
                 put("botToken", botToken)
+                if (candidateTokens.isNotEmpty()) {
+                    val bArray = JSONArray()
+                    for (t in candidateTokens) bArray.put(t)
+                    put("candidateBots", bArray)
+                }
                 if (prefs.encryptionKey.isNotBlank()) {
                     put("encryptionKey", prefs.encryptionKey)
                 }

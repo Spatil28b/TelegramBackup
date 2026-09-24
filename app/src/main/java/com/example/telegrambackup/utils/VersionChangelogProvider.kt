@@ -28,6 +28,35 @@ object VersionChangelogProvider {
 
     private val releases = listOf(
         VersionRelease(
+            versionName = "2.2.8",
+            versionCode = 111,
+            releaseDate = "September 2026",
+            highlights = "TSpace Rebranding, Dynamic App Icon Switcher & Multi-Part Large File Sharing",
+            entries = listOf(
+                ChangelogEntry(
+                    Icons.Default.Cloud,
+                    TelegramEmerald,
+                    "Rebranded to TSpace",
+                    "Official name upgraded to TSpace Cloud Storage & Vault across the entire system, onboarding dialogs, and notifications.",
+                    "REBRAND"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Palette,
+                    TelegramBlue,
+                    "Dynamic App Launcher Icons",
+                    "Choose between signature Emerald Forest Green (Default) and Cyber Electric Blue launcher icons in Settings > Appearance with instant live preview.",
+                    "ICONS"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Share,
+                    TelegramEmerald,
+                    "Large File Sharing (>3.99 MB) Resolved",
+                    "Deep multi-bot fleet failover and progressive client-side chunk assembly guarantee 50MB, 500MB+ files download and stream completely with live progress.",
+                    "SHARING"
+                )
+            )
+        ),
+        VersionRelease(
             versionName = "2.2.7",
             versionCode = 110,
             releaseDate = "September 2026",

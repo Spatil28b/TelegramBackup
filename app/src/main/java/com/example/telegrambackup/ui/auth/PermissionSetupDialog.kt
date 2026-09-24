@@ -151,7 +151,7 @@ fun PermissionSetupDialog(
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(
-                    text = "Welcome to Telegram Backup Cloud! To back up your photos, videos, and documents safely in the background, please grant the following permissions:",
+                    text = "Welcome to TSpace Cloud! To back up your photos, videos, and documents safely in the background, please grant the following permissions:",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

@@ -1739,8 +1739,8 @@ fun BackupSettingsScreen(
                                 SpotiSettingsItem(
                                     icon = Icons.Default.Palette,
                                     title = "Appearance & Themes",
-                                    subtitle = "10 premium styles & AMOLED black",
-                                    value = themeLabel,
+                                    subtitle = "14 premium styles, AMOLED black & app icons",
+                                    value = "${themeLabel} • ${if (prefs.appIcon == "blue") "Blue Icon" else "Green Icon"}",
                                     iconTint = Color(0xFFF59E0B)
                                 ) {
                                     triggerHapticFeedback(context, haptic)
@@ -2848,6 +2848,102 @@ fun BackupSettingsScreen(
                                         modifier = Modifier.padding(horizontal = 16.dp),
                                         color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)
                                     )
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Text(
+                        "APP LAUNCHER ICON",
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, letterSpacing = 0.8.sp)
+                    )
+
+                    var currentAppIcon by remember { mutableStateOf(com.example.telegrambackup.utils.AppIconManager.getCurrentIcon(context)) }
+
+                    Surface(
+                        shape = RoundedCornerShape(18.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.40f),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            com.example.telegrambackup.utils.AppIcon.entries.forEach { iconItem ->
+                                val isIconSelected = currentAppIcon == iconItem
+                                Surface(
+                                    shape = RoundedCornerShape(14.dp),
+                                    color = if (isIconSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f) else Color.Transparent,
+                                    border = BorderStroke(
+                                        width = if (isIconSelected) 1.5.dp else 1.dp,
+                                        color = if (isIconSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f)
+                                    ),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            if (currentAppIcon != iconItem) {
+                                                currentAppIcon = iconItem
+                                                com.example.telegrambackup.utils.AppIconManager.setAppIcon(context, iconItem)
+                                                triggerHapticFeedback(context, haptic)
+                                                Toast.makeText(context, "App icon updated to ${iconItem.title}. Your launcher will refresh shortly.", Toast.LENGTH_LONG).show()
+                                            }
+                                        }
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(12.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(14.dp)
+                                    ) {
+                                        androidx.compose.foundation.Image(
+                                            painter = androidx.compose.ui.res.painterResource(id = iconItem.previewDrawableRes),
+                                            contentDescription = iconItem.title,
+                                            modifier = Modifier
+                                                .size(52.dp)
+                                                .clip(RoundedCornerShape(12.dp))
+                                                .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f), RoundedCornerShape(12.dp)),
+                                            contentScale = ContentScale.Crop
+                                        )
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                                Text(
+                                                    iconItem.title,
+                                                    style = MaterialTheme.typography.titleMedium.copy(
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = if (isIconSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                                                    )
+                                                )
+                                                if (iconItem == com.example.telegrambackup.utils.AppIcon.GREEN) {
+                                                    Surface(
+                                                        shape = CircleShape,
+                                                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+                                                    ) {
+                                                        Text(
+                                                            "Default",
+                                                            style = MaterialTheme.typography.labelSmall.copy(
+                                                                color = MaterialTheme.colorScheme.primary,
+                                                                fontWeight = FontWeight.Bold
+                                                            ),
+                                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                            Text(
+                                                iconItem.subtitle,
+                                                style = MaterialTheme.typography.bodySmall.copy(color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                            )
+                                        }
+                                        RadioButton(
+                                            selected = isIconSelected,
+                                            onClick = {
+                                                if (currentAppIcon != iconItem) {
+                                                    currentAppIcon = iconItem
+                                                    com.example.telegrambackup.utils.AppIconManager.setAppIcon(context, iconItem)
+                                                    triggerHapticFeedback(context, haptic)
+                                                    Toast.makeText(context, "App icon updated to ${iconItem.title}. Your launcher will refresh shortly.", Toast.LENGTH_LONG).show()
+                                                }
+                                            }
+                                        )
+                                    }
                                 }
                             }
                         }

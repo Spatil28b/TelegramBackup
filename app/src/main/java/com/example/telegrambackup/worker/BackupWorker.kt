@@ -711,7 +711,7 @@ class BackupWorker(
 
             val notif = NotificationCompat.Builder(applicationContext, channelId)
                 .setSmallIcon(R.drawable.ic_notif_cloud_done)
-                .setContentTitle("☁️ Telegram Cloud Backup Complete")
+                .setContentTitle("☁️ TSpace Backup Complete")
                 .setContentText(summaryMsg)
                 .setPriority(NotificationCompat.PRIORITY_DEFAULT)
                 .setAutoCancel(true)

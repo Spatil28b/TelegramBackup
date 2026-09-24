@@ -83,16 +83,17 @@ fun AppInfoDialog(
                         .background(TelegramBlue.copy(alpha = 0.15f)),
                     contentAlignment = Alignment.Center
                 ) {
+                    val currentIcon = remember { com.example.telegrambackup.utils.AppIconManager.getCurrentIcon(context) }
                     Image(
-                        painter = painterResource(id = R.drawable.app_logo),
+                        painter = painterResource(id = currentIcon.previewDrawableRes),
                         contentDescription = "App Logo",
-                        modifier = Modifier.size(28.dp)
+                        modifier = Modifier.size(32.dp).clip(RoundedCornerShape(7.dp))
                     )
                 }
                 Spacer(modifier = Modifier.width(12.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        "Telegram Backup",
+                        "TSpace",
                         style = MaterialTheme.typography.titleMedium.copy(
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onSurface

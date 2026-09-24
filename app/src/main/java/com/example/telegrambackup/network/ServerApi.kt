@@ -1457,7 +1457,8 @@ class ServerApi {
         encryptionKey: String,
         chunks: List<Triple<Int, String, String>> = emptyList(),
         pin: String = "",
-        expiresAt: Long = 0L
+        expiresAt: Long = 0L,
+        candidateBots: List<String> = emptyList()
     ): ShareLinkServerResult = withContext(Dispatchers.IO) {
         try {
             val url = cleanUrl(serverUrl, "/api/share/create")
@@ -1469,6 +1470,14 @@ class ServerApi {
                 if (encryptionKey.isNotBlank()) put("encryptionKey", encryptionKey.trim())
                 if (pin.isNotBlank()) put("pin", pin.trim())
                 if (expiresAt > 0L) put("expiresAt", expiresAt)
+
+                if (candidateBots.isNotEmpty()) {
+                    val botArr = JSONArray()
+                    for (b in candidateBots) {
+                        if (b.isNotBlank()) botArr.put(b.trim())
+                    }
+                    put("candidateBots", botArr)
+                }
 
                 if (chunks.isNotEmpty()) {
                     val chunksArray = JSONArray()

@@ -92,6 +92,10 @@ class AppPrefs(private val context: Context) {
         get() = prefs.getString("recovery_email", "") ?: ""
         set(value) = prefs.edit().putString("recovery_email", value).apply()
 
+    var appIcon: String
+        get() = prefs.getString("selected_app_icon", "green") ?: "green"
+        set(value) = prefs.edit().putString("selected_app_icon", value).apply()
+
     var userEmail: String
         get() {
             val email = authPrefs.getString("user_email", "") ?: ""
