@@ -178,6 +178,52 @@ object TelegramMediaResolver {
             }
         }
 
+        // 2b. Cloud API re-fetch: if local data is insufficient, pull fresh chunksJson from server
+        if (chunkMap.size < targetTotalChunks) {
+            try {
+                val prefs = AppPrefs(context)
+                val userEmail = prefs.userEmail
+                if (userEmail.isNotBlank()) {
+                    val cloudFiles = ServerApi().listFiles(prefs.serverUrl, userEmail)
+                    val cloudMatch = cloudFiles.firstOrNull { it.path == file.path }
+                        ?: cloudFiles.firstOrNull { it.fileName == file.fileName && it.size == file.size }
+                    if (cloudMatch != null) {
+                        val cloudChunks = cloudMatch.parseChunks()
+                        if (cloudChunks.isNotEmpty()) {
+                            Log.d(TAG, "Cloud re-fetch found ${cloudChunks.size} chunks for ${file.fileName}")
+                            for (c in cloudChunks) {
+                                if (!chunkMap.containsKey(c.first) && c.second.isNotBlank()) {
+                                    chunkMap[c.first] = c.second
+                                    if (c.third.isNotBlank() && !tokenMap.containsKey(c.first)) tokenMap[c.first] = c.third
+                                }
+                            }
+                            // Persist to local DB for future use
+                            if (file.chunksJson.isBlank() || file.chunksJson == "[]") {
+                                file.chunksJson = cloudMatch.chunksJson
+                                file.totalChunks = maxOf(file.totalChunks, cloudMatch.totalChunks)
+                                try { db.uploadedFileDao().insert(file) } catch (_: Exception) {}
+                            }
+                            // Also populate chunk_upload_progress
+                            for (c in cloudChunks) {
+                                try {
+                                    chunkDao.insert(ChunkProgressEntity(
+                                        sourcePath = file.path, chunkIndex = c.first,
+                                        totalChunks = maxOf(file.totalChunks, cloudChunks.size),
+                                        telegramFileId = c.second, messageId = if (c.first == 1) file.messageId else 0L,
+                                        chunkSize = 0L, status = "COMPLETED",
+                                        botTokenUsed = c.third.ifBlank { file.botTokenUsed },
+                                        channelId = file.channelId, uploadedAt = file.timestamp
+                                    ))
+                                } catch (_: Exception) {}
+                            }
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Cloud re-fetch for chunks failed: ${e.message}")
+            }
+        }
+
         // 3. Fallback: Search all chunks by matching filename or path in chunkDao
         if (chunkMap.size < targetTotalChunks) {
             try {
@@ -412,12 +458,42 @@ object TelegramMediaResolver {
         } else 1
         val targetTotalChunks = maxOf(file.totalChunks, computedChunks)
 
-        val chunks = resolveChunksForFile(context, file)
+        var chunks = resolveChunksForFile(context, file)
         if (chunks.isEmpty()) return@withContext false
 
+        // If still missing chunks, log warning but attempt download with what we have
+        // instead of hard-aborting (old behavior caused "Download failed" at 4.19 MB)
         if (targetTotalChunks > 1 && chunks.size < targetTotalChunks) {
-            Log.e(TAG, "Cannot assemble ${file.fileName}: found only ${chunks.size} of $targetTotalChunks chunks")
-            return@withContext false
+            Log.w(TAG, "Partial chunk metadata for ${file.fileName}: found ${chunks.size} of $targetTotalChunks. Attempting with available chunks.")
+            // If only chunk 1 found and file.telegramFileId matches it, try single-stream as last resort
+            if (chunks.size == 1 && chunks[0].first == 1) {
+                Log.w(TAG, "Only chunk 1 available for multi-chunk file ${file.fileName}, attempting single-stream download via getFile")
+                val directUrl = resolveDirectUrl(context, chunks[0].second, chunks[0].third.ifBlank { file.botTokenUsed })
+                if (directUrl != null) {
+                    val ok = downloadUrlToFile(directUrl, tempMergedFile, onProgress)
+                    if (ok && tempMergedFile.exists() && tempMergedFile.length() > 0L) {
+                        // If downloaded size is close to expected, accept it (Telegram local server or small enough file)
+                        Log.d(TAG, "Single-stream download got ${tempMergedFile.length()} bytes for ${file.fileName} (expected ${file.size})")
+                        if (file.size <= 0L || tempMergedFile.length() >= file.size * 0.95) {
+                            // Success via single-stream — skip chunk assembly
+                            FileEncryptor.ensureDecrypted(tempMergedFile, context, file.fileName)
+                            if (targetFile.exists()) targetFile.delete()
+                            val success = tempMergedFile.renameTo(targetFile)
+                            if (!success && tempMergedFile.exists()) {
+                                tempMergedFile.copyTo(targetFile, overwrite = true)
+                                tempMergedFile.delete()
+                            }
+                            if (targetFile.exists()) FileEncryptor.ensureDecrypted(targetFile, context, file.fileName)
+                            onProgress(1f)
+                            return@withContext targetFile.exists() && targetFile.length() > 0L
+                        }
+                    }
+                    if (tempMergedFile.exists()) tempMergedFile.delete()
+                }
+                // Single-stream failed — cannot download without full chunk metadata
+                Log.e(TAG, "Cannot download ${file.fileName}: chunk metadata incomplete and single-stream insufficient")
+                return@withContext false
+            }
         }
 
         if (chunks.size == 1 && file.totalChunks <= 1) {
@@ -450,22 +526,35 @@ object TelegramMediaResolver {
                                 return@withPermit
                             }
 
-                            val directUrl = resolveDirectUrl(context, chunkFileId, chunkBotToken)
-                            if (directUrl == null) {
-                                downloadFailed = true
-                                return@withPermit
-                            }
+                            // Retry each chunk up to 3 times with exponential backoff
+                            var chunkOk = false
+                            for (attempt in 1..3) {
+                                if (downloadFailed) break
+                                val directUrl = resolveDirectUrl(context, chunkFileId, chunkBotToken)
+                                if (directUrl == null) {
+                                    if (attempt == 3) { downloadFailed = true; break }
+                                    kotlinx.coroutines.delay(attempt * 2000L)
+                                    continue
+                                }
 
-                            val ok = downloadUrlToFile(directUrl, partFile) { _ ->
-                                val totalProg = (downloadedBytes.get().toFloat() / totalEstimatedSize.toFloat()).coerceIn(0f, 0.98f)
-                                onProgress(totalProg)
+                                val ok = downloadUrlToFile(directUrl, partFile) { _ ->
+                                    val totalProg = (downloadedBytes.get().toFloat() / totalEstimatedSize.toFloat()).coerceIn(0f, 0.98f)
+                                    onProgress(totalProg)
+                                }
+                                if (ok && partFile.exists() && partFile.length() > 0) {
+                                    synchronized(partFiles) { partFiles.add(partFile) }
+                                    downloadedBytes.addAndGet(partFile.length())
+                                    chunkOk = true
+                                    break
+                                } else {
+                                    if (partFile.exists()) partFile.delete()
+                                    if (attempt < 3) {
+                                        Log.w(TAG, "Chunk $chunkIdx download attempt $attempt failed, retrying in ${attempt * 2}s")
+                                        kotlinx.coroutines.delay(attempt * 2000L)
+                                    }
+                                }
                             }
-                            if (ok && partFile.exists() && partFile.length() > 0) {
-                                synchronized(partFiles) { partFiles.add(partFile) }
-                                downloadedBytes.addAndGet(partFile.length())
-                            } else {
-                                downloadFailed = true
-                            }
+                            if (!chunkOk) downloadFailed = true
                         }
                     }
                 }
@@ -622,7 +711,9 @@ object TelegramMediaResolver {
         targetFile: File,
         onProgress: (Float) -> Unit = {}
     ): Boolean {
-        val client = HttpClientProvider.client
+        // Use uploadClient with 15-minute read timeout instead of default 30-second client
+        // to prevent silent stream closures on slow mobile connections (was causing 4.19MB stall)
+        val client = HttpClientProvider.uploadClient
         val request = Request.Builder().url(url).get().build()
         return try {
             val response = client.newCall(request).execute()

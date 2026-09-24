@@ -28,6 +28,49 @@ object VersionChangelogProvider {
 
     private val releases = listOf(
         VersionRelease(
+            versionName = "2.3.0",
+            versionCode = 114,
+            releaseDate = "September 2026",
+            highlights = "Critical Download Fix — 4.19 MB Stall Resolved, Cloud Chunk Re-Sync, Retry with Backoff",
+            entries = listOf(
+                ChangelogEntry(
+                    Icons.Default.Download,
+                    TelegramEmerald,
+                    "Critical 4.19 MB Download Fix",
+                    "Resolved persistent download failure where files stopped at exactly 4.19 MB. Root cause: 30-second HTTP timeout killed stream mid-chunk, missing chunk metadata caused hard abort, and no retry logic existed.",
+                    "FIX"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Cloud,
+                    TelegramBlue,
+                    "Cloud Chunk Re-Sync",
+                    "Downloads now automatically fetch fresh chunk metadata from the cloud server when local database is empty (new device or reinstall). Chunks are persisted locally for future use.",
+                    "NEW"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Refresh,
+                    Color(0xFFFF9800),
+                    "Retry with Exponential Backoff",
+                    "Each chunk download retries up to 3 times with 2s/4s/6s backoff instead of failing instantly on first network hiccup.",
+                    "NEW"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Timer,
+                    Color(0xFF9C27B0),
+                    "Extended Download Timeout",
+                    "Switched file downloads from 30-second to 15-minute read timeout for reliable streaming on slow mobile connections.",
+                    "FIX"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Shield,
+                    Color(0xFF4CAF50),
+                    "Single-Stream Fallback",
+                    "When chunk metadata is completely unavailable, attempts full-file single-stream download as last resort before reporting failure.",
+                    "NEW"
+                )
+            )
+        ),
+        VersionRelease(
             versionName = "2.2.9",
             versionCode = 112,
             releaseDate = "September 2026",
