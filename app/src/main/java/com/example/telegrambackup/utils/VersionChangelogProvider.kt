@@ -28,6 +28,35 @@ object VersionChangelogProvider {
 
     private val releases = listOf(
         VersionRelease(
+            versionName = "2.2.9",
+            versionCode = 112,
+            releaseDate = "September 2026",
+            highlights = "Permanent Large File Sharing Fix, Random-Access Decryption & Chunk Completeness Guard",
+            entries = listOf(
+                ChangelogEntry(
+                    Icons.Default.Share,
+                    TelegramEmerald,
+                    "Permanent Large File Sharing Fix",
+                    "Bit-exact random-access AES-256-CBC range decryption, Telegram CDN URL caching, and zero-RAM disk streaming solve downloads aborting or corrupting on large multi-part files.",
+                    "SHARING"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Security,
+                    TelegramBlue,
+                    "Chunk Completeness Safeguard",
+                    "Android media resolver guarantees all sequential chunks are verified and present before initiating local assembly, eliminating truncated file corruption.",
+                    "SECURITY"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Cloud,
+                    TelegramEmerald,
+                    "Zero-Disk Stream Engine",
+                    "Enhanced web sharing portal with live download speed (MB/s), ETA calculations, and automatic retry on network blips.",
+                    "STREAMING"
+                )
+            )
+        ),
+        VersionRelease(
             versionName = "2.2.8",
             versionCode = 111,
             releaseDate = "September 2026",
