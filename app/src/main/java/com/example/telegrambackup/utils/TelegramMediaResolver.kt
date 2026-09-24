@@ -317,6 +317,11 @@ object TelegramMediaResolver {
         val chunks = resolveChunksForFile(context, file)
         if (chunks.isEmpty()) return@withContext false
 
+        if (file.totalChunks > 1 && chunks.size < file.totalChunks) {
+            Log.e(TAG, "Cannot assemble ${file.fileName}: found only ${chunks.size} of ${file.totalChunks} chunks")
+            return@withContext false
+        }
+
         if (chunks.size == 1 && file.totalChunks <= 1) {
             // Single chunk file: direct stream
             val directUrl = resolveDirectUrl(context, chunks[0].second, chunks[0].third.ifBlank { file.botTokenUsed }) ?: return@withContext false
