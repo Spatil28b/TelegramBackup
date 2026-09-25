@@ -16,6 +16,9 @@ interface UploadedFileDao {
     @Query("SELECT * FROM uploaded_files WHERE isDeleted = 0 ORDER BY timestamp DESC")
     fun getAllFiles(): List<UploadedFile>
 
+    @Query("SELECT path FROM uploaded_files WHERE isDeleted = 0")
+    fun getAllUploadedPaths(): List<String>
+
     @Query("SELECT * FROM uploaded_files WHERE isDeleted = 0 ORDER BY timestamp DESC")
     fun getAllFilesFlow(): kotlinx.coroutines.flow.Flow<List<UploadedFile>>
 

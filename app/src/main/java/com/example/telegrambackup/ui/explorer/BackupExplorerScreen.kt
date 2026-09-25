@@ -401,81 +401,152 @@ fun BackupExplorerScreen(
         }
     }
 
-    val monthlyTimelineFolders = remember(cloudFileList) {
-        val format = java.text.SimpleDateFormat("yyyy - MMMM", Locale.US)
-        val monthMap = mutableMapOf<String, MutableList<UploadedFile>>()
-        cloudFileList.forEach { file ->
-            val dateKey = if (file.timestamp > 0) format.format(java.util.Date(file.timestamp)) else "Unknown Date"
-            monthMap.getOrPut(dateKey) { mutableListOf() }.add(file)
+    var monthlyTimelineFolders by remember { mutableStateOf<List<LocalFolderModel>>(emptyList()) }
+    LaunchedEffect(cloudFileList) {
+        if (cloudFileList.isEmpty()) {
+            monthlyTimelineFolders = emptyList()
+            return@LaunchedEffect
         }
-        monthMap.map { (monthName, files) ->
-            LocalFolderModel(
-                folderName = monthName,
-                folderPath = "Timeline/$monthName",
-                filesCount = files.size,
-                totalSizeBytes = files.sumOf { it.size }
-            )
-        }.sortedByDescending { it.folderName }
+        withContext(Dispatchers.Default) {
+            val format = java.text.SimpleDateFormat("yyyy - MMMM", Locale.US)
+            val monthMap = mutableMapOf<String, MutableList<UploadedFile>>()
+            val dateCache = HashMap<Long, String>(64)
+            for (file in cloudFileList) {
+                val ts = file.timestamp
+                val dateKey = if (ts > 0) {
+                    val bucket = ts / 2_000_000_000L
+                    dateCache.getOrPut(bucket) {
+                        format.format(java.util.Date(ts))
+                    }
+                } else "Unknown Date"
+                monthMap.getOrPut(dateKey) { mutableListOf() }.add(file)
+            }
+            val result = monthMap.map { (monthName, files) ->
+                LocalFolderModel(
+                    folderName = monthName,
+                    folderPath = "Timeline/$monthName",
+                    filesCount = files.size,
+                    totalSizeBytes = files.sumOf { it.size }
+                )
+            }.sortedByDescending { it.folderName }
+            withContext(Dispatchers.Main) {
+                monthlyTimelineFolders = result
+            }
+        }
     }
 
-    val categoriesData = remember(cloudFileList, monthlyTimelineFolders) {
-        fun getCategoryFiles(title: String): List<UploadedFile> {
-            return cloudFileList.filter { f -> isFileMatchingCategory(f, title) }
+    val categoriesData = remember(cloudFileList, monthlyTimelineFolders.size) {
+        var downloadsCount = 0; var downloadsSize = 0L
+        var imagesCount = 0; var imagesSize = 0L
+        var videosCount = 0; var videosSize = 0L
+        var audioCount = 0; var audioSize = 0L
+        var docsCount = 0; var docsSize = 0L
+        var appsCount = 0; var appsSize = 0L
+        var archivesCount = 0; var archivesSize = 0L
+        var totalVaultSize = 0L
+
+        for (f in cloudFileList) {
+            totalVaultSize += f.size
+            if (prefs.isSafeVaultFile(f.path)) continue
+
+            val name = f.fileName.lowercase()
+            val path = f.path.lowercase()
+
+            when {
+                name.endsWith(".jpg") || name.endsWith(".jpeg") || name.endsWith(".png") ||
+                name.endsWith(".webp") || name.endsWith(".heic") || name.endsWith(".gif") ||
+                name.endsWith(".bmp") || name.endsWith(".svg") -> {
+                    imagesCount++
+                    imagesSize += f.size
+                }
+                name.endsWith(".mp4") || name.endsWith(".mkv") || name.endsWith(".avi") ||
+                name.endsWith(".mov") || name.endsWith(".webm") || name.endsWith(".3gp") ||
+                name.endsWith(".flv") -> {
+                    videosCount++
+                    videosSize += f.size
+                }
+                name.endsWith(".mp3") || name.endsWith(".wav") || name.endsWith(".aac") ||
+                name.endsWith(".flac") || name.endsWith(".m4a") || name.endsWith(".ogg") ||
+                name.endsWith(".opus") -> {
+                    audioCount++
+                    audioSize += f.size
+                }
+                name.endsWith(".pdf") || name.endsWith(".docx") || name.endsWith(".doc") ||
+                name.endsWith(".txt") || name.endsWith(".xlsx") || name.endsWith(".xls") ||
+                name.endsWith(".pptx") || name.endsWith(".ppt") || name.endsWith(".csv") -> {
+                    docsCount++
+                    docsSize += f.size
+                }
+                name.endsWith(".apk") || name.endsWith(".xapk") -> {
+                    appsCount++
+                    appsSize += 25_000_000L
+                }
+                name.endsWith(".zip") || name.endsWith(".rar") || name.endsWith(".7z") ||
+                name.endsWith(".tar") || name.endsWith(".gz") || name.endsWith(".bz2") -> {
+                    archivesCount++
+                    archivesSize += f.size
+                }
+            }
+
+            if (path.contains("download") || name.contains("download")) {
+                downloadsCount++
+                downloadsSize += f.size
+            }
         }
 
         listOf(
             ExplorerCategoryModel(
                 title = "Downloads",
-                count = getCategoryFiles("Downloads").size,
-                totalSizeBytes = getCategoryFiles("Downloads").sumOf { it.size },
+                count = downloadsCount,
+                totalSizeBytes = downloadsSize,
                 icon = Icons.Default.Download,
                 iconTint = Color(0xFF1A73E8),
                 containerTint = Color(0xFFE8F0FE)
             ),
             ExplorerCategoryModel(
                 title = "Images",
-                count = getCategoryFiles("Images").size,
-                totalSizeBytes = getCategoryFiles("Images").sumOf { it.size },
+                count = imagesCount,
+                totalSizeBytes = imagesSize,
                 icon = Icons.Default.Image,
                 iconTint = Color(0xFF8430CE),
                 containerTint = Color(0xFFF3E8FD)
             ),
             ExplorerCategoryModel(
                 title = "Videos",
-                count = getCategoryFiles("Videos").size,
-                totalSizeBytes = getCategoryFiles("Videos").sumOf { it.size },
+                count = videosCount,
+                totalSizeBytes = videosSize,
                 icon = Icons.Default.Videocam,
                 iconTint = Color(0xFFD93025),
                 containerTint = Color(0xFFFCE8E6)
             ),
             ExplorerCategoryModel(
                 title = "Audio",
-                count = getCategoryFiles("Audio").size,
-                totalSizeBytes = getCategoryFiles("Audio").sumOf { it.size },
+                count = audioCount,
+                totalSizeBytes = audioSize,
                 icon = Icons.Default.MusicNote,
                 iconTint = Color(0xFFE37400),
                 containerTint = Color(0xFFFEF7E0)
             ),
             ExplorerCategoryModel(
                 title = "Documents & other",
-                count = getCategoryFiles("Documents & other").size,
-                totalSizeBytes = getCategoryFiles("Documents & other").sumOf { it.size },
+                count = docsCount,
+                totalSizeBytes = docsSize,
                 icon = Icons.Default.Description,
                 iconTint = Color(0xFF188038),
                 containerTint = Color(0xFFE6F4EA)
             ),
             ExplorerCategoryModel(
                 title = "Apps",
-                count = getCategoryFiles("Apps").size,
-                totalSizeBytes = getCategoryFiles("Apps").size * 25_000_000L,
+                count = appsCount,
+                totalSizeBytes = appsSize,
                 icon = Icons.Default.Android,
                 iconTint = Color(0xFF1E8E3E),
                 containerTint = Color(0xFFE8F0FE)
             ),
             ExplorerCategoryModel(
                 title = "Archives",
-                count = getCategoryFiles("Archives").size,
-                totalSizeBytes = getCategoryFiles("Archives").sumOf { it.size },
+                count = archivesCount,
+                totalSizeBytes = archivesSize,
                 icon = Icons.Default.Archive,
                 iconTint = Color(0xFF00796B),
                 containerTint = Color(0xFFE0F2F1)
@@ -483,7 +554,7 @@ fun BackupExplorerScreen(
             ExplorerCategoryModel(
                 title = "Monthly Archive",
                 count = monthlyTimelineFolders.size,
-                totalSizeBytes = cloudFileList.sumOf { it.size },
+                totalSizeBytes = totalVaultSize,
                 icon = Icons.Default.CalendarMonth,
                 iconTint = Color(0xFF5E35B1),
                 containerTint = Color(0xFFEDE7F6)

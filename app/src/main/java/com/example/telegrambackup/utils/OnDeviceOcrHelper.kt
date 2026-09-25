@@ -78,16 +78,184 @@ object OnDeviceOcrHelper {
         }
     }
 
+    // Whitelist of critical short query tokens that should not be dropped
+    private val PRESERVED_SHORT_TOKENS = setOf(
+        "id", "rx", "dl", "rc", "tc", "dr", "no", "om", "ai", "co", "ph", "up", "uk", "hr"
+    )
+
+    // Filler / intent noise words commonly typed by users that should be stripped
+    private val FILLER_WORDS = setOf(
+        "image", "images", "photo", "photos", "pic", "pics", "picture", "pictures",
+        "of", "the", "a", "an", "in", "at", "on", "for", "with", "having",
+        "show", "me", "find", "search", "get", "look", "please", "my"
+    )
+
     /**
      * Matches OCR text against search query patterns with high accuracy rules.
      * Returns a pair of (isMatch: Boolean, reason: String).
      */
     fun evaluateOcrMatch(query: String, ocrText: String): Pair<Boolean, String> {
-        val q = query.trim().lowercase()
+        val rawQuery = query.trim().lowercase()
         val text = ocrText.lowercase()
-        if (text.isBlank()) return Pair(false, "")
+        if (text.isBlank() || rawQuery.isBlank()) return Pair(false, "")
 
-        // 1. Bonafide Certificate
+        // Extract core tokens by removing filler words ("image", "photo", "pic", etc.)
+        val rawTokens = rawQuery.split(Regex("[\\s,_\\-]+")).filter { it.isNotBlank() }
+        val coreTokens = rawTokens.filter { token ->
+            token !in FILLER_WORDS && (token.length > 2 || token in PRESERVED_SHORT_TOKENS || token.any { it.isDigit() })
+        }
+        val cleanQuery = if (coreTokens.isNotEmpty()) coreTokens.joinToString(" ") else rawQuery
+        val q = cleanQuery
+
+        // 1. ID Cards (Student ID, College ID, Office/Employee ID, Aadhaar, Voter, Driving License)
+        val isIdCardQuery = q.contains("id") || q.contains("identity") ||
+                (q.contains("card") && !q.contains("credit") && !q.contains("debit")) ||
+                q.contains("student") || q.contains("employee") || q.contains("aadhaar") ||
+                q.contains("aadhar") || q.contains("voter") || q.contains("driving") || q.contains("license") || q.contains("licence")
+
+        if (isIdCardQuery) {
+            // Check for explicit ID card header or title
+            val hasIdHeader = text.contains("identity card") || text.contains("identity") ||
+                    text.contains("id card") || text.contains("i.d. card") || text.contains("identification")
+
+            // Check for Aadhaar Card
+            val isAadhaar = text.contains("uidai") || text.contains("aadhaar") || text.contains("aadhar") ||
+                    text.contains("unique identification") || text.contains("mera aadhaar") ||
+                    Regex("\\b[0-9]{4}\\s[0-9]{4}\\s[0-9]{4}\\b").containsMatchIn(text)
+            if (isAadhaar) {
+                return Pair(true, "Found Indian Aadhaar Card (UIDAI)")
+            }
+
+            // Check for Voter ID / Election Card
+            val isVoterId = text.contains("election commission") || text.contains("elector photo") ||
+                    text.contains("voter id") || text.contains("epic no") || text.contains("identity card election")
+            if (isVoterId) {
+                return Pair(true, "Found Election Commission Voter ID Card")
+            }
+
+            // Check for Driving License
+            val isDrivingLicense = (text.contains("driving") && (text.contains("licence") || text.contains("license"))) ||
+                    text.contains("transport department") || text.contains("dl no") || text.contains("motor vehicles")
+            if (isDrivingLicense) {
+                return Pair(true, "Found Driving Licence document")
+            }
+
+            // Check for Student / College / School ID
+            val hasAcademicOrg = text.contains("student") || text.contains("college") || text.contains("school") ||
+                    text.contains("institute") || text.contains("university") || text.contains("academy") || text.contains("polytechnic")
+            val hasIdFields = text.contains("roll no") || text.contains("roll number") || text.contains("id no") ||
+                    text.contains("reg no") || text.contains("dob") || text.contains("date of birth") ||
+                    text.contains("blood group") || text.contains("valid upto") || text.contains("valid till") ||
+                    text.contains("class") || text.contains("department") || text.contains("academic year") ||
+                    text.contains("enrollment") || text.contains("admission")
+
+            if (hasIdHeader || (hasAcademicOrg && hasIdFields)) {
+                return Pair(true, "Found Student / College Identity Card")
+            }
+
+            // Check for Employee / Corporate ID Card
+            val hasEmployeeOrg = text.contains("employee") || text.contains("staff") || text.contains("faculty") ||
+                    text.contains("emp id") || text.contains("emp code") || text.contains("designation") || text.contains("badge no")
+            if (hasEmployeeOrg && (hasIdHeader || hasIdFields)) {
+                return Pair(true, "Found Employee / Work Identity Card")
+            }
+
+            // General ID card with person name, photo ID, card number, or blood group
+            if (text.contains("card no") || (text.contains("blood group") && (text.contains("valid") || text.contains("signature")))) {
+                return Pair(true, "Found Identity Card details")
+            }
+        }
+
+        // 2. Medical Prescriptions & Doctor / Clinic Notes
+        val isMedicalQuery = q.contains("medical") || q.contains("prescription") || q.contains("doctor") ||
+                q.contains("rx") || q.contains("medicine") || q.contains("clinic") || q.contains("hospital") ||
+                q.contains("dr") || q.contains("pharma")
+
+        if (isMedicalQuery) {
+            val hasRx = text.contains("rx") || text.contains("℞") || text.contains("prescription")
+            val hasDoctorClinic = text.contains("dr.") || text.contains("dr ") || text.contains("doctor") ||
+                    text.contains("hospital") || text.contains("clinic") || text.contains("dispensary") ||
+                    text.contains("healthcare") || text.contains("m.b.b.s") || text.contains("mbbs") ||
+                    text.contains("m.d.") || text.contains("consultant") || text.contains("physician")
+
+            val hasMedicineTerms = text.contains("patient") || text.contains("tablet") || text.contains("tab") ||
+                    text.contains("capsule") || text.contains("cap") || text.contains("syrup") || text.contains("syp") ||
+                    text.contains("inj") || text.contains("mg") || text.contains("ml") || text.contains("dosage") ||
+                    text.contains("od") || text.contains("bd") || text.contains("tds") || text.contains("sos") ||
+                    text.contains("before food") || text.contains("after food") || text.contains("diagnosis") ||
+                    text.contains("symptoms") || text.contains("pharmacy") || text.contains("bp:") || text.contains("pulse")
+
+            if (hasRx || (hasDoctorClinic && hasMedicineTerms)) {
+                return Pair(true, "Found medical doctor prescription or clinical note")
+            }
+            if (hasDoctorClinic && (text.contains("patient name") || text.contains("age") || text.contains("opd"))) {
+                return Pair(true, "Found medical hospital/doctor consultation slip")
+            }
+        }
+
+        // 3. Educational Institutions, Colleges, Universities, Campuses (e.g. "xyz college", "coep college")
+        val isCollegeQuery = q.contains("college") || q.contains("university") || q.contains("institute") ||
+                q.contains("campus") || q.contains("school") || q.contains("vidyalaya") || q.contains("academy") ||
+                q.contains("polytechnic") || q.contains("engineering")
+
+        if (isCollegeQuery) {
+            val institutionalMarkers = listOf(
+                "college", "university", "institute", "campus", "school", "vidyalaya",
+                "academy", "polytechnic", "department of", "faculty of", "autonomous", "accredited"
+            )
+            val hasInstMarker = institutionalMarkers.any { text.contains(it) }
+
+            // Extract distinctive non-category tokens (e.g. "xyz" in "xyz college")
+            val categoryWords = setOf("college", "university", "institute", "campus", "school", "vidyalaya", "academy", "polytechnic", "engineering")
+            val nameTokens = coreTokens.filter { it !in categoryWords && it.length >= 2 }
+
+            if (nameTokens.isNotEmpty()) {
+                val matchesName = nameTokens.all { text.contains(it) }
+                if (matchesName && hasInstMarker) {
+                    return Pair(true, "Found '${nameTokens.joinToString(" ")}' educational institution / college text")
+                }
+                if (matchesName) {
+                    return Pair(true, "Found matching institution text: '${nameTokens.joinToString(" ")}'")
+                }
+            } else if (hasInstMarker) {
+                return Pair(true, "Found college / educational campus text in photo")
+            }
+        }
+
+        // 4. Buildings, Residential Societies, Residencies, Apartments, Towers (e.g. "xyz building", "abc society")
+        val isBuildingQuery = q.contains("society") || q.contains("building") || q.contains("apartment") ||
+                q.contains("apartments") || q.contains("residency") || q.contains("tower") || q.contains("towers") ||
+                q.contains("heights") || q.contains("enclave") || q.contains("complex") || q.contains("plaza") ||
+                q.contains("chs") || q.contains("villa") || q.contains("gate") || q.contains("housing")
+
+        if (isBuildingQuery) {
+            val buildingMarkers = listOf(
+                "society", "building", "apartment", "apartments", "residency", "tower", "towers",
+                "heights", "enclave", "complex", "plaza", "chs", "co-op", "housing", "villas",
+                "wing", "block", "floor", "flat", "gate"
+            )
+            val hasBuildingMarker = buildingMarkers.any { text.contains(it) }
+
+            val buildingCategoryWords = setOf(
+                "society", "building", "apartment", "apartments", "residency", "tower",
+                "towers", "heights", "enclave", "complex", "plaza", "chs", "villa", "gate", "housing"
+            )
+            val nameTokens = coreTokens.filter { it !in buildingCategoryWords && it.length >= 2 }
+
+            if (nameTokens.isNotEmpty()) {
+                val matchesName = nameTokens.all { text.contains(it) }
+                if (matchesName && hasBuildingMarker) {
+                    return Pair(true, "Found '${nameTokens.joinToString(" ")}' building / society signboard text")
+                }
+                if (matchesName) {
+                    return Pair(true, "Found matching building text: '${nameTokens.joinToString(" ")}'")
+                }
+            } else if (hasBuildingMarker) {
+                return Pair(true, "Found residential society / building signboard text")
+            }
+        }
+
+        // 5. Bonafide Certificate
         if (q.contains("bonafide") || (q.contains("cert") && !q.contains("birth"))) {
             if (text.contains("bonafide") || text.contains("bonafied")) {
                 return Pair(true, "Found 'Bonafide' certificate text in document")
@@ -99,7 +267,7 @@ object OnDeviceOcrHelper {
             }
         }
 
-        // 2. PAN Card
+        // 6. PAN Card
         if (q.contains("pan")) {
             val hasPanNumber = Regex("[a-z]{5}[0-9]{4}[a-z]").containsMatchIn(text)
             if (hasPanNumber) {
@@ -110,7 +278,7 @@ object OnDeviceOcrHelper {
             }
         }
 
-        // 3. Payment Receipt / 10k Transfer / UPI
+        // 7. Payment Receipt / 10k Transfer / UPI
         if (q.contains("receipt") || q.contains("payment") || q.contains("upi") || q.contains("10k") || q.contains("transfer")) {
             val is10kQuery = q.contains("10k") || q.contains("10000") || q.contains("10,000")
             val has10kAmount = text.contains("10,000") || text.contains("10000") || text.contains("10000.00") || text.contains("10,000.00")
@@ -128,7 +296,7 @@ object OnDeviceOcrHelper {
             }
         }
 
-        // 4. Marksheet / Academic Result
+        // 8. Marksheet / Academic Result
         if (q.contains("marksheet") || q.contains("result") || q.contains("grade")) {
             if ((text.contains("marks") || text.contains("grade") || text.contains("result") || text.contains("marksheet")) &&
                 (text.contains("board") || text.contains("examination") || text.contains("roll") || text.contains("university") || text.contains("semester") || text.contains("cbse") || text.contains("icse"))
@@ -137,7 +305,7 @@ object OnDeviceOcrHelper {
             }
         }
 
-        // 5. Electricity / Utility Bill
+        // 9. Electricity / Utility Bill
         if (q.contains("electricity") || q.contains("bill") || q.contains("utility")) {
             if ((text.contains("electricity") || text.contains("power") || text.contains("meter") || text.contains("bescom") || text.contains("mseb") || text.contains("tneb") || text.contains("kwh")) &&
                 (text.contains("bill") || text.contains("consumer") || text.contains("amount payable") || text.contains("due date"))
@@ -146,19 +314,18 @@ object OnDeviceOcrHelper {
             }
         }
 
-        // 6. Medical Prescription
-        if (q.contains("medical") || q.contains("prescription") || q.contains("doctor")) {
-            if (text.contains("prescription") || text.contains("rx") ||
-                ((text.contains("dr.") || text.contains("hospital") || text.contains("clinic")) && (text.contains("patient") || text.contains("mg") || text.contains("tablet")))
-            ) {
-                return Pair(true, "Found medical doctor prescription or lab report")
-            }
-        }
+        // 10. Smart Multi-Token Match (Fallback for any custom user query)
+        // Uses clean non-filler tokens (e.g. for "xyz building photo" -> ["xyz", "building"])
+        if (coreTokens.isNotEmpty()) {
+            val matchedTokens = coreTokens.filter { text.contains(it) }
+            val matchRatio = matchedTokens.size.toFloat() / coreTokens.size.toFloat()
 
-        // 7. General query matching: Query terms occur in OCR text
-        val queryWords = q.split(" ").map { it.trim() }.filter { it.length > 2 }
-        if (queryWords.isNotEmpty() && queryWords.all { text.contains(it) }) {
-            return Pair(true, "Matched text in photo: \"${queryWords.joinToString(" ")}\"")
+            // If all core words match, or >= 60% of multiple words match with at least 1 match
+            if (matchedTokens.size == coreTokens.size) {
+                return Pair(true, "Matched text: \"${matchedTokens.joinToString(" ")}\"")
+            } else if (coreTokens.size >= 2 && matchRatio >= 0.5f && matchedTokens.isNotEmpty()) {
+                return Pair(true, "Matched keywords: \"${matchedTokens.joinToString(" ")}\"")
+            }
         }
 
         return Pair(false, "")

@@ -28,6 +28,56 @@ object VersionChangelogProvider {
 
     private val releases = listOf(
         VersionRelease(
+            versionName = "2.4.7",
+            versionCode = 131,
+            releaseDate = "September 2026",
+            highlights = "Local Storage Crash Fix, 0ms Browse Lag, ID Card Recognition, Medical Prescriptions & Building/Society/College AI Search",
+            entries = listOf(
+                ChangelogEntry(
+                    Icons.Default.Storage,
+                    Color(0xFF10B981),
+                    "Local Storage Crash Fix",
+                    "Eliminated Jetpack Compose duplicate key crash in Category and Folder views with compound keys, storage path deduplication, and error recovery.",
+                    "FIX"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Speed,
+                    TelegramBlue,
+                    "Browse Section Freeze Elimination",
+                    "Offloaded monthly timeline calculations to background thread with date caching and replaced 14 loops with a 2ms single-pass accumulator, eliminating 1s stutter.",
+                    "PERFORMANCE"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Badge,
+                    Color(0xFF8B5CF6),
+                    "ID Card AI & OCR Recognition",
+                    "Instant on-device OCR and Gemini Vision recognition for student/college IDs, office badges, Aadhaar cards (UIDAI), Voter IDs, and Driving Licenses.",
+                    "AI SEARCH"
+                ),
+                ChangelogEntry(
+                    Icons.Default.MedicalServices,
+                    Color(0xFFEC4899),
+                    "Medical Prescription Recognition",
+                    "High-accuracy detection for doctor consultation slips, clinic notes, Rx pads, dosage instructions, medicine slips, and pharmacy bills.",
+                    "OCR ENGINE"
+                ),
+                ChangelogEntry(
+                    Icons.Default.LocationCity,
+                    Color(0xFFF59E0B),
+                    "College & Building/Society Search",
+                    "Deep visual & text recognition for colleges, universities, residential societies, apartment complexes, towers, and named locations (e.g. 'XYZ College', 'ABC Society').",
+                    "VISION"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Search,
+                    Color(0xFF06B6D4),
+                    "Smart Query Tokenizer & Filler Stripping",
+                    "Automatically strips query filler words ('image', 'photo', 'pic', 'show me') while preserving crucial short tokens ('id', 'rx', 'dl', 'dr') to avoid false negatives.",
+                    "SEARCH"
+                )
+            )
+        ),
+        VersionRelease(
             versionName = "2.4.6",
             versionCode = 130,
             releaseDate = "September 2026",

@@ -12,6 +12,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -156,14 +157,20 @@ fun LocalFilesScreen() {
         }
     }
 
+    var scanErrorMessage by remember { mutableStateOf<String?>(null) }
+
     // Scanner logic
     val loadUnbackedFiles = {
         scope.launch(Dispatchers.IO) {
             isLoading = true
+            scanErrorMessage = null
             try {
                 val db = AppDatabase.getDatabase(context)
-                val uploadedFiles = db.uploadedFileDao().getAllFiles()
-                val uploadedPathSet = uploadedFiles.map { it.path }.toSet()
+                val uploadedPathSet = try {
+                    db.uploadedFileDao().getAllUploadedPaths().toHashSet()
+                } catch (_: Exception) {
+                    db.uploadedFileDao().getAllFiles().map { it.path }.toHashSet()
+                }
 
                 val dirsToScan = mutableListOf<File>()
                 val rootStorage = Environment.getExternalStorageDirectory()
@@ -177,7 +184,7 @@ fun LocalFilesScreen() {
                 }
 
                 val foundList = mutableListOf<LocalFileItem>()
-                var itemCount = 0
+                val seenPaths = HashSet<String>()
                 val MAX_TOTAL_UNBACKED = 2500
 
                 for (dir in dirsToScan) {
@@ -199,32 +206,24 @@ fun LocalFilesScreen() {
                                 }
                                 .filter { it.isFile && !it.name.startsWith(".") && it.length() > 0 }
                                 .forEach { file ->
-                                    if (foundList.size < MAX_TOTAL_UNBACKED && !uploadedPathSet.contains(file.absolutePath)) {
+                                    val absPath = file.absolutePath
+                                    if (foundList.size < MAX_TOTAL_UNBACKED && !uploadedPathSet.contains(absPath) && seenPaths.add(absPath)) {
                                         foundList.add(
                                             LocalFileItem(
                                                 file = file,
                                                 name = file.name,
-                                                path = file.absolutePath,
+                                                path = absPath,
                                                 size = file.length(),
                                                 category = getCategoryForFile(file),
                                                 extension = file.extension.uppercase()
                                             )
                                         )
-                                        itemCount++
-                                        if (itemCount % 150 == 0) {
-                                            val snapshot = foundList.toList()
-                                            kotlinx.coroutines.withContext(Dispatchers.Main) {
-                                                unbackedFilesList = snapshot.sortedByDescending { it.file.lastModified() }
-                                                if (isLoading) isLoading = false
-                                            }
-                                            kotlinx.coroutines.yield()
-                                        }
                                     }
                                 }
                         } catch (_: Exception) { }
                     }
                 }
-                val finalSorted = foundList.sortedByDescending { it.file.lastModified() }
+                val finalSorted = foundList.distinctBy { it.path }.sortedByDescending { it.file.lastModified() }
                 withContext(Dispatchers.Main) {
                     unbackedFilesList = finalSorted
                     isLoading = false
@@ -232,6 +231,7 @@ fun LocalFilesScreen() {
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
                     isLoading = false
+                    scanErrorMessage = "Storage read error: ${e.localizedMessage ?: "Permission or access restricted"}"
                 }
             }
         }
@@ -441,6 +441,22 @@ fun LocalFilesScreen() {
                     Spacer(modifier = Modifier.height(12.dp))
                     Text("Scanning local storage for unbacked files...", style = MaterialTheme.typography.bodyMedium)
                 }
+            } else if (scanErrorMessage != null) {
+                Column(
+                    modifier = Modifier.fillMaxSize().padding(32.dp),
+                    verticalArrangement = Arrangement.Center,
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Icon(Icons.Default.ErrorOutline, contentDescription = null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(56.dp))
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text("Storage Access Notice", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(scanErrorMessage ?: "Permission or storage read restricted", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Button(onClick = { loadUnbackedFiles() }, colors = ButtonDefaults.buttonColors(containerColor = TelegramBlue)) {
+                        Text("Retry Scan")
+                    }
+                }
             } else if (unbackedFilesList.isEmpty()) {
                 Column(
                     modifier = Modifier.fillMaxSize().padding(32.dp),
@@ -646,7 +662,7 @@ private fun CategoryWiseView(
     onMoreOptions: (LocalFileItem) -> Unit
 ) {
     val categoryGroups = remember(files) {
-        files.groupBy { it.category }
+        files.distinctBy { it.path }.groupBy { it.category }
     }
     val expandedCategories = remember { mutableStateMapOf<String, Boolean>() }
 
@@ -659,7 +675,7 @@ private fun CategoryWiseView(
             val isExpanded = expandedCategories[categoryName] ?: true
             val totalBytes = categoryFiles.sumOf { it.size }
 
-            item(key = "header_$categoryName") {
+            item(key = "header_${categoryName.hashCode()}") {
                 Surface(
                     shape = RoundedCornerShape(16.dp),
                     color = MaterialTheme.colorScheme.surfaceContainerHigh,
@@ -734,10 +750,10 @@ private fun CategoryWiseView(
             }
 
             if (isExpanded) {
-                items(
+                itemsIndexed(
                     items = categoryFiles,
-                    key = { "file_${categoryName}_${it.path}" }
-                ) { item ->
+                    key = { index, item -> "cat_${categoryName}_${item.path.hashCode()}_$index" }
+                ) { _, item ->
                     val isSelected = selectedPaths.contains(item.path)
                     Surface(
                         shape = RoundedCornerShape(12.dp),
@@ -873,7 +889,10 @@ private fun FolderWiseView(
             modifier = Modifier.fillMaxSize()
         ) {
             // Render subfolders that contain unbacked files
-            items(subFoldersWithUnbackedFiles) { subDir ->
+            itemsIndexed(
+                items = subFoldersWithUnbackedFiles,
+                key = { index, subDir -> "subfolder_${subDir.absolutePath.hashCode()}_$index" }
+            ) { _, subDir ->
                 val unbackedCountInSub = files.count { it.path.startsWith(subDir.absolutePath) }
                 Surface(
                     shape = RoundedCornerShape(12.dp),
@@ -914,7 +933,10 @@ private fun FolderWiseView(
             }
 
             // Render unbacked files at current folder level
-            items(currentLevelFiles) { item ->
+            itemsIndexed(
+                items = currentLevelFiles,
+                key = { index, item -> "lvl_file_${item.path.hashCode()}_$index" }
+            ) { _, item ->
                 val isSelected = selectedPaths.contains(item.path)
                 Surface(
                     shape = RoundedCornerShape(12.dp),

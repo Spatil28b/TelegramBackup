@@ -456,18 +456,23 @@ object AiVisionManager {
                     You are a high-precision AI document and photo classifier.
                     The user is searching for: "$searchQuery"
 
-                    Attached are ${validImages.size} image(s). Examine each image's text, visual elements, stamps, and layout.
+                    Attached are ${validImages.size} image(s). Examine each image's text, visual elements, stamps, architecture, and layout.
 
-                    STRICT ACCURACY RULES (AVOID FALSE POSITIVES):
-                    1. "bonafide certificate": MUST show an official academic/institutional certificate or college/school letterhead certifying student enrollment/bonafide status, study certificate, or official seal/stamp. Do NOT match random handwritten notes, book pages, or generic forms.
-                    2. "payment receipt" / "10k receipt" / "transaction": MUST show financial transaction or payment details (UPI, GPay, PhonePe, Paytm, Bank Transfer, UTR/Ref #, currency ₹/Rs/$, or bill breakdown). Do NOT match regular text messages, chat screenshots, or memes.
-                    3. "pan card": MUST be an Indian Income Tax Department Permanent Account Number (PAN) card showing Indian emblem, 10-digit alphanumeric PAN, photo, or father's name. Do NOT match Aadhaar, driving license, or office ID.
-                    4. "marksheet" / "result": MUST show subjects, marks, grades, roll number, or examination board (CBSE, ICSE, State Board, University).
-                    5. "party photos" / "celebration": MUST show an actual party, birthday cake, celebration event, party decorations, or group celebrating. Do NOT match ordinary solo selfies, nature, food plates, or mundane indoor shots.
-                    6. "electricity bill" / "utility bill": MUST show electric utility provider (BESCOM, MSEB, TNEB, etc.), meter reading, consumer ID, or power bill layout.
-                    7. Other queries: ONLY match if the image directly and clearly portrays "$searchQuery". If uncertain or only vaguely related, mark matched: false.
+                    SEARCH INTENT & CLASSIFICATION RULES:
+                    1. Natural query handling: The query may contain filler words like 'image', 'photo', 'photos', 'pic', 'show me' (e.g. 'xyz college image', 'society photo', 'id card'). Focus on the target subject itself.
+                    2. "id card" / "identity card" / "student id" / "college id" / "employee id" / "aadhaar card" / "voter id" / "license": MUST match if the image displays any personal or institutional ID card (Student ID, College ID, Office/Staff Card, Aadhaar, Voter Card, Driving License) showing person photo, name, institution/company name, or card number.
+                    3. "medical prescription" / "prescription" / "doctor prescription" / "doctor slip" / "rx": MUST match if the image displays a doctor's prescription slip, clinic/hospital consultation note, Rx pad, medicine dosage list, clinical report, or pharmacy receipt.
+                    4. "college" / "university" / "campus" / "school" / "institute" (including named e.g. "XYZ College"): MUST match if the image displays a college/university campus building, institutional entrance, gate, signboard, auditorium, classroom, or campus grounds.
+                    5. "building" / "society" / "residency" / "apartment" / "tower" / "complex" (including named e.g. "XYZ Building", "ABC Society"): MUST match if the image displays an architectural building facade, residential housing society entrance gate, signboard, apartment tower, or residential enclave.
+                    6. "bonafide certificate": MUST show an official academic/institutional certificate or college/school letterhead certifying student enrollment/bonafide status, study certificate, or official seal/stamp.
+                    7. "payment receipt" / "10k receipt" / "transaction": MUST show financial transaction or payment details (UPI, GPay, PhonePe, Paytm, Bank Transfer, UTR/Ref #, currency ₹/Rs/$, or bill breakdown).
+                    8. "pan card": MUST be an Indian Income Tax Department Permanent Account Number (PAN) card showing Indian emblem, 10-digit alphanumeric PAN, photo, or father's name.
+                    9. "marksheet" / "result": MUST show subjects, marks, grades, roll number, or examination board (CBSE, ICSE, State Board, University).
+                    10. "party photos" / "celebration": MUST show an actual party, birthday cake, celebration event, party decorations, or group celebrating. Do NOT match ordinary solo selfies, nature, food plates, or mundane indoor shots.
+                    11. "electricity bill" / "utility bill": MUST show electric utility provider (BESCOM, MSEB, TNEB, etc.), meter reading, consumer ID, or power bill layout.
+                    12. Other queries: ONLY match if the image directly and clearly portrays "$searchQuery". If uncertain or only vaguely related, mark matched: false.
 
-                    Return ONLY a JSON array with one object per matching image with confidence >= 0.75:
+                    Return ONLY a JSON array with one object per matching image with confidence >= 0.70:
                     [
                       {"id": "candidate_id", "matched": true, "reason": "Specific 4-8 word reason", "tags": ["tag1", "tag2"], "confidence": 0.95}
                     ]
