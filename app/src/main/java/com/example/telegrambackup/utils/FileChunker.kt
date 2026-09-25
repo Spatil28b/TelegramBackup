@@ -75,17 +75,18 @@ object FileChunker {
      */
     fun extractSingleChunk(sourceFile: File, chunkIndex: Int, outputFile: File, chunkSize: Int = CHUNK_SIZE): File {
         val offset = (chunkIndex - 1).toLong() * chunkSize.toLong()
+        val toTransfer = minOf(chunkSize.toLong(), maxOf(0L, sourceFile.length() - offset))
         RandomAccessFile(sourceFile, "r").use { raf ->
-            raf.seek(offset)
-            val buffer = ByteArray(8192)
-            var bytesRemaining = chunkSize.toLong()
+            val inChannel = raf.channel
             FileOutputStream(outputFile).use { fos ->
-                while (bytesRemaining > 0) {
-                    val toRead = minOf(buffer.size.toLong(), bytesRemaining).toInt()
-                    val read = raf.read(buffer, 0, toRead)
-                    if (read == -1) break
-                    fos.write(buffer, 0, read)
-                    bytesRemaining -= read
+                val outChannel = fos.channel
+                var position = offset
+                var remaining = toTransfer
+                while (remaining > 0) {
+                    val transferred = inChannel.transferTo(position, remaining, outChannel)
+                    if (transferred <= 0) break
+                    position += transferred
+                    remaining -= transferred
                 }
             }
         }
@@ -94,15 +95,28 @@ object FileChunker {
 
     /**
      * Merges sequential chunk files back into a single restored file.
+     * Uses zero-copy OS kernel FileChannel DMA transfers for maximum flash throughput.
      */
     fun mergeChunks(chunkFiles: List<File>, outputFile: File) {
-        FileOutputStream(outputFile).use { outputStream ->
-            val buffer = ByteArray(8192)
-            chunkFiles.sortedBy { it.name }.forEach { chunkFile ->
-                FileInputStream(chunkFile).use { inputStream ->
-                    var bytesRead: Int
-                    while (inputStream.read(buffer).also { bytesRead = it } != -1) {
-                        outputStream.write(buffer, 0, bytesRead)
+        val chunkRegex = Regex("""\.part(\d+)""")
+        val sorted = chunkFiles.sortedWith(Comparator { a, b ->
+            val idxA = chunkRegex.find(a.name)?.groupValues?.get(1)?.toIntOrNull()
+                ?: a.name.filter { it.isDigit() }.toIntOrNull() ?: 0
+            val idxB = chunkRegex.find(b.name)?.groupValues?.get(1)?.toIntOrNull()
+                ?: b.name.filter { it.isDigit() }.toIntOrNull() ?: 0
+            idxA.compareTo(idxB)
+        })
+        FileOutputStream(outputFile).use { fos ->
+            val outChannel = fos.channel
+            for (chunk in sorted) {
+                FileInputStream(chunk).use { fis ->
+                    val inChannel = fis.channel
+                    var position = 0L
+                    val size = inChannel.size()
+                    while (position < size) {
+                        val transferred = inChannel.transferTo(position, size - position, outChannel)
+                        if (transferred <= 0) break
+                        position += transferred
                     }
                 }
             }

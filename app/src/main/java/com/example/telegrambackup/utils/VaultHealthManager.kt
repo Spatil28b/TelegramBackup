@@ -62,9 +62,62 @@ object VaultHealthManager {
      */
     suspend fun diagnoseVault(context: Context): VaultDiagnosticSummary = withContext(Dispatchers.IO) {
         val db = AppDatabase.getDatabase(context)
-        val files = db.uploadedFileDao().getAllRawFiles()
+        val prefs = AppPrefs(context)
         val chunkDao = db.chunkProgressDao()
 
+        // 1. Proactive auto-heal: pull healed chunks from cloud if local Room records are missing them
+        val userEmail = prefs.userEmail.ifBlank { prefs.recoveryEmail }.trim().lowercase()
+        if (userEmail.isNotBlank()) {
+            try {
+                val rawFiles = db.uploadedFileDao().getAllRawFiles()
+                val missingChunks = rawFiles.filter { it.totalChunks > 1 && it.parseChunks().size < it.totalChunks }
+                if (missingChunks.isNotEmpty()) {
+                    val cloudFiles = ServerApi().listFiles(prefs.serverUrl, userEmail)
+                    if (cloudFiles.isNotEmpty()) {
+                        val cloudMap = cloudFiles.associateBy { it.path }
+                        val toUpdate = mutableListOf<UploadedFile>()
+                        for (localFile in missingChunks) {
+                            val cloudMatch = cloudMap[localFile.path]
+                                ?: cloudFiles.firstOrNull { it.fileName == localFile.fileName && it.size == localFile.size }
+                            if (cloudMatch != null && cloudMatch.parseChunks().size > localFile.parseChunks().size) {
+                                val updated = localFile.copy(
+                                    chunksJson = cloudMatch.chunksJson,
+                                    totalChunks = maxOf(localFile.totalChunks, cloudMatch.totalChunks),
+                                    telegramFileId = if (cloudMatch.telegramFileId.isNotBlank()) cloudMatch.telegramFileId else localFile.telegramFileId
+                                )
+                                toUpdate.add(updated)
+                                for (c in cloudMatch.parseChunks()) {
+                                    try {
+                                        chunkDao.insert(
+                                            com.example.telegrambackup.data.ChunkProgressEntity(
+                                                sourcePath = localFile.path,
+                                                chunkIndex = c.first,
+                                                totalChunks = updated.totalChunks,
+                                                telegramFileId = c.second,
+                                                messageId = 0L,
+                                                chunkSize = 0L,
+                                                status = "COMPLETED",
+                                                botTokenUsed = c.third.ifBlank { localFile.botTokenUsed },
+                                                channelId = localFile.channelId,
+                                                uploadedAt = localFile.timestamp
+                                            )
+                                        )
+                                    } catch (_: Exception) {}
+                                }
+                            }
+                        }
+                        if (toUpdate.isNotEmpty()) {
+                            db.uploadedFileDao().insertAll(toUpdate)
+                            Log.d(TAG, "⚡ Auto-healed ${toUpdate.size} local files with complete cloud chunks!")
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Proactive cloud chunk check skipped: ${e.message}")
+            }
+        }
+
+        val files = db.uploadedFileDao().getAllRawFiles()
         val reports = mutableListOf<FileHealthReport>()
         var healthy = 0
         var incomplete = 0
@@ -136,19 +189,59 @@ object VaultHealthManager {
     }
 
     /**
-     * Restores chunk metadata from local chunk_upload_progress into UploadedFile
-     * and pushes complete mappings to the cloud database.
+     * Bidirectional chunk sync: pulls complete chunks from cloud and pushes local chunks to cloud.
      */
     suspend fun syncLocalChunksToCloud(context: Context): Int = withContext(Dispatchers.IO) {
         var healed = 0
         try {
             val db = AppDatabase.getDatabase(context)
-            val files = db.uploadedFileDao().getAllRawFiles()
+            val prefs = AppPrefs(context)
+            val userEmail = prefs.userEmail.ifBlank { prefs.recoveryEmail }.trim().lowercase()
             val chunkDao = db.chunkProgressDao()
+            val files = db.uploadedFileDao().getAllRawFiles()
             val toUpdate = mutableListOf<UploadedFile>()
 
+            // 1. Pull from cloud for any files missing local chunks
+            if (userEmail.isNotBlank()) {
+                val cloudFiles = ServerApi().listFiles(prefs.serverUrl, userEmail)
+                val cloudMap = cloudFiles.associateBy { it.path }
+                for (file in files) {
+                    if (file.totalChunks > 1 && (file.chunksJson.isBlank() || file.chunksJson == "[]")) {
+                        val cloudMatch = cloudMap[file.path] ?: cloudFiles.firstOrNull { it.fileName == file.fileName && it.size == file.size }
+                        if (cloudMatch != null && cloudMatch.parseChunks().isNotEmpty()) {
+                            val updated = file.copy(
+                                chunksJson = cloudMatch.chunksJson,
+                                totalChunks = maxOf(file.totalChunks, cloudMatch.totalChunks),
+                                telegramFileId = if (cloudMatch.telegramFileId.isNotBlank()) cloudMatch.telegramFileId else file.telegramFileId
+                            )
+                            toUpdate.add(updated)
+                            for (c in cloudMatch.parseChunks()) {
+                                try {
+                                    chunkDao.insert(
+                                        com.example.telegrambackup.data.ChunkProgressEntity(
+                                            sourcePath = file.path,
+                                            chunkIndex = c.first,
+                                            totalChunks = updated.totalChunks,
+                                            telegramFileId = c.second,
+                                            messageId = 0L,
+                                            chunkSize = 0L,
+                                            status = "COMPLETED",
+                                            botTokenUsed = c.third.ifBlank { file.botTokenUsed },
+                                            channelId = file.channelId,
+                                            uploadedAt = file.timestamp
+                                        )
+                                    )
+                                } catch (_: Exception) {}
+                            }
+                            healed++
+                        }
+                    }
+                }
+            }
+
+            // 2. Push from local chunk_upload_progress for any remaining files
             for (file in files) {
-                if (file.totalChunks > 1 && (file.chunksJson.isBlank() || file.chunksJson == "[]")) {
+                if (file.totalChunks > 1 && (file.chunksJson.isBlank() || file.chunksJson == "[]") && toUpdate.none { it.path == file.path }) {
                     val localChunks = chunkDao.getUploadedChunksForFile(file.path)
                     if (localChunks.isNotEmpty()) {
                         val arr = JSONArray()
@@ -170,9 +263,8 @@ object VaultHealthManager {
 
             if (toUpdate.isNotEmpty()) {
                 db.uploadedFileDao().insertAll(toUpdate)
-                val prefs = AppPrefs(context)
-                if (prefs.userEmail.isNotBlank()) {
-                    ServerApi().indexFilesBatch(prefs.serverUrl, prefs.userEmail, toUpdate)
+                if (userEmail.isNotBlank()) {
+                    ServerApi().indexFilesBatch(prefs.serverUrl, userEmail, toUpdate)
                 }
             }
         } catch (e: Exception) {

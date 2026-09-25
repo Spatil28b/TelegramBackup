@@ -23,6 +23,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.example.telegrambackup.data.AppDatabase
 import com.example.telegrambackup.data.UploadedFile
 import com.example.telegrambackup.theme.TelegramBlue
@@ -320,8 +321,8 @@ private fun MetricCard(
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            Text(countStr, style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold))
-            Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+            Text(countStr, style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold, letterSpacing = (-0.5).sp))
+            Text(label, style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f)))
 
             Spacer(modifier = Modifier.height(8.dp))
 
@@ -374,12 +375,12 @@ private fun TimelineActivityRow(
 
         Column(modifier = Modifier.weight(1f)) {
             Text(text = feedItem.title, style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold), maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(text = feedItem.detail, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
-            Text(text = feedItem.sizeStr, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+            val subText = if (feedItem.sizeStr.isNotEmpty()) "${feedItem.detail} • ${feedItem.sizeStr}" else feedItem.detail
+            Text(text = subText, style = MaterialTheme.typography.bodySmall.copy(color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f)), maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
 
         Column(horizontalAlignment = Alignment.End) {
-            Text(text = feedItem.timestampStr, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+            Text(text = feedItem.timestampStr, style = MaterialTheme.typography.labelSmall.copy(color = MaterialTheme.colorScheme.outline))
             Spacer(modifier = Modifier.height(4.dp))
             Icon(imageVector = badgeIcon, contentDescription = null, tint = badgeColor, modifier = Modifier.size(18.dp))
         }

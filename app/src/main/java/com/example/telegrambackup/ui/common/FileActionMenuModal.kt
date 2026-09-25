@@ -74,7 +74,9 @@ fun FileActionMenuModal(
     onDismiss: () -> Unit,
     onFileRenamed: ((oldPath: String, newName: String, newPath: String) -> Unit)? = null,
     onFileDeleted: ((file: UploadedFile) -> Unit)? = null,
-    onFileRestored: ((file: UploadedFile) -> Unit)? = null
+    onFileRestored: ((file: UploadedFile) -> Unit)? = null,
+    onSelectMode: (() -> Unit)? = null,
+    folderFiles: List<UploadedFile>? = null
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -87,6 +89,7 @@ fun FileActionMenuModal(
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
     var isDownloading by remember { mutableStateOf(false) }
     var downloadProgress by remember { mutableStateOf(0f) }
+    var showAskAiSheet by remember { mutableStateOf(false) }
 
     val dateFormat = remember { SimpleDateFormat("MMM dd, yyyy • hh:mm a", Locale.getDefault()) }
     val ext = remember(file.fileName) { file.fileName.substringAfterLast('.', "").uppercase() }
@@ -94,6 +97,25 @@ fun FileActionMenuModal(
     val prefs = remember { AppPrefs(context) }
     var isStarred by remember(file.path) { mutableStateOf(prefs.isFileStarred(file.path)) }
     var isSafeVault by remember(file.path) { mutableStateOf(prefs.isSafeVaultFile(file.path)) }
+
+    // Dynamic folder stats if file is a directory
+    var folderItemCount by remember(file.path) { mutableIntStateOf(folderFiles?.size ?: file.totalChunks.coerceAtLeast(0)) }
+    var folderTotalSize by remember(file.path) { mutableLongStateOf(folderFiles?.sumOf { it.size } ?: file.size.coerceAtLeast(0L)) }
+
+    LaunchedEffect(file.path, isFolder) {
+        if (isFolder && folderFiles == null && (folderItemCount == 0 || folderTotalSize == 0L)) {
+            withContext(Dispatchers.IO) {
+                try {
+                    val dbFiles = AppDatabase.getDatabase(context).uploadedFileDao().getAllRawFiles()
+                    val children = dbFiles.filter { it.path.startsWith("${file.path}/") && it.telegramFileId != "DIR_MARKER" && !it.isDeleted }
+                    if (children.isNotEmpty()) {
+                        folderItemCount = children.size
+                        folderTotalSize = children.sumOf { it.size }
+                    }
+                } catch (_: Exception) {}
+            }
+        }
+    }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -156,7 +178,7 @@ fun FileActionMenuModal(
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         Text(
-                            text = if (isFolder) "Folder" else formatFileSize(file.size),
+                            text = if (isFolder) "$folderItemCount files • ${formatFileSize(folderTotalSize)}" else formatFileSize(file.size),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.outline
                         )
@@ -173,7 +195,7 @@ fun FileActionMenuModal(
                                 )
                             }
                         }
-                        if (file.totalChunks > 1) {
+                        if (file.totalChunks > 1 && !isFolder) {
                             Surface(
                                 shape = RoundedCornerShape(4.dp),
                                 color = Color(0xFFF59E0B).copy(alpha = 0.15f)
@@ -244,62 +266,159 @@ fun FileActionMenuModal(
 
             // ACTION ITEMS
             if (!isTrashItem) {
-                // 1. Open / Preview
-                FileActionRow(
-                    icon = Icons.Default.Visibility,
-                    iconTint = TelegramBlue,
-                    title = "Preview / Open File",
-                    subtitle = "Open in built-in media viewer or system application",
-                    onClick = {
-                        onDismiss()
-                        FileViewerHelper.openFile(context, file.path, file.fileName, file.telegramFileId)
-                    }
-                )
-
-                // 2. Share Cloud Link
-                FileActionRow(
-                    icon = Icons.Default.Link,
-                    iconTint = TelegramBlue,
-                    title = "Share Cloud Link & PIN",
-                    subtitle = "Opaque shareable link with optional PIN, expiry & QR code",
-                    onClick = {
-                        showShareModal = true
-                    }
-                )
-
-                // 3. Send to App (System Share)
-                FileActionRow(
-                    icon = Icons.Default.Share,
-                    iconTint = Color(0xFF6366F1),
-                    title = "Send to App (System Share)",
-                    subtitle = "Send directly to WhatsApp, Telegram, Gmail, Bluetooth",
-                    onClick = {
-                        onDismiss()
-                        FileViewerHelper.shareFile(context, file)
-                    }
-                )
-
-                // 4. Download to Device
-                FileActionRow(
-                    icon = Icons.Default.Download,
-                    iconTint = TelegramEmerald,
-                    title = if (isFolder) "Download Folder as ZIP" else "Download to Device",
-                    subtitle = if (isFolder) "Compresses and saves entire directory" else "Saves to Downloads/TelegramBackup/",
-                    onClick = {
-                        if (isFolder) {
+                if (isFolder) {
+                    // ================= FOLDER ACTIONS (GOOGLE FILES STYLE) =================
+                    // 1. Download Folder as ZIP
+                    FileActionRow(
+                        icon = Icons.Default.Archive,
+                        iconTint = TelegramEmerald,
+                        title = "Download Folder as ZIP",
+                        subtitle = "Compresses and saves directory to Downloads/TelegramBackup_Archives",
+                        onClick = {
                             onDismiss()
+                            Toast.makeText(context, "📦 Compressing folder '${file.fileName}' into ZIP...", Toast.LENGTH_SHORT).show()
                             scope.launch(Dispatchers.IO) {
-                                val filesInFolder = AppDatabase.getDatabase(context).uploadedFileDao().getDriveFiles()
-                                    .filter { it.path.startsWith("${file.path}/") && it.telegramFileId != "DIR_MARKER" }
-                                if (filesInFolder.isNotEmpty()) {
-                                    ZipBackupDownloader.downloadFilesAsZip(context, filesInFolder, file.fileName)
+                                val targetFiles = folderFiles ?: run {
+                                    val dbFiles = AppDatabase.getDatabase(context).uploadedFileDao().getAllRawFiles()
+                                    dbFiles.filter { it.path.startsWith("${file.path}/") && it.telegramFileId != "DIR_MARKER" && !it.isDeleted }
+                                }
+                                if (targetFiles.isNotEmpty()) {
+                                    ZipBackupDownloader.downloadFilesAsZip(context, targetFiles, file.fileName)
                                 } else {
                                     withContext(Dispatchers.Main) {
                                         Toast.makeText(context, "Folder '${file.fileName}' has no files to download", Toast.LENGTH_SHORT).show()
                                     }
                                 }
                             }
-                        } else {
+                        }
+                    )
+
+                    // 2. Rename Folder
+                    FileActionRow(
+                        icon = Icons.Default.Edit,
+                        iconTint = MaterialTheme.colorScheme.onSurface,
+                        title = "Rename Folder",
+                        subtitle = "Update folder name and relocate sub-items in library",
+                        onClick = { showRenameDialog = true }
+                    )
+
+                    // 3. Folder Properties & Info
+                    FileActionRow(
+                        icon = Icons.Default.Info,
+                        iconTint = MaterialTheme.colorScheme.primary,
+                        title = "Folder Info & Properties",
+                        subtitle = "Inspect items count ($folderItemCount), total size, and location",
+                        onClick = { showPropertiesDialog = true }
+                    )
+
+                    // 4. Copy Folder Path
+                    FileActionRow(
+                        icon = Icons.Default.ContentCopy,
+                        iconTint = MaterialTheme.colorScheme.outline,
+                        title = "Copy Folder Path",
+                        subtitle = "Copies the complete storage path to system clipboard",
+                        onClick = {
+                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                            clipboard?.setPrimaryClip(ClipData.newPlainText("Folder Path", file.path))
+                            Toast.makeText(context, "Folder path copied to clipboard", Toast.LENGTH_SHORT).show()
+                        }
+                    )
+
+                    // 5. Star / Favorite Folder
+                    FileActionRow(
+                        icon = if (isStarred) Icons.Default.Star else Icons.Default.StarBorder,
+                        iconTint = Color(0xFFF9AB00),
+                        title = if (isStarred) "Remove from Starred" else "Add to Starred",
+                        subtitle = if (isStarred) "Remove folder from Starred collection" else "Pin folder to Starred collection",
+                        onClick = {
+                            isStarred = prefs.toggleStarredFile(file.path)
+                            Toast.makeText(context, if (isStarred) "⭐ Added folder to Starred" else "Removed folder from Starred", Toast.LENGTH_SHORT).show()
+                        }
+                    )
+
+                    // 6. Safe Folder Vault
+                    FileActionRow(
+                        icon = if (isSafeVault) Icons.Default.LockOpen else Icons.Default.Lock,
+                        iconTint = if (isSafeVault) TelegramEmerald else Color(0xFF8B5CF6),
+                        title = if (isSafeVault) "Remove from Safe Folder" else "Move to Safe Folder",
+                        subtitle = if (isSafeVault) "Remove biometric/PIN protection" else "Protect folder with biometric / PIN lock",
+                        onClick = {
+                            isSafeVault = prefs.toggleSafeVaultFile(file.path)
+                            Toast.makeText(context, if (isSafeVault) "🔒 Folder moved to Safe Folder" else "Removed from Safe Folder", Toast.LENGTH_SHORT).show()
+                        }
+                    )
+
+                    // 7. Multi-Select Mode Trigger
+                    if (onSelectMode != null) {
+                        FileActionRow(
+                            icon = Icons.Default.CheckCircleOutline,
+                            iconTint = TelegramBlue,
+                            title = "Select",
+                            subtitle = "Enter multi-select mode to choose multiple items",
+                            onClick = {
+                                onDismiss()
+                                onSelectMode()
+                            }
+                        )
+                    }
+
+                    // 8. Delete Folder (Move to Trash)
+                    FileActionRow(
+                        icon = Icons.Default.Delete,
+                        iconTint = MaterialTheme.colorScheme.error,
+                        title = "Move Folder to Trash Bin",
+                        subtitle = "Moves folder and all its contents to Recycle Bin",
+                        textColor = MaterialTheme.colorScheme.error,
+                        onClick = { showDeleteConfirmDialog = true }
+                    )
+                } else {
+                    // ================= FILE ACTIONS (GOOGLE FILES STYLE) =================
+                    if (ext == "APK") {
+                        FileActionRow(
+                            icon = Icons.Default.Android,
+                            iconTint = TelegramEmerald,
+                            title = "Install Android App",
+                            subtitle = "Decrypt, verify, and launch system package installer",
+                            onClick = {
+                                onDismiss()
+                                FileViewerHelper.openFile(context, file.path, file.fileName, file.telegramFileId)
+                            }
+                        )
+                    }
+
+                    // 1. Open / Preview
+                    FileActionRow(
+                        icon = Icons.Default.Visibility,
+                        iconTint = TelegramBlue,
+                        title = "Preview / Open File",
+                        subtitle = "Open in built-in media viewer or system application",
+                        onClick = {
+                            onDismiss()
+                            FileViewerHelper.openFile(context, file.path, file.fileName, file.telegramFileId)
+                        }
+                    )
+
+                    // 1b. Ask AI Document Assistant
+                    val isImageOrPdf = ext in listOf("JPG", "JPEG", "PNG", "WEBP", "BMP", "HEIC", "PDF")
+                    if (isImageOrPdf) {
+                        FileActionRow(
+                            icon = Icons.Default.AutoAwesome,
+                            iconTint = Color(0xFFFBBF24),
+                            title = "Ask AI Document Assistant",
+                            subtitle = "Extract marksheet data, 10k receipts, IDs, and answer questions",
+                            onClick = {
+                                showAskAiSheet = true
+                            }
+                        )
+                    }
+
+                    // 2. Download to Device
+                    FileActionRow(
+                        icon = Icons.Default.Download,
+                        iconTint = TelegramEmerald,
+                        title = "Download to Device",
+                        subtitle = "Saves copy to Downloads/TelegramBackup/",
+                        onClick = {
                             isDownloading = true
                             downloadProgress = 0f
                             scope.launch(Dispatchers.IO) {
@@ -330,55 +449,150 @@ fun FileActionMenuModal(
                                 }
                             }
                         }
-                    }
-                )
+                    )
 
-                // 4b. Star / Favorite File (Files by Google collection)
-                FileActionRow(
-                    icon = if (isStarred) Icons.Default.Star else Icons.Default.StarBorder,
-                    iconTint = Color(0xFFF9AB00),
-                    title = if (isStarred) "Remove from Starred" else "Add to Starred",
-                    subtitle = if (isStarred) "Remove from Starred collection" else "Pin to Google Files Starred collection",
-                    onClick = {
-                        isStarred = prefs.toggleStarredFile(file.path)
-                        Toast.makeText(context, if (isStarred) "⭐ Added to Starred" else "Removed from Starred", Toast.LENGTH_SHORT).show()
-                    }
-                )
+                    // 3. Download as ZIP (Single File Archive)
+                    FileActionRow(
+                        icon = Icons.Default.Archive,
+                        iconTint = TelegramEmerald,
+                        title = "Download as ZIP",
+                        subtitle = "Compresses and saves file into a ZIP archive",
+                        onClick = {
+                            onDismiss()
+                            val zipName = file.fileName.substringBeforeLast('.') + "_Archive"
+                            Toast.makeText(context, "📦 Compressing '${file.fileName}' into ZIP...", Toast.LENGTH_SHORT).show()
+                            scope.launch(Dispatchers.IO) {
+                                ZipBackupDownloader.downloadFilesAsZip(context, listOf(file), zipName)
+                            }
+                        }
+                    )
 
-                // 4c. Safe Folder Vault (AES-256 Encrypted / Biometric Protected)
-                FileActionRow(
-                    icon = if (isSafeVault) Icons.Default.LockOpen else Icons.Default.Lock,
-                    iconTint = if (isSafeVault) TelegramEmerald else Color(0xFF8B5CF6),
-                    title = if (isSafeVault) "Remove from Safe Folder" else "Move to Safe Folder",
-                    subtitle = if (isSafeVault) "Remove encryption lock from file" else "Protect with biometric fingerprint / PIN",
-                    onClick = {
-                        isSafeVault = prefs.toggleSafeVaultFile(file.path)
-                        Toast.makeText(context, if (isSafeVault) "🔒 Moved to Safe Folder (Protected)" else "Removed from Safe Folder", Toast.LENGTH_SHORT).show()
-                    }
-                )
+                    // 4. Send to App (System Share)
+                    FileActionRow(
+                        icon = Icons.Default.Share,
+                        iconTint = Color(0xFF6366F1),
+                        title = "Send to App (System Share)",
+                        subtitle = "Send directly to WhatsApp, Telegram, Gmail, Bluetooth",
+                        onClick = {
+                            onDismiss()
+                            FileViewerHelper.shareFile(context, file)
+                        }
+                    )
 
-                // 5. Rename File
-                FileActionRow(
-                    icon = Icons.Default.Edit,
-                    iconTint = MaterialTheme.colorScheme.onSurface,
-                    title = "Rename File",
-                    subtitle = "Update filename in local database and cloud index",
-                    onClick = {
-                        showRenameDialog = true
+                    // 5. Share Cloud Link
+                    FileActionRow(
+                        icon = Icons.Default.Link,
+                        iconTint = TelegramBlue,
+                        title = "Share Cloud Link & PIN",
+                        subtitle = "Opaque shareable link with optional PIN, expiry & QR code",
+                        onClick = {
+                            showShareModal = true
+                        }
+                    )
+
+                    // 6. Rename File
+                    FileActionRow(
+                        icon = Icons.Default.Edit,
+                        iconTint = MaterialTheme.colorScheme.onSurface,
+                        title = "Rename File",
+                        subtitle = "Update filename in local database and cloud index",
+                        onClick = {
+                            showRenameDialog = true
+                        }
+                    )
+
+                    // 7. Properties & Info
+                    FileActionRow(
+                        icon = Icons.Default.Info,
+                        iconTint = MaterialTheme.colorScheme.primary,
+                        title = "View Properties & Info",
+                        subtitle = "Inspect file path, Telegram File ID, chunks, and timestamp",
+                        onClick = {
+                            showPropertiesDialog = true
+                        }
+                    )
+
+                    // 8. Copy File Path
+                    FileActionRow(
+                        icon = Icons.Default.ContentCopy,
+                        iconTint = MaterialTheme.colorScheme.outline,
+                        title = "Copy File Path",
+                        subtitle = "Copies the complete storage path to system clipboard",
+                        onClick = {
+                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                            clipboard?.setPrimaryClip(ClipData.newPlainText("File Path", file.path))
+                            Toast.makeText(context, "Path copied to clipboard", Toast.LENGTH_SHORT).show()
+                        }
+                    )
+
+                    // 9. Star / Favorite File
+                    FileActionRow(
+                        icon = if (isStarred) Icons.Default.Star else Icons.Default.StarBorder,
+                        iconTint = Color(0xFFF9AB00),
+                        title = if (isStarred) "Remove from Starred" else "Add to Starred",
+                        subtitle = if (isStarred) "Remove from Starred collection" else "Pin to Google Files Starred collection",
+                        onClick = {
+                            isStarred = prefs.toggleStarredFile(file.path)
+                            Toast.makeText(context, if (isStarred) "⭐ Added to Starred" else "Removed from Starred", Toast.LENGTH_SHORT).show()
+                        }
+                    )
+
+                    // 10. Safe Folder Vault
+                    FileActionRow(
+                        icon = if (isSafeVault) Icons.Default.LockOpen else Icons.Default.Lock,
+                        iconTint = if (isSafeVault) TelegramEmerald else Color(0xFF8B5CF6),
+                        title = if (isSafeVault) "Remove from Safe Folder" else "Move to Safe Folder",
+                        subtitle = if (isSafeVault) "Remove encryption lock from file" else "Protect with biometric fingerprint / PIN",
+                        onClick = {
+                            isSafeVault = prefs.toggleSafeVaultFile(file.path)
+                            Toast.makeText(context, if (isSafeVault) "🔒 Moved to Safe Folder (Protected)" else "Removed from Safe Folder", Toast.LENGTH_SHORT).show()
+                        }
+                    )
+
+                    // 11. Multi-Select Mode Trigger
+                    if (onSelectMode != null) {
+                        FileActionRow(
+                            icon = Icons.Default.CheckCircleOutline,
+                            iconTint = TelegramBlue,
+                            title = "Select",
+                            subtitle = "Enter multi-select mode to choose multiple items",
+                            onClick = {
+                                onDismiss()
+                                onSelectMode()
+                            }
+                        )
                     }
-                )
+
+                    // 12. Delete / Move to Trash
+                    FileActionRow(
+                        icon = Icons.Default.Delete,
+                        iconTint = MaterialTheme.colorScheme.error,
+                        title = "Move to Trash Bin",
+                        subtitle = "Can be restored anytime from Recycle Bin",
+                        textColor = MaterialTheme.colorScheme.error,
+                        onClick = {
+                            showDeleteConfirmDialog = true
+                        }
+                    )
+                }
             } else {
-                // TRASH ITEM SPECIFIC ACTIONS
-                // Restore File
+                // ================= TRASH ITEM ACTIONS =================
+                // 1. Restore
                 FileActionRow(
                     icon = Icons.Default.Restore,
                     iconTint = TelegramEmerald,
-                    title = "Restore from Trash",
-                    subtitle = "Recover file back to cloud storage and active library",
+                    title = if (isFolder) "Restore Folder from Trash" else "Restore from Trash",
+                    subtitle = "Recover item back to cloud storage and active library",
                     onClick = {
                         scope.launch(Dispatchers.IO) {
                             val dao = AppDatabase.getDatabase(context).uploadedFileDao()
-                            dao.restoreFile(file.path, file.telegramFileId)
+                            if (isFolder) {
+                                val targetFiles = folderFiles ?: dao.getAllRawFiles().filter { it.path.startsWith("${file.path}/") }
+                                targetFiles.forEach { dao.restoreFile(it.path, it.telegramFileId) }
+                                dao.restoreFile(file.path, file.telegramFileId)
+                            } else {
+                                dao.restoreFile(file.path, file.telegramFileId)
+                            }
                             withContext(Dispatchers.Main) {
                                 Toast.makeText(context, "Restored ${file.fileName}", Toast.LENGTH_SHORT).show()
                                 onFileRestored?.invoke(file)
@@ -388,81 +602,79 @@ fun FileActionMenuModal(
                     }
                 )
 
-                // Download even if in Trash
-                FileActionRow(
-                    icon = Icons.Default.Download,
-                    iconTint = TelegramEmerald,
-                    title = "Download / Recover to Device",
-                    subtitle = "Saves copy to Downloads/TelegramBackup/",
-                    onClick = {
-                        isDownloading = true
-                        downloadProgress = 0f
-                        scope.launch(Dispatchers.IO) {
-                            try {
-                                val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-                                val targetDir = File(downloadsDir, "TelegramBackup").apply { if (!exists()) mkdirs() }
-                                val targetFile = File(targetDir, file.fileName)
-                                val ok = TelegramMediaResolver.restoreFileToTarget(
-                                    context = context,
-                                    file = file,
-                                    targetFile = targetFile,
-                                    onProgress = { p -> downloadProgress = p }
-                                )
-                                withContext(Dispatchers.Main) {
-                                    isDownloading = false
-                                    if (ok && targetFile.exists()) {
-                                        Toast.makeText(context, "✅ Downloaded to Downloads/TelegramBackup/${targetFile.name}", Toast.LENGTH_LONG).show()
-                                        onDismiss()
-                                    } else {
-                                        Toast.makeText(context, "Download failed for ${file.fileName}", Toast.LENGTH_SHORT).show()
+                // 2. Download / Recover
+                if (!isFolder) {
+                    FileActionRow(
+                        icon = Icons.Default.Download,
+                        iconTint = TelegramEmerald,
+                        title = "Download / Recover to Device",
+                        subtitle = "Saves copy to Downloads/TelegramBackup/",
+                        onClick = {
+                            isDownloading = true
+                            downloadProgress = 0f
+                            scope.launch(Dispatchers.IO) {
+                                try {
+                                    val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+                                    val targetDir = File(downloadsDir, "TelegramBackup").apply { if (!exists()) mkdirs() }
+                                    val targetFile = File(targetDir, file.fileName)
+                                    val ok = TelegramMediaResolver.restoreFileToTarget(
+                                        context = context,
+                                        file = file,
+                                        targetFile = targetFile,
+                                        onProgress = { p -> downloadProgress = p }
+                                    )
+                                    withContext(Dispatchers.Main) {
+                                        isDownloading = false
+                                        if (ok && targetFile.exists()) {
+                                            Toast.makeText(context, "✅ Downloaded to Downloads/TelegramBackup/${targetFile.name}", Toast.LENGTH_LONG).show()
+                                            onDismiss()
+                                        } else {
+                                            Toast.makeText(context, "Download failed for ${file.fileName}", Toast.LENGTH_SHORT).show()
+                                        }
                                     }
-                                }
-                            } catch (e: Exception) {
-                                withContext(Dispatchers.Main) {
-                                    isDownloading = false
-                                    Toast.makeText(context, "Download error: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
+                                } catch (e: Exception) {
+                                    withContext(Dispatchers.Main) {
+                                        isDownloading = false
+                                        Toast.makeText(context, "Download error: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
+                                    }
                                 }
                             }
                         }
+                    )
+                }
+
+                // 3. Properties & Info
+                FileActionRow(
+                    icon = Icons.Default.Info,
+                    iconTint = MaterialTheme.colorScheme.primary,
+                    title = "View Properties & Info",
+                    subtitle = "Inspect item path, size, and deletion status",
+                    onClick = { showPropertiesDialog = true }
+                )
+
+                // 4. Copy Path
+                FileActionRow(
+                    icon = Icons.Default.ContentCopy,
+                    iconTint = MaterialTheme.colorScheme.outline,
+                    title = "Copy Storage Path",
+                    subtitle = "Copies the complete storage path to system clipboard",
+                    onClick = {
+                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                        clipboard?.setPrimaryClip(ClipData.newPlainText("Path", file.path))
+                        Toast.makeText(context, "Path copied to clipboard", Toast.LENGTH_SHORT).show()
                     }
                 )
+
+                // 5. Delete Permanently
+                FileActionRow(
+                    icon = Icons.Default.DeleteForever,
+                    iconTint = MaterialTheme.colorScheme.error,
+                    title = if (isFolder) "Delete Folder Permanently" else "Delete Permanently",
+                    subtitle = "Irreversibly delete item from cloud and database",
+                    textColor = MaterialTheme.colorScheme.error,
+                    onClick = { showDeleteConfirmDialog = true }
+                )
             }
-
-            // 6. Properties & Info
-            FileActionRow(
-                icon = Icons.Default.Info,
-                iconTint = MaterialTheme.colorScheme.primary,
-                title = "View Properties & Info",
-                subtitle = "Inspect file path, Telegram File ID, chunks, and timestamp",
-                onClick = {
-                    showPropertiesDialog = true
-                }
-            )
-
-            // 7. Copy File Path
-            FileActionRow(
-                icon = Icons.Default.ContentCopy,
-                iconTint = MaterialTheme.colorScheme.outline,
-                title = "Copy File Path",
-                subtitle = "Copies the complete storage path to system clipboard",
-                onClick = {
-                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
-                    clipboard?.setPrimaryClip(ClipData.newPlainText("File Path", file.path))
-                    Toast.makeText(context, "Path copied to clipboard", Toast.LENGTH_SHORT).show()
-                }
-            )
-
-            // 8. Delete / Move to Trash
-            FileActionRow(
-                icon = if (isTrashItem) Icons.Default.DeleteForever else Icons.Default.Delete,
-                iconTint = MaterialTheme.colorScheme.error,
-                title = if (isTrashItem) "Delete Permanently" else "Move to Trash Bin",
-                subtitle = if (isTrashItem) "Irreversibly delete file from cloud and database" else "Can be restored anytime from Recycle Bin",
-                textColor = MaterialTheme.colorScheme.error,
-                onClick = {
-                    showDeleteConfirmDialog = true
-                }
-            )
         }
     }
 
@@ -475,6 +687,42 @@ fun FileActionMenuModal(
                 onDismiss()
             }
         )
+    }
+
+    if (showAskAiSheet) {
+        val localDisk = resolveLocalDiskFile(context, file.path, file.telegramFileId, file.fileName)
+        if (localDisk != null && localDisk.exists() && localDisk.length() > 0) {
+            com.example.telegrambackup.ui.ai.AskPhotoSheet(
+                targetFile = localDisk,
+                fileName = file.fileName,
+                filePath = file.path,
+                telegramFileId = file.telegramFileId,
+                onDismiss = { showAskAiSheet = false }
+            )
+        } else {
+            var cachedTarget by remember { mutableStateOf<File?>(null) }
+            LaunchedEffect(file.telegramFileId) {
+                withContext(Dispatchers.IO) {
+                    val fetched = TelegramMediaResolver.fetchToTempCache(context, file.telegramFileId, file.fileName)
+                    withContext(Dispatchers.Main) {
+                        cachedTarget = fetched
+                        if (fetched == null) {
+                            Toast.makeText(context, "Could not load file for AI analysis", Toast.LENGTH_SHORT).show()
+                            showAskAiSheet = false
+                        }
+                    }
+                }
+            }
+            if (cachedTarget != null) {
+                com.example.telegrambackup.ui.ai.AskPhotoSheet(
+                    targetFile = cachedTarget!!,
+                    fileName = file.fileName,
+                    filePath = file.path,
+                    telegramFileId = file.telegramFileId,
+                    onDismiss = { showAskAiSheet = false }
+                )
+            }
+        }
     }
 
     // SUB-DIALOG 2: RENAME DIALOG
@@ -525,23 +773,23 @@ fun FileActionMenuModal(
                             val newPath = if (parent.isNotEmpty()) "$parent/$trimmed" else trimmed
 
                             if (isFolder) {
-                                val allFiles = dao.getDriveFiles()
+                                val allFiles = dao.getAllRawFiles()
                                 val children = allFiles.filter { it.path.startsWith("$oldPath/") }
                                 children.forEach { child ->
                                     val newChildPath = child.path.replaceFirst(oldPath, newPath)
                                     dao.deleteByPath(child.path)
-                                    dao.insert(child.apply { path = newChildPath; isDriveUpload = true })
-                                    chunkDao.updateSourcePath(child.path, newChildPath)
+                                    dao.insert(child.copy(path = newChildPath))
+                                    try { chunkDao.updateSourcePath(child.path, newChildPath) } catch (_: Exception) {}
                                 }
                             }
 
-                            val updated = file.copy().apply {
-                                path = newPath
+                            val updated = file.copy(
+                                path = newPath,
                                 fileName = trimmed
-                            }
+                            )
                             dao.deleteByPath(oldPath)
                             dao.insert(updated)
-                            chunkDao.updateSourcePath(oldPath, newPath)
+                            try { chunkDao.updateSourcePath(oldPath, newPath) } catch (_: Exception) {}
 
                             val userEmail = AppPrefs(context).userEmail
                             val serverUrl = AppPrefs(context).serverUrl
@@ -598,9 +846,17 @@ fun FileActionMenuModal(
             onDismissRequest = { showPropertiesDialog = false },
             title = {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Info, contentDescription = null, tint = TelegramBlue, modifier = Modifier.size(24.dp))
+                    Icon(
+                        imageVector = if (isFolder) Icons.Default.Folder else Icons.Default.Info,
+                        contentDescription = null,
+                        tint = TelegramBlue,
+                        modifier = Modifier.size(24.dp)
+                    )
                     Spacer(modifier = Modifier.width(10.dp))
-                    Text("File Properties", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
+                    Text(
+                        if (isFolder) "Folder Properties" else "File Properties",
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                    )
                 }
             },
             text = {
@@ -610,29 +866,47 @@ fun FileActionMenuModal(
                         .verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    PropertyRow(label = "File Name", value = file.fileName)
-                    PropertyRow(label = "File Size", value = "${formatFileSize(file.size)} (${numberFormat.format(file.size)} bytes)")
-                    PropertyRow(label = "Type", value = if (isFolder) "Folder Directory" else (ext.ifEmpty { "Binary Data" }))
-                    PropertyRow(label = "Storage Path", value = file.path, canCopy = true, context = context)
-                    PropertyRow(label = "Cloud File ID", value = file.telegramFileId.ifEmpty { "Local Unsynced" }, canCopy = file.telegramFileId.isNotEmpty(), context = context)
-                    if (file.messageId > 0) {
-                        PropertyRow(label = "Telegram Message ID", value = file.messageId.toString())
+                    if (isFolder) {
+                        PropertyRow(label = "Folder Name", value = file.fileName)
+                        PropertyRow(label = "Total Size", value = "${formatFileSize(folderTotalSize)} (${numberFormat.format(folderTotalSize)} bytes)")
+                        PropertyRow(label = "Contained Files", value = "$folderItemCount files inside folder")
+                        PropertyRow(label = "Type", value = "Folder Directory")
+                        PropertyRow(label = "Storage Path", value = file.path, canCopy = true, context = context)
+                        PropertyRow(
+                            label = "Encryption",
+                            value = "AES-256-GCM Zero-Knowledge",
+                            color = TelegramEmerald
+                        )
+                        PropertyRow(
+                            label = "Storage Status",
+                            value = if (file.isDeleted) "In Trash Bin" else if (file.isDriveUpload) "Personal Cloud Drive" else "Encrypted Telegram Storage",
+                            color = if (file.isDeleted) MaterialTheme.colorScheme.error else TelegramBlue
+                        )
+                    } else {
+                        PropertyRow(label = "File Name", value = file.fileName)
+                        PropertyRow(label = "File Size", value = "${formatFileSize(file.size)} (${numberFormat.format(file.size)} bytes)")
+                        PropertyRow(label = "Type", value = ext.ifEmpty { "Binary Data" })
+                        PropertyRow(label = "Storage Path", value = file.path, canCopy = true, context = context)
+                        PropertyRow(label = "Cloud File ID", value = file.telegramFileId.ifEmpty { "Local Unsynced" }, canCopy = file.telegramFileId.isNotEmpty(), context = context)
+                        if (file.messageId > 0) {
+                            PropertyRow(label = "Telegram Message ID", value = file.messageId.toString())
+                        }
+                        PropertyRow(
+                            label = "Multi-Chunk Status",
+                            value = if (file.totalChunks > 1) "Multi-part (${file.totalChunks} chunks assembled)" else "Single part (Direct stream)"
+                        )
+                        PropertyRow(label = "Date Added", value = dateFormat.format(Date(if (file.timestamp > 0) file.timestamp else System.currentTimeMillis())))
+                        PropertyRow(
+                            label = "Encryption",
+                            value = "AES-256-GCM Zero-Knowledge",
+                            color = TelegramEmerald
+                        )
+                        PropertyRow(
+                            label = "Storage Status",
+                            value = if (file.isDeleted) "In Trash Bin" else if (file.isDriveUpload) "Personal Cloud Drive" else "Encrypted Telegram Backup",
+                            color = if (file.isDeleted) MaterialTheme.colorScheme.error else TelegramBlue
+                        )
                     }
-                    PropertyRow(
-                        label = "Multi-Chunk Status",
-                        value = if (file.totalChunks > 1) "Multi-part (${file.totalChunks} chunks assembled)" else "Single part (Direct stream)"
-                    )
-                    PropertyRow(label = "Date Added", value = dateFormat.format(Date(if (file.timestamp > 0) file.timestamp else System.currentTimeMillis())))
-                    PropertyRow(
-                        label = "Encryption",
-                        value = "AES-256-GCM Zero-Knowledge",
-                        color = TelegramEmerald
-                    )
-                    PropertyRow(
-                        label = "Storage Status",
-                        value = if (file.isDeleted) "In Trash Bin" else if (file.isDriveUpload) "Personal Cloud Drive" else "Encrypted Telegram Backup",
-                        color = if (file.isDeleted) MaterialTheme.colorScheme.error else TelegramBlue
-                    )
                 }
             },
             confirmButton = {
@@ -653,16 +927,27 @@ fun FileActionMenuModal(
             onDismissRequest = { showDeleteConfirmDialog = false },
             title = {
                 Text(
-                    if (isTrashItem) "Permanently Delete File?" else "Move to Trash Bin?",
+                    text = when {
+                        isTrashItem && isFolder -> "Permanently Delete Folder?"
+                        isTrashItem -> "Permanently Delete File?"
+                        isFolder -> "Move Folder to Trash Bin?"
+                        else -> "Move to Trash Bin?"
+                    },
                     fontWeight = FontWeight.Bold
                 )
             },
             text = {
                 Text(
-                    if (isTrashItem)
-                        "Are you sure you want to permanently delete '${file.fileName}'? This will delete the file from the Telegram cloud and local database permanently. This action cannot be undone."
-                    else
-                        "Move '${file.fileName}' to Recycle Bin? You can restore it anytime or let auto-clean manage it."
+                    text = when {
+                        isTrashItem && isFolder ->
+                            "Are you sure you want to permanently delete folder '${file.fileName}' and all its $folderItemCount contained files? This cannot be undone."
+                        isTrashItem ->
+                            "Are you sure you want to permanently delete '${file.fileName}'? This will delete the file from the Telegram cloud and local database permanently. This action cannot be undone."
+                        isFolder ->
+                            "Move folder '${file.fileName}' and its $folderItemCount files to Recycle Bin? You can restore it anytime."
+                        else ->
+                            "Move '${file.fileName}' to Recycle Bin? You can restore it anytime or let auto-clean manage it."
+                    }
                 )
             },
             confirmButton = {
@@ -673,25 +958,70 @@ fun FileActionMenuModal(
                             val db = AppDatabase.getDatabase(context)
                             val dao = db.uploadedFileDao()
                             val now = System.currentTimeMillis()
-                            val userEmail = AppPrefs(context).userEmail
-                            val serverUrl = AppPrefs(context).serverUrl
+                            val prefs = AppPrefs(context)
+                            val userEmail = prefs.userEmail
+                            val serverUrl = prefs.serverUrl
+                            val botToken = prefs.botToken
+                            val chatId = prefs.chatId
                             val serverApi = ServerApi()
 
-                            if (isTrashItem) {
-                                // Permanently purge
-                                dao.deleteByPath(file.path)
-                                if (file.telegramFileId.isNotBlank() && file.telegramFileId != "DIR_MARKER") {
-                                    dao.deleteByTelegramFileId(file.telegramFileId)
+                            if (isFolder) {
+                                val targetFiles = folderFiles ?: dao.getAllRawFiles().filter { it.path.startsWith("${file.path}/") }
+                                targetFiles.forEach { child ->
+                                    if (isTrashItem) {
+                                        try {
+                                            serverApi.purgeFileCompleteFromTelegram(
+                                                context = context,
+                                                botToken = botToken,
+                                                chatId = chatId,
+                                                file = child,
+                                                forceLocalDelete = true
+                                            )
+                                        } catch (_: Exception) {}
+                                        dao.deleteByPath(child.path)
+                                        if (child.telegramFileId.isNotBlank() && child.telegramFileId != "DIR_MARKER") {
+                                            dao.deleteByTelegramFileId(child.telegramFileId)
+                                        }
+                                        db.chunkProgressDao().deleteChunksForFile(child.path)
+                                        if (userEmail.isNotEmpty() && child.telegramFileId.isNotEmpty()) {
+                                            try { serverApi.deleteFile(serverUrl, userEmail, child.telegramFileId, child.path) } catch (_: Exception) {}
+                                        }
+                                    } else {
+                                        dao.softDelete(child.path, child.telegramFileId, now)
+                                        if (userEmail.isNotEmpty() && child.telegramFileId.isNotEmpty()) {
+                                            try { serverApi.deleteFile(serverUrl, userEmail, child.telegramFileId, child.path) } catch (_: Exception) {}
+                                        }
+                                    }
                                 }
-                                db.chunkProgressDao().deleteChunksForFile(file.path)
-                                if (userEmail.isNotEmpty() && file.telegramFileId.isNotEmpty()) {
-                                    try { serverApi.deleteFile(serverUrl, userEmail, file.telegramFileId, file.path) } catch (_: Exception) {}
+                                if (isTrashItem) {
+                                    dao.deleteByPath(file.path)
+                                } else {
+                                    dao.softDelete(file.path, file.telegramFileId, now)
                                 }
                             } else {
-                                // Soft delete to trash bin
-                                dao.softDelete(file.path, file.telegramFileId, now)
-                                if (userEmail.isNotEmpty() && file.telegramFileId.isNotEmpty()) {
-                                    try { serverApi.deleteFile(serverUrl, userEmail, file.telegramFileId, file.path) } catch (_: Exception) {}
+                                if (isTrashItem) {
+                                    try {
+                                        serverApi.purgeFileCompleteFromTelegram(
+                                            context = context,
+                                            botToken = botToken,
+                                            chatId = chatId,
+                                            file = file,
+                                            forceLocalDelete = true
+                                        )
+                                    } catch (_: Exception) {}
+                                    dao.deleteByPath(file.path)
+                                    if (file.telegramFileId.isNotBlank() && file.telegramFileId != "DIR_MARKER") {
+                                        dao.deleteByTelegramFileId(file.telegramFileId)
+                                    }
+                                    db.chunkProgressDao().deleteChunksForFile(file.path)
+                                    if (userEmail.isNotEmpty() && file.telegramFileId.isNotEmpty()) {
+                                        try { serverApi.deleteFile(serverUrl, userEmail, file.telegramFileId, file.path) } catch (_: Exception) {}
+                                    }
+                                } else {
+                                    dao.softDelete(file.path, file.telegramFileId, now)
+                                    if (userEmail.isNotEmpty() && file.telegramFileId.isNotEmpty()) {
+                                        try { serverApi.deleteFile(serverUrl, userEmail, file.telegramFileId, file.path) } catch (_: Exception) {}
+                                    }
                                 }
                             }
 

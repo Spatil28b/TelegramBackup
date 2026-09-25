@@ -1,11 +1,16 @@
 package com.example.telegrambackup.ui.settings
 
 import android.content.Context
+import android.text.format.Formatter
 import android.widget.Toast
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -14,27 +19,34 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.telegrambackup.data.AppDatabase
 import com.example.telegrambackup.data.AuthRepository
+import com.example.telegrambackup.data.UploadedFile
 import com.example.telegrambackup.network.ServerApi
 import com.example.telegrambackup.theme.TelegramBlue
+import com.example.telegrambackup.utils.AppCacheManager
 import com.example.telegrambackup.utils.AppPrefs
+import com.example.telegrambackup.utils.DynamicProcessTracker
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
 
 private val DangerRed = Color(0xFFEF4444)
 private val WarningAmber = Color(0xFFF59E0B)
+private val SuccessGreen = Color(0xFF10B981)
 private val SurfaceDark = Color(0xFF1E293B)
+private val CardSurface = Color(0xFF27354A)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ClearDataAccountDialog(
-    initialTab: Int = 0, // 0 = Clear Data, 1 = Delete Account
+    initialTab: Int = 0, // 0 = Clear File Data, 1 = Delete Account
     onDismiss: () -> Unit,
     onLogoutCompleted: () -> Unit = {}
 ) {
@@ -45,42 +57,103 @@ fun ClearDataAccountDialog(
 
     var selectedTab by remember { mutableIntStateOf(initialTab) }
 
-    // Option 1 States (Clear Data Only)
-    var purgeMode by remember { mutableStateOf("ALL") } // ALL, DRIVE_ONLY, AUTO_BACKUP_ONLY, OLDER_THAN_DAYS
-    var selectedOlderDays by remember { mutableIntStateOf(30) }
-    var purgeTelegramMessages by remember { mutableStateOf(true) }
-    var clearLocalDb by remember { mutableStateOf(true) }
+    // Storage Targets to Clear (User Request: Clear from App, Database, and Telegram Channel)
+    var clearFromApp by remember { mutableStateOf(true) }
+    var clearFromCloudDb by remember { mutableStateOf(true) }
+    var deleteFromTelegram by remember { mutableStateOf(true) }
 
-    // Option 2 States (Delete Account)
-    var confirmInput by remember { mutableStateOf("") }
+    // Filter Scope States (ALL, DRIVE_ONLY, AUTO_BACKUP_ONLY, OLDER_THAN_DAYS, TRASH_ONLY)
+    var purgeMode by remember { mutableStateOf("ALL") }
+    var selectedOlderDays by remember { mutableIntStateOf(30) }
+
+    // Dynamic Preview Statistics
+    var previewFileCount by remember { mutableIntStateOf(0) }
+    var previewTotalBytes by remember { mutableLongStateOf(0L) }
+    var previewChunkCount by remember { mutableIntStateOf(0) }
+    var isLoadingPreview by remember { mutableStateOf(false) }
+
+    // Safety Inputs
+    var clearConfirmInput by remember { mutableStateOf("") }
+    var accountConfirmInput by remember { mutableStateOf("") }
     var accountPurgeTelegram by remember { mutableStateOf(true) }
+
+    // Process & Progress States
     var isProcessing by remember { mutableStateOf(false) }
+    var progressFraction by remember { mutableFloatStateOf(0f) }
     var statusMessage by remember { mutableStateOf("") }
 
-    if (com.example.telegrambackup.utils.DynamicProcessTracker.isMinimized) {
+    // High Impact Check: Full Wipe of Cloud DB & Telegram Channel requires typing "CLEAR"
+    val isHighImpactClear = selectedTab == 0 && purgeMode == "ALL" && clearFromCloudDb && deleteFromTelegram
+    val canSubmitClear = selectedTab == 0 && (clearFromApp || clearFromCloudDb || deleteFromTelegram) &&
+            (!isHighImpactClear || clearConfirmInput.trim().equals("CLEAR", ignoreCase = true))
+
+    // Query Local Preview Statistics whenever filter changes
+    LaunchedEffect(purgeMode, selectedOlderDays, selectedTab) {
+        if (selectedTab == 0) {
+            isLoadingPreview = true
+            withContext(Dispatchers.IO) {
+                try {
+                    val db = AppDatabase.getDatabase(context)
+                    val allLocal = db.uploadedFileDao().getAllRawFiles()
+                    val now = System.currentTimeMillis()
+                    val cutoff = now - (selectedOlderDays * 86400000L)
+
+                    val matched = when (purgeMode) {
+                        "DRIVE_ONLY" -> allLocal.filter { !it.isDeleted && it.isDriveUpload }
+                        "AUTO_BACKUP_ONLY" -> allLocal.filter { !it.isDeleted && !it.isDriveUpload }
+                        "TRASH_ONLY" -> allLocal.filter { it.isDeleted }
+                        "OLDER_THAN_DAYS" -> allLocal.filter { !it.isDeleted && it.timestamp < cutoff }
+                        else -> allLocal.filter { !it.isDeleted }
+                    }
+
+                    var chunks = 0
+                    for (f in matched) {
+                        if (f.totalChunks > 1) {
+                            chunks += f.totalChunks
+                        } else {
+                            chunks += 1
+                        }
+                    }
+
+                    withContext(Dispatchers.Main) {
+                        previewFileCount = matched.size
+                        previewTotalBytes = matched.sumOf { it.size }
+                        previewChunkCount = chunks
+                        isLoadingPreview = false
+                    }
+                } catch (_: Exception) {
+                    withContext(Dispatchers.Main) { isLoadingPreview = false }
+                }
+            }
+        }
+    }
+
+    if (DynamicProcessTracker.isMinimized) {
         return
     }
 
-    LaunchedEffect(isProcessing, statusMessage) {
+    LaunchedEffect(isProcessing, statusMessage, progressFraction) {
         if (isProcessing) {
-            if (!com.example.telegrambackup.utils.DynamicProcessTracker.isProcessActive) {
-                com.example.telegrambackup.utils.DynamicProcessTracker.startProcess(
+            if (!DynamicProcessTracker.isProcessActive) {
+                DynamicProcessTracker.startProcess(
                     title = if (selectedTab == 0) "Clearing File Data" else "Deleting Account",
                     subtitle = statusMessage,
-                    icon = Icons.Default.DeleteSweep
+                    icon = if (selectedTab == 0) Icons.Default.DeleteSweep else Icons.Default.DeleteForever
                 )
             }
-            com.example.telegrambackup.utils.DynamicProcessTracker.updateProgress(0.5f, statusMessage)
+            DynamicProcessTracker.updateProgress(progressFraction, statusMessage)
         } else {
-            if (com.example.telegrambackup.utils.DynamicProcessTracker.isProcessActive) {
-                com.example.telegrambackup.utils.DynamicProcessTracker.finishProcess()
+            if (DynamicProcessTracker.isProcessActive) {
+                DynamicProcessTracker.finishProcess()
             }
         }
     }
 
     AlertDialog(
         onDismissRequest = { if (!isProcessing) onDismiss() },
-        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(28.dp)),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(28.dp)),
         containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
         shape = RoundedCornerShape(28.dp),
         title = {
@@ -99,13 +172,13 @@ fun ClearDataAccountDialog(
                         )
                         Spacer(modifier = Modifier.width(10.dp))
                         Text(
-                            if (selectedTab == 0) "Clear Data Options" else "Delete Account",
+                            if (selectedTab == 0) "Clear File Data" else "Delete Account",
                             style = MaterialTheme.typography.titleMedium.copy(color = Color.White, fontWeight = FontWeight.Bold)
                         )
                     }
 
                     if (isProcessing) {
-                        IconButton(onClick = { com.example.telegrambackup.utils.DynamicProcessTracker.minimize() }) {
+                        IconButton(onClick = { DynamicProcessTracker.minimize() }) {
                             Icon(Icons.Default.Remove, contentDescription = "Minimize", tint = TelegramBlue)
                         }
                     }
@@ -131,7 +204,7 @@ fun ClearDataAccountDialog(
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            "🗑️ Clear Data",
+                            "🧹 Clear File Data",
                             style = MaterialTheme.typography.bodySmall.copy(
                                 color = if (selectedTab == 0) WarningAmber else Color.White.copy(alpha = 0.6f),
                                 fontWeight = FontWeight.Bold
@@ -160,176 +233,236 @@ fun ClearDataAccountDialog(
             }
         },
         text = {
-            Column(modifier = Modifier.fillMaxWidth()) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+            ) {
                 if (selectedTab == 0) {
-                    // OPTION 1: CLEAR FILE DATA ONLY (KEEP ACCOUNT ACTIVE)
+                    // =========================================================
+                    // TAB 0: GRANULAR CLEAR FILE DATA
+                    // =========================================================
                     Text(
-                        "Select Data to Clear:",
-                        style = MaterialTheme.typography.labelSmall.copy(color = Color.White.copy(alpha = 0.7f)),
+                        "1. Select Storage Targets to Clear:",
+                        style = MaterialTheme.typography.labelSmall.copy(color = WarningAmber, fontWeight = FontWeight.Bold),
                         modifier = Modifier.padding(bottom = 6.dp)
                     )
 
-                    // Filter Mode 1: ALL
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
-                            .clickable { purgeMode = "ALL" }
-                            .padding(vertical = 4.dp)
-                    ) {
-                        RadioButton(
-                            selected = purgeMode == "ALL",
-                            onClick = { purgeMode = "ALL" },
-                            colors = RadioButtonDefaults.colors(selectedColor = WarningAmber)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Column {
-                            Text("All Backed-Up Files & Drive Items", style = MaterialTheme.typography.bodySmall.copy(color = Color.White, fontWeight = FontWeight.Bold))
-                            Text("Full wipe of all file records", style = MaterialTheme.typography.labelSmall.copy(color = Color.White.copy(alpha = 0.5f)))
-                        }
-                    }
+                    // Target 1: Clear from App
+                    StorageTargetToggleItem(
+                        icon = Icons.Default.PhoneAndroid,
+                        title = "Clear from Local App",
+                        subtitle = "Wipes local database, chunk progress & caches",
+                        checked = clearFromApp,
+                        onCheckedChange = { clearFromApp = it },
+                        enabled = !isProcessing
+                    )
 
-                    // Filter Mode 2: DRIVE_ONLY
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
-                            .clickable { purgeMode = "DRIVE_ONLY" }
-                            .padding(vertical = 4.dp)
-                    ) {
-                        RadioButton(
-                            selected = purgeMode == "DRIVE_ONLY",
-                            onClick = { purgeMode = "DRIVE_ONLY" },
-                            colors = RadioButtonDefaults.colors(selectedColor = WarningAmber)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Column {
-                            Text("Cloud Drive Uploads Only", style = MaterialTheme.typography.bodySmall.copy(color = Color.White, fontWeight = FontWeight.Bold))
-                            Text("Leaves auto backups untouched", style = MaterialTheme.typography.labelSmall.copy(color = Color.White.copy(alpha = 0.5f)))
-                        }
-                    }
+                    Spacer(modifier = Modifier.height(6.dp))
 
-                    // Filter Mode 3: AUTO_BACKUP_ONLY
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
-                            .clickable { purgeMode = "AUTO_BACKUP_ONLY" }
-                            .padding(vertical = 4.dp)
-                    ) {
-                        RadioButton(
-                            selected = purgeMode == "AUTO_BACKUP_ONLY",
-                            onClick = { purgeMode = "AUTO_BACKUP_ONLY" },
-                            colors = RadioButtonDefaults.colors(selectedColor = WarningAmber)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Column {
-                            Text("Automatic Storage Backups Only", style = MaterialTheme.typography.bodySmall.copy(color = Color.White, fontWeight = FontWeight.Bold))
-                            Text("Leaves Cloud Drive items untouched", style = MaterialTheme.typography.labelSmall.copy(color = Color.White.copy(alpha = 0.5f)))
-                        }
-                    }
+                    // Target 2: Clear from Cloud Database
+                    StorageTargetToggleItem(
+                        icon = Icons.Default.CloudQueue,
+                        title = "Clear from Cloud Database",
+                        subtitle = "Purges records from PostgreSQL server & share links",
+                        checked = clearFromCloudDb,
+                        onCheckedChange = { clearFromCloudDb = it },
+                        enabled = !isProcessing
+                    )
 
-                    // Filter Mode 4: OLDER_THAN_DAYS
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
-                            .clickable { purgeMode = "OLDER_THAN_DAYS" }
-                            .padding(vertical = 4.dp)
-                    ) {
-                        RadioButton(
-                            selected = purgeMode == "OLDER_THAN_DAYS",
-                            onClick = { purgeMode = "OLDER_THAN_DAYS" },
-                            colors = RadioButtonDefaults.colors(selectedColor = WarningAmber)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Column {
-                            Text("Files Older Than $selectedOlderDays Days", style = MaterialTheme.typography.bodySmall.copy(color = Color.White, fontWeight = FontWeight.Bold))
-                            if (purgeMode == "OLDER_THAN_DAYS") {
-                                Row(
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                    modifier = Modifier.padding(top = 4.dp)
-                                ) {
-                                    listOf(30, 60, 90).forEach { days ->
-                                        FilterChip(
-                                            selected = selectedOlderDays == days,
-                                            onClick = { selectedOlderDays = days },
-                                            label = { Text("$days Days", fontSize = 10.sp) },
-                                            colors = FilterChipDefaults.filterChipColors(
-                                                selectedContainerColor = WarningAmber,
-                                                selectedLabelColor = Color.Black
-                                            )
-                                        )
-                                    }
-                                }
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    // Target 3: Delete from Telegram Channel
+                    StorageTargetToggleItem(
+                        icon = Icons.Default.Send,
+                        title = "Delete from Telegram Channel",
+                        subtitle = "Deletes original files and 4MB chunk parts in channel",
+                        checked = deleteFromTelegram,
+                        onCheckedChange = { deleteFromTelegram = it },
+                        enabled = !isProcessing
+                    )
+
+                    HorizontalDivider(
+                        modifier = Modifier.padding(vertical = 10.dp),
+                        color = Color.White.copy(alpha = 0.12f)
+                    )
+
+                    Text(
+                        "2. Select Files to Target:",
+                        style = MaterialTheme.typography.labelSmall.copy(color = WarningAmber, fontWeight = FontWeight.Bold),
+                        modifier = Modifier.padding(bottom = 6.dp)
+                    )
+
+                    // Mode 1: All Files
+                    FilterModeRadioItem(
+                        title = "All Files (Drive + Auto-Backup)",
+                        subtitle = "Complete clean of all backup categories",
+                        selected = purgeMode == "ALL",
+                        onClick = { purgeMode = "ALL" },
+                        enabled = !isProcessing
+                    )
+
+                    // Mode 2: Drive Only
+                    FilterModeRadioItem(
+                        title = "Cloud Drive Only",
+                        subtitle = "Only manual uploads & cloud drive items",
+                        selected = purgeMode == "DRIVE_ONLY",
+                        onClick = { purgeMode = "DRIVE_ONLY" },
+                        enabled = !isProcessing
+                    )
+
+                    // Mode 3: Auto-Backup Only
+                    FilterModeRadioItem(
+                        title = "Auto-Backup Only",
+                        subtitle = "Only automatic background media backups",
+                        selected = purgeMode == "AUTO_BACKUP_ONLY",
+                        onClick = { purgeMode = "AUTO_BACKUP_ONLY" },
+                        enabled = !isProcessing
+                    )
+
+                    // Mode 4: Older Than X Days
+                    FilterModeRadioItem(
+                        title = "Files Older Than $selectedOlderDays Days",
+                        subtitle = "Safely prune older files to reclaim storage",
+                        selected = purgeMode == "OLDER_THAN_DAYS",
+                        onClick = { purgeMode = "OLDER_THAN_DAYS" },
+                        enabled = !isProcessing
+                    )
+
+                    if (purgeMode == "OLDER_THAN_DAYS") {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.padding(start = 36.dp, top = 4.dp, bottom = 4.dp)
+                        ) {
+                            listOf(30, 60, 90).forEach { days ->
+                                FilterChip(
+                                    selected = selectedOlderDays == days,
+                                    onClick = { selectedOlderDays = days },
+                                    label = { Text("$days Days", fontSize = 11.sp) },
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        selectedContainerColor = WarningAmber,
+                                        selectedLabelColor = Color.Black
+                                    )
+                                )
                             }
                         }
                     }
 
-                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), color = Color.White.copy(alpha = 0.1f))
+                    // Mode 5: Trash Only
+                    FilterModeRadioItem(
+                        title = "Trash / Recycle Bin Only",
+                        subtitle = "Permanently empty deleted trash files",
+                        selected = purgeMode == "TRASH_ONLY",
+                        onClick = { purgeMode = "TRASH_ONLY" },
+                        enabled = !isProcessing
+                    )
 
-                    // Working Action Options
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.fillMaxWidth().clickable { purgeTelegramMessages = !purgeTelegramMessages }
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    // Live Preview Summary Card
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = CardSurface,
+                        modifier = Modifier.fillMaxWidth()
                     ) {
-                        Checkbox(
-                            checked = purgeTelegramMessages,
-                            onCheckedChange = { purgeTelegramMessages = it },
-                            colors = CheckboxDefaults.colors(checkedColor = WarningAmber)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Delete files from Telegram Cloud chat", style = MaterialTheme.typography.bodySmall.copy(color = Color.White))
+                        Row(
+                            modifier = Modifier.padding(10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                Icons.Default.Analytics,
+                                contentDescription = null,
+                                tint = TelegramBlue,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Column {
+                                Text(
+                                    "Target Preview (Local Database):",
+                                    style = MaterialTheme.typography.labelSmall.copy(color = Color.White.copy(alpha = 0.7f), fontWeight = FontWeight.Bold)
+                                )
+                                Text(
+                                    if (isLoadingPreview) "Calculating matching items..."
+                                    else if (previewFileCount == 0 && deleteFromTelegram)
+                                        "0 local files • Telegram Channel Cleaner will scan & wipe orphaned channel messages directly"
+                                    else "$previewFileCount files (~${Formatter.formatFileSize(context, previewTotalBytes)}) • ~$previewChunkCount Telegram parts",
+                                    style = MaterialTheme.typography.bodySmall.copy(
+                                        color = if (previewFileCount == 0 && deleteFromTelegram) WarningAmber else Color.White,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                )
+                            }
+                        }
                     }
 
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.fillMaxWidth().clickable { clearLocalDb = !clearLocalDb }
-                    ) {
-                        Checkbox(
-                            checked = clearLocalDb,
-                            onCheckedChange = { clearLocalDb = it },
-                            colors = CheckboxDefaults.colors(checkedColor = WarningAmber)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Clear local app database & cache", style = MaterialTheme.typography.bodySmall.copy(color = Color.White))
+                    // High Impact Confirmation (If All + Cloud DB + Telegram)
+                    if (isHighImpactClear) {
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = DangerRed.copy(alpha = 0.15f)),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(10.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Default.Warning, contentDescription = null, tint = DangerRed, modifier = Modifier.size(18.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        "High Impact: Full Wipe",
+                                        style = MaterialTheme.typography.bodySmall.copy(color = DangerRed, fontWeight = FontWeight.Bold)
+                                    )
+                                }
+                                Text(
+                                    "This will permanently delete all files from your App, Cloud Database, and Telegram Channel. Type CLEAR to unlock:",
+                                    style = MaterialTheme.typography.labelSmall.copy(color = Color.White.copy(alpha = 0.8f)),
+                                    modifier = Modifier.padding(vertical = 4.dp)
+                                )
+                                OutlinedTextField(
+                                    value = clearConfirmInput,
+                                    onValueChange = { clearConfirmInput = it },
+                                    placeholder = { Text("Type CLEAR", color = Color.White.copy(alpha = 0.3f), fontSize = 12.sp) },
+                                    singleLine = true,
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedBorderColor = DangerRed,
+                                        unfocusedBorderColor = Color.White.copy(alpha = 0.3f),
+                                        focusedTextColor = Color.White,
+                                        unfocusedTextColor = Color.White
+                                    ),
+                                    modifier = Modifier.fillMaxWidth().height(50.dp)
+                                )
+                            }
+                        }
                     }
 
                 } else {
-                    // OPTION 2: DELETE ACCOUNT WITH ALL DATA
+                    // =========================================================
+                    // TAB 1: DELETE ACCOUNT PERMANENTLY
+                    // =========================================================
                     Card(
                         colors = CardDefaults.cardColors(containerColor = DangerRed.copy(alpha = 0.15f)),
-                        shape = RoundedCornerShape(10.dp),
+                        shape = RoundedCornerShape(12.dp),
                         modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp)
                     ) {
                         Row(modifier = Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Warning, contentDescription = null, tint = DangerRed, modifier = Modifier.size(20.dp))
+                            Icon(Icons.Default.Warning, contentDescription = null, tint = DangerRed, modifier = Modifier.size(22.dp))
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                "Permanent Deletion: Your user account, cloud settings, saved credentials, and all backed-up files will be permanently wiped.",
+                                "Permanent Deletion: Your account, cloud credentials, sync settings, and all backed-up files will be permanently wiped.",
                                 style = MaterialTheme.typography.bodySmall.copy(color = Color.White.copy(alpha = 0.9f))
                             )
                         }
                     }
 
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.fillMaxWidth().clickable { accountPurgeTelegram = !accountPurgeTelegram }
-                    ) {
-                        Checkbox(
-                            checked = accountPurgeTelegram,
-                            onCheckedChange = { accountPurgeTelegram = it },
-                            colors = CheckboxDefaults.colors(checkedColor = DangerRed)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Delete all files from Telegram Cloud chat", style = MaterialTheme.typography.bodySmall.copy(color = Color.White))
-                    }
+                    StorageTargetToggleItem(
+                        icon = Icons.Default.Send,
+                        title = "Delete Files from Telegram Channel",
+                        subtitle = "Permanently removes all uploaded files & chunks from Telegram",
+                        checked = accountPurgeTelegram,
+                        onCheckedChange = { accountPurgeTelegram = it },
+                        enabled = !isProcessing
+                    )
 
-                    Spacer(modifier = Modifier.height(8.dp))
+                    Spacer(modifier = Modifier.height(10.dp))
 
                     Text(
                         "Type DELETE to confirm account deletion:",
@@ -337,9 +470,9 @@ fun ClearDataAccountDialog(
                     )
                     Spacer(modifier = Modifier.height(4.dp))
                     OutlinedTextField(
-                        value = confirmInput,
-                        onValueChange = { confirmInput = it },
-                        placeholder = { Text("Type DELETE", color = Color.White.copy(alpha = 0.3f)) },
+                        value = accountConfirmInput,
+                        onValueChange = { accountConfirmInput = it },
+                        placeholder = { Text("Type DELETE", color = Color.White.copy(alpha = 0.3f), fontSize = 12.sp) },
                         singleLine = true,
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedBorderColor = DangerRed,
@@ -347,7 +480,18 @@ fun ClearDataAccountDialog(
                             focusedTextColor = Color.White,
                             unfocusedTextColor = Color.White
                         ),
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier.fillMaxWidth().height(50.dp)
+                    )
+                }
+
+                // Processing & Status Message Display
+                if (isProcessing) {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    LinearProgressIndicator(
+                        progress = { progressFraction },
+                        modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)),
+                        color = if (selectedTab == 0) WarningAmber else DangerRed,
+                        trackColor = SurfaceDark
                     )
                 }
 
@@ -355,7 +499,10 @@ fun ClearDataAccountDialog(
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
                         statusMessage,
-                        style = MaterialTheme.typography.bodySmall.copy(color = if (selectedTab == 0) WarningAmber else DangerRed)
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            color = if (selectedTab == 0) WarningAmber else DangerRed,
+                            fontWeight = FontWeight.Medium
+                        )
                     )
                 }
             }
@@ -365,125 +512,267 @@ fun ClearDataAccountDialog(
                 onClick = {
                     if (isProcessing) return@Button
 
-                    val email = prefs.userEmail
-                    val botToken = prefs.botToken
-                    val chatId = prefs.chatId
+                    val email = prefs.userEmail.trim().lowercase()
+                    val botToken = prefs.botToken.trim()
+                    val chatId = prefs.chatId.trim()
 
                     if (selectedTab == 0) {
+                        // =====================================================
                         // EXECUTE CLEAR FILE DATA ONLY
+                        // =====================================================
+                        if (!clearFromApp && !clearFromCloudDb && !deleteFromTelegram) {
+                            Toast.makeText(context, "Select at least one storage target to clear.", Toast.LENGTH_SHORT).show()
+                            return@Button
+                        }
+
+                        if (isHighImpactClear && !clearConfirmInput.trim().equals("CLEAR", ignoreCase = true)) {
+                            Toast.makeText(context, "Please type CLEAR to proceed with full wipe.", Toast.LENGTH_SHORT).show()
+                            return@Button
+                        }
+
                         isProcessing = true
-                        statusMessage = "Collecting file records..."
+                        progressFraction = 0.1f
+                        statusMessage = "Analyzing file records..."
+
                         scope.launch(Dispatchers.IO) {
                             try {
-                                // 1. Pre-collect local Room DB message IDs BEFORE database wipe!
                                 val db = AppDatabase.getDatabase(context)
-                                val localFiles = try { db.uploadedFileDao().getAllFiles() } catch (_: Exception) { emptyList() }
-                                val localMsgIds = localFiles.mapNotNull { if (it.messageId > 0) it.messageId else null }
+                                val allLocal = db.uploadedFileDao().getAllRawFiles()
+                                val now = System.currentTimeMillis()
+                                val cutoff = now - (selectedOlderDays * 86400000L)
 
-                                withContext(Dispatchers.Main) { statusMessage = "Purging cloud database records..." }
-                                val result = ServerApi().purgeFiles(
-                                    prefs.serverUrl,
-                                    email,
-                                    mode = purgeMode,
-                                    olderThanDays = selectedOlderDays
-                                )
-
-                                val serverMsgIds = result.second
-                                val allMsgIds = (localMsgIds + serverMsgIds).toSet().toList()
-
-                                if (purgeTelegramMessages && botToken.isNotEmpty() && chatId.isNotEmpty() && allMsgIds.isNotEmpty()) {
-                                    withContext(Dispatchers.Main) { statusMessage = "Deleting ${allMsgIds.size} files from Telegram..." }
-                                    val chunks = allMsgIds.chunked(20)
-                                    for (chunk in chunks) {
-                                        ServerApi().deleteTelegramMessagesBatch(botToken, chatId, chunk)
-                                    }
+                                val targetLocalFiles = when (purgeMode) {
+                                    "DRIVE_ONLY" -> allLocal.filter { !it.isDeleted && it.isDriveUpload }
+                                    "AUTO_BACKUP_ONLY" -> allLocal.filter { !it.isDeleted && !it.isDriveUpload }
+                                    "TRASH_ONLY" -> allLocal.filter { it.isDeleted }
+                                    "OLDER_THAN_DAYS" -> allLocal.filter { !it.isDeleted && it.timestamp < cutoff }
+                                    else -> allLocal.filter { !it.isDeleted }
                                 }
 
-                                if (clearLocalDb) {
-                                    if (purgeMode == "ALL") {
-                                        db.uploadedFileDao().deleteAll()
-                                    } else {
-                                        ServerApi().listFiles(prefs.serverUrl, email).let { freshFiles ->
+                                // 1. Collect Message IDs from Local Files & Chunks
+                                val localMessageIds = mutableSetOf<Long>()
+                                for (file in targetLocalFiles) {
+                                    if (file.messageId > 0) localMessageIds.add(file.messageId)
+                                    if (file.chunksJson.isNotBlank() && file.chunksJson != "[]") {
+                                        try {
+                                            val cArr = JSONArray(file.chunksJson)
+                                            for (i in 0 until cArr.length()) {
+                                                val cObj = cArr.optJSONObject(i)
+                                                val mId = cObj?.optLong("messageId", 0L) ?: 0L
+                                                if (mId > 0) localMessageIds.add(mId)
+                                            }
+                                        } catch (_: Exception) {}
+                                    }
+                                    try {
+                                        val chunkRows = db.chunkProgressDao().getUploadedChunksForFile(file.path)
+                                        for (cr in chunkRows) {
+                                            if (cr.messageId > 0) localMessageIds.add(cr.messageId)
+                                        }
+                                    } catch (_: Exception) {}
+                                }
+
+                                // 2. Purge from Cloud Database (if selected)
+                                val serverMessageIds = mutableSetOf<Long>()
+                                if (clearFromCloudDb) {
+                                    withContext(Dispatchers.Main) {
+                                        progressFraction = 0.3f
+                                        statusMessage = "Purging records from cloud database..."
+                                    }
+                                    val (purgeSuccess, returnedMsgIds) = ServerApi().purgeFiles(
+                                        prefs.serverUrl,
+                                        email,
+                                        mode = purgeMode,
+                                        olderThanDays = selectedOlderDays
+                                    )
+                                    serverMessageIds.addAll(returnedMsgIds)
+                                }
+
+                                // 3. Delete from Telegram Channel (if selected)
+                                var telegramDeletedCount = 0
+                                var telegramPermissionError = false
+                                if (deleteFromTelegram && chatId.isNotEmpty()) {
+                                    val allMsgIds = (localMessageIds + serverMessageIds).filter { it > 0 }.distinct()
+                                    val shouldPurgeAll = (purgeMode == "ALL") || (allMsgIds.isEmpty() && targetLocalFiles.isEmpty())
+
+                                    withContext(Dispatchers.Main) {
+                                        progressFraction = 0.5f
+                                        statusMessage = if (shouldPurgeAll) "Deep cleaning Telegram channel files..." else "Deleting ${allMsgIds.size} messages from Telegram channel..."
+                                    }
+                                    val (actuallyDeleted, _, permError) = ServerApi().cleanTelegramChannelStorage(
+                                        context = context,
+                                        botToken = prefs.botToken,
+                                        chatId = chatId,
+                                        explicitMessageIds = allMsgIds,
+                                        purgeAllRemaining = shouldPurgeAll
+                                    ) { scanned, total, deleted, status ->
+                                        val pct = 0.5f + (0.35f * (scanned.toFloat() / total.coerceAtLeast(1)).coerceIn(0f, 1f))
+                                        progressFraction = pct
+                                        statusMessage = status
+                                    }
+                                    telegramDeletedCount = actuallyDeleted
+                                    telegramPermissionError = permError
+                                }
+
+                                // 4. Clear from Local App (if selected)
+                                if (clearFromApp) {
+                                    withContext(Dispatchers.Main) {
+                                        progressFraction = 0.9f
+                                        statusMessage = "Cleaning local database and app caches..."
+                                    }
+                                    when (purgeMode) {
+                                        "ALL" -> {
                                             db.uploadedFileDao().deleteAll()
-                                            if (freshFiles.isNotEmpty()) db.uploadedFileDao().insertAll(freshFiles)
+                                            db.chunkProgressDao().deleteAll()
+                                        }
+                                        "DRIVE_ONLY" -> {
+                                            db.uploadedFileDao().deleteDriveFiles()
+                                            db.chunkProgressDao().pruneOrphanedChunks()
+                                        }
+                                        "AUTO_BACKUP_ONLY" -> {
+                                            db.uploadedFileDao().deleteAutoBackupFiles()
+                                            db.chunkProgressDao().pruneOrphanedChunks()
+                                        }
+                                        "TRASH_ONLY" -> {
+                                            db.uploadedFileDao().deleteTrashFiles()
+                                        }
+                                        "OLDER_THAN_DAYS" -> {
+                                            db.uploadedFileDao().deleteOlderThan(cutoff)
+                                            db.chunkProgressDao().pruneOrphanedChunks()
                                         }
                                     }
+                                    // Deep cache purge
+                                    AppCacheManager.clearAllCache(context)
                                 }
 
                                 withContext(Dispatchers.Main) {
+                                    progressFraction = 1f
                                     isProcessing = false
-                                    Toast.makeText(context, "✅ Selected data cleared successfully!", Toast.LENGTH_LONG).show()
+                                    if (telegramPermissionError) {
+                                        Toast.makeText(context, "⚠️ Telegram deletion failed: Bot is not an Admin with 'Delete Messages' right!", Toast.LENGTH_LONG).show()
+                                    } else {
+                                        val summaryMsg = buildString {
+                                            append("✅ Cleanup finished:")
+                                            if (clearFromApp) append(" App cache cleared.")
+                                            if (clearFromCloudDb) append(" Cloud records purged.")
+                                            if (deleteFromTelegram) append(" $telegramDeletedCount Telegram items deleted.")
+                                        }
+                                        Toast.makeText(context, summaryMsg, Toast.LENGTH_LONG).show()
+                                    }
                                     onDismiss()
                                 }
+
                             } catch (e: Exception) {
                                 withContext(Dispatchers.Main) {
                                     isProcessing = false
-                                    statusMessage = "Error: ${e.localizedMessage}"
+                                    statusMessage = "Error: ${e.localizedMessage ?: "Unknown failure"}"
                                 }
                             }
                         }
 
                     } else {
+                        // =====================================================
                         // EXECUTE DELETE ACCOUNT PERMANENTLY
-                        if (confirmInput.trim().uppercase() != "DELETE") {
+                        // =====================================================
+                        if (accountConfirmInput.trim().uppercase() != "DELETE") {
                             Toast.makeText(context, "Please type DELETE to confirm account deletion.", Toast.LENGTH_SHORT).show()
                             return@Button
                         }
 
                         isProcessing = true
-                        statusMessage = "Collecting file records..."
+                        progressFraction = 0.1f
+                        statusMessage = "Collecting file records before account wipe..."
+
                         scope.launch(Dispatchers.IO) {
                             try {
-                                // 1. Pre-collect local Room DB message IDs BEFORE account wipe!
                                 val db = AppDatabase.getDatabase(context)
-                                val localFiles = try { db.uploadedFileDao().getAllFiles() } catch (_: Exception) { emptyList() }
-                                val localMsgIds = localFiles.mapNotNull { if (it.messageId > 0) it.messageId else null }
-
-                                withContext(Dispatchers.Main) { statusMessage = "Deleting account from server..." }
-                                val result = ServerApi().deleteAccount(prefs.serverUrl, email)
-                                val serverMsgIds = result.second
-                                val allMsgIds = (localMsgIds + serverMsgIds).toSet().toList()
-
-                                if (accountPurgeTelegram && botToken.isNotEmpty() && chatId.isNotEmpty() && allMsgIds.isNotEmpty()) {
-                                    withContext(Dispatchers.Main) { statusMessage = "Purging ${allMsgIds.size} files from Telegram..." }
-                                    val chunks = allMsgIds.chunked(20)
-                                    for (chunk in chunks) {
-                                        ServerApi().deleteTelegramMessagesBatch(botToken, chatId, chunk)
+                                val allFiles = try { db.uploadedFileDao().getAllRawFiles() } catch (_: Exception) { emptyList() }
+                                val localMsgIds = mutableSetOf<Long>()
+                                for (f in allFiles) {
+                                    if (f.messageId > 0) localMsgIds.add(f.messageId)
+                                    if (f.chunksJson.isNotBlank() && f.chunksJson != "[]") {
+                                        try {
+                                            val cArr = JSONArray(f.chunksJson)
+                                            for (i in 0 until cArr.length()) {
+                                                val cObj = cArr.optJSONObject(i)
+                                                val mId = cObj?.optLong("messageId", 0L) ?: 0L
+                                                if (mId > 0) localMsgIds.add(mId)
+                                            }
+                                        } catch (_: Exception) {}
                                     }
                                 }
 
-                                // Wipe local Room DB & session
+                                withContext(Dispatchers.Main) {
+                                    progressFraction = 0.35f
+                                    statusMessage = "Deleting account and cloud records from server..."
+                                }
+                                val result = ServerApi().deleteAccount(prefs.serverUrl, email)
+                                val serverMsgIds = result.second
+                                val combinedIds = (localMsgIds + serverMsgIds).filter { it > 0 }.distinct()
+
+                                var accountTelegramPermError = false
+                                if (accountPurgeTelegram && chatId.isNotEmpty()) {
+                                    withContext(Dispatchers.Main) {
+                                        progressFraction = 0.5f
+                                        statusMessage = "Deep cleaning Telegram channel files..."
+                                    }
+                                    val (_, _, permError) = ServerApi().cleanTelegramChannelStorage(
+                                        context = context,
+                                        botToken = prefs.botToken,
+                                        chatId = chatId,
+                                        explicitMessageIds = combinedIds,
+                                        purgeAllRemaining = true
+                                    ) { scanned, total, deleted, status ->
+                                        val pct = 0.5f + (0.4f * (scanned.toFloat() / total.coerceAtLeast(1)).coerceIn(0f, 1f))
+                                        progressFraction = pct
+                                        statusMessage = status
+                                    }
+                                    accountTelegramPermError = permError
+                                }
+
+                                withContext(Dispatchers.Main) {
+                                    progressFraction = 0.95f
+                                    statusMessage = "Wiping local session and cache..."
+                                }
+
+                                // Full Local Cleanup
                                 db.uploadedFileDao().deleteAll()
+                                db.chunkProgressDao().deleteAll()
+                                AppCacheManager.clearAllCache(context)
                                 authRepository.logout()
 
                                 withContext(Dispatchers.Main) {
+                                    progressFraction = 1f
                                     isProcessing = false
-                                    Toast.makeText(context, "👋 Account and data deleted permanently.", Toast.LENGTH_LONG).show()
+                                    if (accountTelegramPermError) {
+                                        Toast.makeText(context, "⚠️ Account wiped, but Telegram files could not be deleted (bot lacks Delete Messages permission).", Toast.LENGTH_LONG).show()
+                                    } else {
+                                        Toast.makeText(context, "👋 Account and data deleted permanently.", Toast.LENGTH_LONG).show()
+                                    }
                                     onLogoutCompleted()
                                     onDismiss()
                                 }
                             } catch (e: Exception) {
                                 withContext(Dispatchers.Main) {
                                     isProcessing = false
-                                    statusMessage = "Error: ${e.localizedMessage}"
+                                    statusMessage = "Error: ${e.localizedMessage ?: "Unknown failure"}"
                                 }
                             }
                         }
                     }
                 },
-                enabled = !isProcessing && (selectedTab == 0 || confirmInput.trim().uppercase() == "DELETE"),
+                enabled = !isProcessing && (if (selectedTab == 0) canSubmitClear else accountConfirmInput.trim().uppercase() == "DELETE"),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = if (selectedTab == 0) WarningAmber else DangerRed
                 ),
                 shape = RoundedCornerShape(12.dp),
                 contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp),
-                modifier = Modifier.height(40.dp)
+                modifier = Modifier.height(42.dp)
             ) {
                 if (isProcessing) {
                     CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.White, strokeWidth = 2.dp)
                 } else {
                     Text(
-                        if (selectedTab == 0) "Wipe Data" else "Delete Account",
+                        if (selectedTab == 0) "Wipe Selected Data" else "Delete Account",
                         fontWeight = FontWeight.Bold,
                         color = Color.White,
                         maxLines = 1,
@@ -496,7 +785,7 @@ fun ClearDataAccountDialog(
             TextButton(
                 onClick = { if (!isProcessing) onDismiss() },
                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
-                modifier = Modifier.height(40.dp)
+                modifier = Modifier.height(42.dp)
             ) {
                 Text(
                     "Cancel",
@@ -507,4 +796,104 @@ fun ClearDataAccountDialog(
             }
         }
     )
+}
+
+@Composable
+private fun StorageTargetToggleItem(
+    icon: ImageVector,
+    title: String,
+    subtitle: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    enabled: Boolean
+) {
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = CardSurface,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(enabled = enabled) { onCheckedChange(!checked) }
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = if (checked) TelegramBlue else Color.White.copy(alpha = 0.4f),
+                modifier = Modifier.size(22.dp)
+            )
+            Spacer(modifier = Modifier.width(10.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    title,
+                    style = MaterialTheme.typography.bodySmall.copy(
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold
+                    )
+                )
+                Text(
+                    subtitle,
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        color = Color.White.copy(alpha = 0.6f),
+                        fontSize = 10.sp
+                    )
+                )
+            }
+            Switch(
+                checked = checked,
+                onCheckedChange = if (enabled) onCheckedChange else null,
+                colors = SwitchDefaults.colors(
+                    checkedThumbColor = Color.White,
+                    checkedTrackColor = TelegramBlue,
+                    uncheckedThumbColor = Color.White.copy(alpha = 0.6f),
+                    uncheckedTrackColor = SurfaceDark
+                ),
+                modifier = Modifier.padding(start = 4.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun FilterModeRadioItem(
+    title: String,
+    subtitle: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    enabled: Boolean
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(vertical = 4.dp, horizontal = 4.dp)
+    ) {
+        RadioButton(
+            selected = selected,
+            onClick = if (enabled) onClick else null,
+            colors = RadioButtonDefaults.colors(selectedColor = WarningAmber)
+        )
+        Spacer(modifier = Modifier.width(6.dp))
+        Column {
+            Text(
+                title,
+                style = MaterialTheme.typography.bodySmall.copy(
+                    color = Color.White,
+                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal
+                )
+            )
+            Text(
+                subtitle,
+                style = MaterialTheme.typography.labelSmall.copy(
+                    color = Color.White.copy(alpha = 0.5f),
+                    fontSize = 10.sp
+                )
+            )
+        }
+    }
 }

@@ -59,6 +59,8 @@ import com.example.telegrambackup.data.AuthRepository
 import com.example.telegrambackup.network.ServerApi
 import com.example.telegrambackup.utils.AppCacheManager
 import com.example.telegrambackup.utils.CloudProfileSyncManager
+import com.example.telegrambackup.utils.AiVisionManager
+import com.example.telegrambackup.utils.ThumbnailManager
 import com.example.telegrambackup.theme.AppThemeMode
 import com.example.telegrambackup.theme.TelegramBlue
 import com.example.telegrambackup.theme.TelegramEmerald
@@ -68,6 +70,7 @@ import com.example.telegrambackup.utils.SettingsDbManager
 import com.example.telegrambackup.utils.TelegramBotTester
 import com.example.telegrambackup.worker.BackupWorker
 import com.example.telegrambackup.worker.StopBackupNotificationWorker
+import com.example.telegrambackup.utils.DynamicProcessTracker
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -109,6 +112,7 @@ enum class StreamlinedCategory {
     SECURITY_PRIVACY_RESTORE,
     APPEARANCE_REGION,
     BOTTOM_NAV_CUSTOMIZATION,
+    AI_VISION_INTELLIGENCE,
     DANGER_ZONE
 }
 
@@ -281,6 +285,7 @@ fun BackupSettingsScreen(
     var showPermissionWizardModal by remember { mutableStateOf(false) }
 
     var showClearDataAccountDialog by remember { mutableStateOf(false) }
+    var showTelegramChannelCleanerDialog by remember { mutableStateOf(false) }
     var dialogInitialTab by remember { mutableIntStateOf(0) }
     var showDiagnosticModal by remember { mutableStateOf(false) }
     var showAppInfoModal by remember { mutableStateOf(false) }
@@ -692,6 +697,94 @@ fun BackupSettingsScreen(
             initialTab = dialogInitialTab,
             onDismiss = { showClearDataAccountDialog = false },
             onLogoutCompleted = { onLogout() }
+        )
+    }
+
+    if (showTelegramChannelCleanerDialog) {
+        AlertDialog(
+            onDismissRequest = { showTelegramChannelCleanerDialog = false },
+            icon = { Icon(Icons.Default.CleaningServices, contentDescription = null, tint = TelegramBlue, modifier = Modifier.size(32.dp)) },
+            title = { Text("Telegram Channel Cleaner") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        "Directly sweep and purge all backed-up files and orphaned messages from your Telegram channel.",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    Text(
+                        "This scans the channel top-down and deletes messages directly from Telegram, even if your local app database or cloud records were already cleared.",
+                        style = MaterialTheme.typography.bodySmall.copy(color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    )
+                    Text(
+                        "⚠️ Note: Ensure your bot is added as an Administrator with 'Delete Messages' permission in your channel.",
+                        style = MaterialTheme.typography.bodySmall.copy(color = Color(0xFFF59E0B), fontWeight = FontWeight.SemiBold)
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showTelegramChannelCleanerDialog = false
+                        DynamicProcessTracker.startProcess(
+                            title = "Telegram Channel Cleaner",
+                            subtitle = "Verifying channel admin rights...",
+                            icon = Icons.Default.CleaningServices
+                        )
+                        scope.launch(Dispatchers.IO) {
+                            try {
+                                val token = prefs.botToken.trim()
+                                val chat = prefs.chatId.trim()
+                                if (token.isEmpty() || chat.isEmpty()) {
+                                    withContext(Dispatchers.Main) {
+                                        DynamicProcessTracker.finishProcess()
+                                        Toast.makeText(context, "Telegram Bot Token or Chat ID not configured.", Toast.LENGTH_LONG).show()
+                                    }
+                                    return@launch
+                                }
+                                val serverApi = ServerApi()
+                                val chatInfo = serverApi.getTelegramChatInfo(token, chat)
+                                val (actuallyDeleted, scannedCount, permError) = serverApi.cleanTelegramChannelStorage(
+                                    context = context,
+                                    botToken = token,
+                                    chatId = chat,
+                                    purgeAllRemaining = true
+                                ) { scanned, total, count, status ->
+                                    val fraction = if (total > 0) (scanned.toFloat() / total.toFloat()).coerceIn(0f, 1f) else 0f
+                                    DynamicProcessTracker.updateProgress(
+                                        progress = fraction,
+                                        subtitle = "Purging '${chatInfo.title}': $count deleted ($scanned scanned)"
+                                    )
+                                }
+                                withContext(Dispatchers.Main) {
+                                    DynamicProcessTracker.finishProcess()
+                                    if (permError) {
+                                        Toast.makeText(context, "🚫 Bot CANNOT delete messages! Make bot Admin with 'Delete Messages' permission in channel '${chatInfo.title}'", Toast.LENGTH_LONG).show()
+                                    } else if (actuallyDeleted > 0) {
+                                        Toast.makeText(context, "✅ Purged $actuallyDeleted messages from Telegram channel '${chatInfo.title}' ($scannedCount scanned)", Toast.LENGTH_LONG).show()
+                                    } else {
+                                        Toast.makeText(context, "Channel '${chatInfo.title}' is clean — 0 messages found", Toast.LENGTH_LONG).show()
+                                    }
+                                }
+                            } catch (e: Exception) {
+                                withContext(Dispatchers.Main) {
+                                    DynamicProcessTracker.finishProcess()
+                                    Toast.makeText(context, "Channel sweep failed: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text("Start Channel Deep Purge")
+                }
+            },
+            dismissButton = {
+                OutlinedButton(
+                    onClick = { showTelegramChannelCleanerDialog = false }
+                ) {
+                    Text("Cancel")
+                }
+            }
         )
     }
 
@@ -1715,6 +1808,44 @@ fun BackupSettingsScreen(
                     }
 
                     // ==========================================
+                    // 2b. AI & VISION INTELLIGENCE (SpotiFLAC Group)
+                    // ==========================================
+                    if (matchSearch("ai", "gemini", "vision", "document", "ask", "photos", "marksheet", "receipt", "api key", "intelligence", "lens")) {
+                        SpotiSectionHeader("AI & Vision Intelligence")
+
+                        SpotiSettingsGroup {
+                            val apiKeyCount = prefs.getGeminiApiKeyList().size
+                            val hasKey = prefs.hasValidGeminiKey()
+                            SpotiSettingsItem(
+                                icon = Icons.Default.AutoAwesome,
+                                title = "Ask Photos & Document AI",
+                                subtitle = if (hasKey) "$apiKeyCount API key(s) configured • Auto-failover ready" else "Setup Google Gemini API key(s)",
+                                value = if (hasKey) "Ready" else "Setup Key",
+                                valueColor = if (hasKey) TelegramEmerald else Color(0xFFF59E0B),
+                                iconTint = Color(0xFF8B5CF6)
+                            ) {
+                                triggerHapticFeedback(context, haptic)
+                                currentCategory = StreamlinedCategory.AI_VISION_INTELLIGENCE
+                            }
+
+                            var aiDocScannerEnabled by remember { mutableStateOf(prefs.isAiDocumentScannerEnabled) }
+                            SpotiSettingsSwitchItem(
+                                icon = Icons.Default.DocumentScanner,
+                                title = "Smart Document Recognition",
+                                subtitle = "Instant marksheet, 10k receipt & ID card presets in gallery",
+                                checked = aiDocScannerEnabled,
+                                onCheckedChange = { isEnabled ->
+                                    triggerHapticFeedback(context, haptic)
+                                    aiDocScannerEnabled = isEnabled
+                                    prefs.isAiDocumentScannerEnabled = isEnabled
+                                },
+                                iconTint = TelegramBlue,
+                                showDivider = false
+                            )
+                        }
+                    }
+
+                    // ==========================================
                     // 3. PREFERENCES (SpotiFLAC Group)
                     // ==========================================
                     if (matchSearch("profile", "account", "email", "recovery", "display name", "name", "theme", "appearance", "dark", "light", "mode", "color", "notification")) {
@@ -1830,11 +1961,37 @@ fun BackupSettingsScreen(
                                 }
                             }
 
+                            if (matchSearch("clear", "data", "purge", "telegram", "database", "wipe", "cleaner", "channel")) {
+                                SpotiSettingsItem(
+                                    icon = Icons.Default.DeleteSweep,
+                                    title = "Clear File Data",
+                                    subtitle = "Clear from App, Cloud DB & Telegram Channel",
+                                    value = "",
+                                    iconTint = Color(0xFFF59E0B),
+                                    showDivider = true
+                                ) {
+                                    triggerHapticFeedback(context, haptic)
+                                    dialogInitialTab = 0
+                                    showClearDataAccountDialog = true
+                                }
+                                SpotiSettingsItem(
+                                    icon = Icons.Default.CleaningServices,
+                                    title = "Telegram Channel Cleaner",
+                                    subtitle = "Directly sweep & purge orphaned files from Telegram channel",
+                                    value = "",
+                                    iconTint = TelegramBlue,
+                                    showDivider = true
+                                ) {
+                                    triggerHapticFeedback(context, haptic)
+                                    showTelegramChannelCleanerDialog = true
+                                }
+                            }
+
                             if (matchSearch("data", "reset", "wipe", "delete", "trash", "auto-clean", "danger", "maintenance")) {
                                 SpotiSettingsItem(
                                     icon = Icons.Default.DeleteForever,
                                     title = "Data Management & Reset",
-                                    subtitle = "Trash auto-clean & data wipe",
+                                    subtitle = "Trash auto-clean, selective wipe & account reset",
                                     value = "",
                                     iconTint = Color(0xFFEF4444),
                                     showDivider = false
@@ -3408,6 +3565,325 @@ fun BackupSettingsScreen(
             }
 
             // =========================================================================
+            // 🤖 AI & VISION INTELLIGENCE SUB-SETTING SCREEN
+            // =========================================================================
+            StreamlinedCategory.AI_VISION_INTELLIGENCE -> {
+                var geminiKeysInput by remember { mutableStateOf(prefs.geminiApiKeys) }
+                var selectedAiModel by remember { mutableStateOf(prefs.activeAiModel) }
+                var docScannerEnabled by remember { mutableStateOf(prefs.isAiDocumentScannerEnabled) }
+                var isTestingKey by remember { mutableStateOf(false) }
+                var testResultText by remember { mutableStateOf<String?>(null) }
+                var testResultSuccess by remember { mutableStateOf<Boolean?>(null) }
+
+                var thumbnailCacheSize by remember { mutableLongStateOf(ThumbnailManager.getDiskCacheSizeBytes(context)) }
+                var thumbnailCount by remember { mutableIntStateOf(ThumbnailManager.getThumbnailCount(context)) }
+
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(MaterialTheme.colorScheme.background)
+                        .verticalScroll(rememberScrollState())
+                        .padding(horizontal = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    SpotiSubpageHeader(
+                        title = "AI & Vision Intelligence",
+                        subtitle = "Google Gemini multimodal Q&A & document recognition",
+                        onBack = {
+                            prefs.geminiApiKeys = geminiKeysInput.trim()
+                            prefs.activeAiModel = selectedAiModel
+                            prefs.isAiDocumentScannerEnabled = docScannerEnabled
+                            currentCategory = StreamlinedCategory.MAIN
+                        }
+                    )
+
+                    // Hero Card
+                    SubCategoryHeroHeader(
+                        icon = Icons.Default.AutoAwesome,
+                        iconTint = Color(0xFF8B5CF6),
+                        title = "Google Gemini Vision",
+                        description = "Ask questions about 10th/12th marksheets, 10k payment receipts, bills, and pictures like Google Photos. Zero device strain: downsampled <5MB RAM avoids heat or battery drain.",
+                        badgeText = if (prefs.hasValidGeminiKey()) "Connected" else "Key Required",
+                        badgeColor = if (prefs.hasValidGeminiKey()) TelegramEmerald else Color(0xFFF59E0B)
+                    )
+
+                    // 1. API Keys Group
+                    SpotiSectionHeader("Google Gemini API Key(s)")
+                    Surface(
+                        shape = RoundedCornerShape(18.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.40f),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Text(
+                                "Single or Multiple API Keys supported. Enter keys separated by commas or newlines. If a key hits quota or rate limit (HTTP 429), the engine automatically fails over to the next key seamlessly.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+
+                            OutlinedTextField(
+                                value = geminiKeysInput,
+                                onValueChange = {
+                                    geminiKeysInput = it
+                                    testResultText = null
+                                    testResultSuccess = null
+                                },
+                                label = { Text("Gemini API Key(s)") },
+                                placeholder = { Text("AIzaSy..., AIzaSy...") },
+                                minLines = 3,
+                                maxLines = 6,
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+
+                            // Action Buttons Row: Save & Test Connection
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Button(
+                                    onClick = {
+                                        triggerHapticFeedback(context, haptic)
+                                        prefs.geminiApiKeys = geminiKeysInput.trim()
+                                        Toast.makeText(context, "Saved Gemini API Keys", Toast.LENGTH_SHORT).show()
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = TelegramBlue),
+                                    shape = RoundedCornerShape(12.dp),
+                                    modifier = Modifier.weight(1f).height(44.dp)
+                                ) {
+                                    Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Save Keys", fontWeight = FontWeight.Bold)
+                                }
+
+                                Button(
+                                    onClick = {
+                                        triggerHapticFeedback(context, haptic)
+                                        isTestingKey = true
+                                        testResultText = null
+                                        testResultSuccess = null
+                                        val firstKey = geminiKeysInput.split(",", "\n", ";")
+                                            .map { it.trim() }
+                                            .firstOrNull { it.isNotBlank() } ?: ""
+
+                                        if (firstKey.isBlank()) {
+                                            isTestingKey = false
+                                            testResultSuccess = false
+                                            testResultText = "Please enter at least one API key first."
+                                            return@Button
+                                        }
+
+                                        scope.launch {
+                                            val res = AiVisionManager.testApiKey(firstKey)
+                                            isTestingKey = false
+                                            if (res.isSuccess) {
+                                                testResultSuccess = true
+                                                testResultText = "✅ Connected successfully! (${res.getOrNull()?.take(60)}...)"
+                                                prefs.geminiApiKeys = geminiKeysInput.trim()
+                                            } else {
+                                                testResultSuccess = false
+                                                testResultText = "❌ Connection failed: ${res.exceptionOrNull()?.message ?: "Invalid key or rate limit"}"
+                                            }
+                                        }
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = TelegramEmerald),
+                                    shape = RoundedCornerShape(12.dp),
+                                    enabled = !isTestingKey,
+                                    modifier = Modifier.weight(1f).height(44.dp)
+                                ) {
+                                    if (isTestingKey) {
+                                        CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.White, strokeWidth = 2.dp)
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text("Testing...", fontWeight = FontWeight.Bold)
+                                    } else {
+                                        Icon(Icons.Default.Bolt, contentDescription = null, modifier = Modifier.size(16.dp))
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text("Test Key", fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
+
+                            // Test Result Banner
+                            if (testResultText != null) {
+                                Surface(
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = if (testResultSuccess == true) TelegramEmerald.copy(alpha = 0.12f) else MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.4f),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(10.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            if (testResultSuccess == true) Icons.Default.CheckCircle else Icons.Default.ErrorOutline,
+                                            contentDescription = null,
+                                            tint = if (testResultSuccess == true) TelegramEmerald else MaterialTheme.colorScheme.error,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text(
+                                            testResultText ?: "",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = if (testResultSuccess == true) TelegramEmerald else MaterialTheme.colorScheme.error
+                                        )
+                                    }
+                                }
+                            }
+
+                            // Link to Google AI Studio
+                            OutlinedButton(
+                                onClick = {
+                                    triggerHapticFeedback(context, haptic)
+                                    try {
+                                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://aistudio.google.com/app/apikey"))
+                                        context.startActivity(intent)
+                                    } catch (_: Exception) {
+                                        Toast.makeText(context, "Visit https://aistudio.google.com/app/apikey to get a free key", Toast.LENGTH_LONG).show()
+                                    }
+                                },
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Icon(Icons.Default.OpenInNew, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Get Free Gemini API Key from Google AI Studio")
+                            }
+                        }
+                    }
+
+                    // 2. Model Selection
+                    SpotiSectionHeader("Vision Model Engine")
+                    Surface(
+                        shape = RoundedCornerShape(18.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.40f),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            listOf(
+                                "gemini-1.5-flash" to ("Gemini 1.5 Flash (Recommended)" to "Fastest responses (1-2s), generous free rate limits & low latency"),
+                                "gemini-1.5-pro" to ("Gemini 1.5 Pro" to "High-complexity visual reasoning, longer documents & table parsing")
+                            ).forEach { (modelId, info) ->
+                                val (title, subtitle) = info
+                                val isSelected = selectedAiModel == modelId
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = if (isSelected) TelegramBlue.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surface,
+                                    border = BorderStroke(
+                                        1.dp,
+                                        if (isSelected) TelegramBlue else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
+                                    ),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            triggerHapticFeedback(context, haptic)
+                                            selectedAiModel = modelId
+                                            prefs.activeAiModel = modelId
+                                        }
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(12.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        RadioButton(
+                                            selected = isSelected,
+                                            onClick = {
+                                                selectedAiModel = modelId
+                                                prefs.activeAiModel = modelId
+                                            }
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(title, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+                                            Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // 3. Document Recognition & Presets
+                    SpotiSectionHeader("Document Recognition Features")
+                    Surface(
+                        shape = RoundedCornerShape(18.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.40f),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text("Smart Document Assistant", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+                                    Text("Quick action chips for 10th/12th marksheets, 10k payment receipts, and ID card questions in gallery", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
+                                }
+                                Switch(
+                                    checked = docScannerEnabled,
+                                    onCheckedChange = {
+                                        triggerHapticFeedback(context, haptic)
+                                        docScannerEnabled = it
+                                        prefs.isAiDocumentScannerEnabled = it
+                                    }
+                                )
+                            }
+                        }
+                    }
+
+                    // 4. Ultra-Fast Gallery Thumbnails
+                    SpotiSectionHeader("High-Performance Gallery Thumbnails")
+                    Surface(
+                        shape = RoundedCornerShape(18.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.40f),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Text(
+                                "Local galleries and file grids use 2-tier caching: tiny 8-12 KB WebP persistent thumbnails on disk and a 30MB memory LRU cache. This enables instant 120Hz smooth scrolling without downloading high-res cloud files.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column {
+                                    Text("Thumbnail Cache Used", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+                                    Text(
+                                        "${AppCacheManager.formatBytes(thumbnailCacheSize)} ($thumbnailCount items)",
+                                        fontWeight = FontWeight.Bold,
+                                        style = MaterialTheme.typography.bodyMedium
+                                    )
+                                }
+
+                                OutlinedButton(
+                                    onClick = {
+                                        triggerHapticFeedback(context, haptic)
+                                        scope.launch {
+                                            val reclaimed = ThumbnailManager.clearDiskCache(context)
+                                            thumbnailCacheSize = ThumbnailManager.getDiskCacheSizeBytes(context)
+                                            thumbnailCount = ThumbnailManager.getThumbnailCount(context)
+                                            Toast.makeText(context, "🧹 Cleared ${AppCacheManager.formatBytes(reclaimed)} thumbnail cache", Toast.LENGTH_SHORT).show()
+                                        }
+                                    },
+                                    shape = RoundedCornerShape(10.dp)
+                                ) {
+                                    Icon(Icons.Default.DeleteSweep, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Clear Thumbnails")
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(28.dp))
+                }
+            }
+
+            // =========================================================================
             // 🚪 DANGER ZONE / DATA RESET SUB-SETTING SCREEN
             // =========================================================================
             StreamlinedCategory.DANGER_ZONE -> {
@@ -3446,10 +3922,15 @@ fun BackupSettingsScreen(
 
                     Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surface) {
                         Column {
-                            SettingCategoryRow(Icons.Default.DeleteSweep, "Clear File Data Options", "Custom wipe filters (Drive, Auto-Backup, Old Files)", Color(0xFFF59E0B)) {
+                            SettingCategoryRow(Icons.Default.DeleteSweep, "Clear File Data (App, DB & Telegram)", "Granular wipe: App, Cloud Database & Telegram Channel", Color(0xFFF59E0B)) {
                                 triggerHapticFeedback(context, haptic)
                                 dialogInitialTab = 0
                                 showClearDataAccountDialog = true
+                            }
+                            HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
+                            SettingCategoryRow(Icons.Default.CleaningServices, "Telegram Channel Cleaner (Deep Sweep)", "Directly scan & purge orphaned files/messages from Telegram channel", TelegramBlue) {
+                                triggerHapticFeedback(context, haptic)
+                                showTelegramChannelCleanerDialog = true
                             }
                             HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
                             SettingCategoryRow(Icons.Default.DeleteForever, "Delete Account & All Data", "Permanently wipe account, settings & cloud files", Color(0xFFEF4444)) {

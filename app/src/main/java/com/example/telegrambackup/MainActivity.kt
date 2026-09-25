@@ -593,7 +593,7 @@ fun MainApp(
                         verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
                         // Section: CORE
-                        Text("CORE", style = MaterialTheme.typography.labelSmall.copy(color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold, letterSpacing = 1.1.sp), modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
+                        Text("CORE", style = MaterialTheme.typography.labelSmall.copy(color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.2.sp), modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
 
                         val drawerItemColors = NavigationDrawerItemDefaults.colors(
                             selectedContainerColor = MaterialTheme.colorScheme.secondaryContainer,
@@ -606,7 +606,7 @@ fun MainApp(
 
                         NavigationDrawerItem(
                             icon = { Icon(Icons.Default.CleaningServices, contentDescription = null) },
-                            label = { Text("Clean (Storage)", fontWeight = FontWeight.Medium) },
+                            label = { Text("Clean (Storage)", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold)) },
                             selected = selectedTab == MainTab.HOME,
                             onClick = {
                                 triggerHapticFeedback(context, haptic)
@@ -620,7 +620,7 @@ fun MainApp(
 
                         NavigationDrawerItem(
                             icon = { Icon(Icons.Default.Folder, contentDescription = null) },
-                            label = { Text("Browse (Files)", fontWeight = FontWeight.Medium) },
+                            label = { Text("Browse (Files)", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold)) },
                             selected = selectedTab == MainTab.FILES,
                             onClick = {
                                 triggerHapticFeedback(context, haptic)
@@ -634,7 +634,7 @@ fun MainApp(
 
                         NavigationDrawerItem(
                             icon = { Icon(Icons.Default.CloudQueue, contentDescription = null) },
-                            label = { Text("Cloud Drive", fontWeight = FontWeight.Medium) },
+                            label = { Text("Cloud Drive", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold)) },
                             selected = selectedTab == MainTab.DRIVE,
                             onClick = {
                                 triggerHapticFeedback(context, haptic)
@@ -647,7 +647,7 @@ fun MainApp(
 
                         NavigationDrawerItem(
                             icon = { Icon(Icons.Default.CalendarMonth, contentDescription = null) },
-                            label = { Text("Monthly Backup", fontWeight = FontWeight.Medium) },
+                            label = { Text("Monthly Backup", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold)) },
                             selected = selectedTab == MainTab.MONTHLY_ARCHIVE,
                             onClick = {
                                 triggerHapticFeedback(context, haptic)
@@ -660,7 +660,7 @@ fun MainApp(
 
                         NavigationDrawerItem(
                             icon = { Icon(Icons.Default.Smartphone, contentDescription = null) },
-                            label = { Text("Local Storage", fontWeight = FontWeight.Medium) },
+                            label = { Text("Local Storage", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold)) },
                             selected = selectedTab == MainTab.LOCAL,
                             onClick = {
                                 triggerHapticFeedback(context, haptic)
@@ -676,11 +676,11 @@ fun MainApp(
                         Spacer(modifier = Modifier.height(4.dp))
 
                         // Section: BACKUP & TOOLS
-                        Text("TOOLS & SYNC", style = MaterialTheme.typography.labelSmall.copy(color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold, letterSpacing = 1.1.sp), modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
+                        Text("TOOLS & SYNC", style = MaterialTheme.typography.labelSmall.copy(color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.2.sp), modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
 
                         NavigationDrawerItem(
                             icon = { Icon(Icons.Default.HourglassTop, contentDescription = null) },
-                            label = { Text("Upload Progress", fontWeight = FontWeight.Medium) },
+                            label = { Text("Upload Progress", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold)) },
                             selected = selectedTab == MainTab.PROGRESS,
                             onClick = {
                                 triggerHapticFeedback(context, haptic)
@@ -693,7 +693,7 @@ fun MainApp(
 
                         NavigationDrawerItem(
                             icon = { Icon(Icons.Default.DeleteSweep, contentDescription = null) },
-                            label = { Text("Trash Bin", fontWeight = FontWeight.Medium) },
+                            label = { Text("Trash Bin", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold)) },
                             selected = selectedTab == MainTab.TRASH,
                             onClick = {
                                 triggerHapticFeedback(context, haptic)
@@ -706,7 +706,7 @@ fun MainApp(
 
                         NavigationDrawerItem(
                             icon = { Icon(Icons.Default.Block, contentDescription = null) },
-                            label = { Text("Backup Exceptions", fontWeight = FontWeight.Medium) },
+                            label = { Text("Backup Exceptions", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold)) },
                             selected = selectedTab == MainTab.EXCEPTIONS,
                             onClick = {
                                 triggerHapticFeedback(context, haptic)
@@ -719,7 +719,7 @@ fun MainApp(
 
                         NavigationDrawerItem(
                             icon = { Icon(Icons.Default.Notifications, contentDescription = null) },
-                            label = { Text("Activity Log", fontWeight = FontWeight.Medium) },
+                            label = { Text("Activity Log", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold)) },
                             selected = selectedTab == MainTab.ACTIVITY,
                             onClick = {
                                 triggerHapticFeedback(context, haptic)
@@ -732,7 +732,7 @@ fun MainApp(
 
                         NavigationDrawerItem(
                             icon = { Icon(Icons.Default.HealthAndSafety, contentDescription = null) },
-                            label = { Text("Vault Health & Recovery", fontWeight = FontWeight.Medium) },
+                            label = { Text("Vault Health & Recovery", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold)) },
                             selected = selectedTab == MainTab.VAULT_HEALTH,
                             onClick = {
                                 triggerHapticFeedback(context, haptic)
@@ -748,11 +748,11 @@ fun MainApp(
                         Spacer(modifier = Modifier.height(4.dp))
 
                         // Section: SYSTEM
-                        Text("SYSTEM", style = MaterialTheme.typography.labelSmall.copy(color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold, letterSpacing = 1.1.sp), modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
+                        Text("SYSTEM", style = MaterialTheme.typography.labelSmall.copy(color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.2.sp), modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
 
                         NavigationDrawerItem(
                             icon = { Icon(Icons.AutoMirrored.Filled.MenuBook, contentDescription = null) },
-                            label = { Text("Setup Guide", fontWeight = FontWeight.Medium) },
+                            label = { Text("Setup Guide", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold)) },
                             selected = selectedTab == MainTab.GUIDE,
                             onClick = {
                                 triggerHapticFeedback(context, haptic)
@@ -765,7 +765,7 @@ fun MainApp(
 
                         NavigationDrawerItem(
                             icon = { Icon(Icons.Default.Settings, contentDescription = null) },
-                            label = { Text("Settings", fontWeight = FontWeight.Medium) },
+                            label = { Text("Settings", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold)) },
                             selected = selectedTab == MainTab.SETTINGS,
                             onClick = {
                                 triggerHapticFeedback(context, haptic)
@@ -955,7 +955,12 @@ fun MainApp(
                                         selectedTab == MainTab.PROFILE -> "My Profile"
                                         else -> "Files"
                                     },
-                                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold)
+                                    style = MaterialTheme.typography.titleLarge.copy(
+                                        fontWeight = FontWeight.Bold,
+                                        letterSpacing = (-0.2).sp
+                                    ),
+                                    maxLines = 1,
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                                 )
                             },
                             navigationIcon = {

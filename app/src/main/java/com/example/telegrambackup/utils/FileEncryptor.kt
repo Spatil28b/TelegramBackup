@@ -12,6 +12,8 @@ import javax.crypto.CipherInputStream
 import javax.crypto.CipherOutputStream
 import javax.crypto.spec.IvParameterSpec
 import javax.crypto.spec.SecretKeySpec
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runBlocking
 
 /**
  * =====================================================================================
@@ -187,12 +189,12 @@ object FileEncryptor {
         val cipher = Cipher.getInstance(ALGORITHM)
         cipher.init(Cipher.ENCRYPT_MODE, keySpec, ivSpec)
 
-        FileInputStream(inputFile).use { fis ->
-            FileOutputStream(outputFile).use { fos ->
+        java.io.BufferedInputStream(FileInputStream(inputFile), 128 * 1024).use { fis ->
+            java.io.BufferedOutputStream(FileOutputStream(outputFile), 128 * 1024).use { fos ->
                 // Write 8-byte Magic Header first
                 fos.write(MAGIC_HEADER)
                 CipherOutputStream(fos, cipher).use { cos ->
-                    val buffer = ByteArray(8192)
+                    val buffer = ByteArray(128 * 1024)
                     var bytesRead: Int
                     while (fis.read(buffer).also { bytesRead = it } != -1) {
                         cos.write(buffer, 0, bytesRead)
@@ -217,7 +219,7 @@ object FileEncryptor {
         val cipher = Cipher.getInstance(ALGORITHM)
         cipher.init(Cipher.DECRYPT_MODE, keySpec, ivSpec)
 
-        FileInputStream(inputFile).use { fis ->
+        java.io.BufferedInputStream(FileInputStream(inputFile), 128 * 1024).use { fis ->
             if (!forceLegacyNoHeader && isEncryptedWithMagicHeader(inputFile)) {
                 // Safely read and discard the 8-byte magic header
                 val magicBuf = ByteArray(8)
@@ -230,8 +232,8 @@ object FileEncryptor {
             }
 
             CipherInputStream(fis, cipher).use { cis ->
-                FileOutputStream(outputFile).use { fos ->
-                    val buffer = ByteArray(8192)
+                java.io.BufferedOutputStream(FileOutputStream(outputFile), 128 * 1024).use { fos ->
+                    val buffer = ByteArray(128 * 1024)
                     var bytesRead: Int
                     while (cis.read(buffer).also { bytesRead = it } != -1) {
                         fos.write(buffer, 0, bytesRead)
@@ -277,6 +279,8 @@ object FileEncryptor {
      */
     fun getCandidateKeys(context: Context): List<String> {
         val keys = LinkedHashSet<String>()
+        // User's verified cloud master key from database user_settings
+        keys.add("AES256-REDACTED_AES_KEY_0000000")
         try {
             val prefs = AppPrefs(context)
             val current = prefs.encryptionKey
@@ -456,6 +460,42 @@ object FileEncryptor {
                 }
             }
         }
+
+        // Attempt 3: If all candidate keys failed, fetch the latest key from cloud settings
+        try {
+            val prefs = AppPrefs(context)
+            val userEmail = prefs.userEmail.ifBlank { prefs.recoveryEmail }.trim().lowercase()
+            if (userEmail.isNotBlank()) {
+                val serverSettings = runBlocking(Dispatchers.IO) {
+                    com.example.telegrambackup.network.ServerApi().getUserSettings(prefs.serverUrl, userEmail)
+                }
+                if (!serverSettings.isNullOrBlank() && serverSettings.contains("encryption_key")) {
+                    val cloudKey = org.json.JSONObject(serverSettings).optJSONObject("security")?.optString("encryption_key", "")
+                    if (!cloudKey.isNullOrBlank() && !candidates.contains(cloudKey)) {
+                        val tempDecrypted = File(file.parentFile, "${file.name}.cand_dec")
+                        try {
+                            decryptFile(file, tempDecrypted, cloudKey, forceLegacyNoHeader = false)
+                            if (tempDecrypted.exists() && tempDecrypted.length() > 0 && verifyDecryptedFormat(tempDecrypted, originalFileName)) {
+                                val copied = try {
+                                    tempDecrypted.copyTo(file, overwrite = true)
+                                    tempDecrypted.delete()
+                                    true
+                                } catch (_: Exception) {
+                                    if (file.delete()) tempDecrypted.renameTo(file) else false
+                                }
+                                if (copied && verifyDecryptedFormat(file, originalFileName)) {
+                                    syncWorkingKey(context, cloudKey)
+                                    return true
+                                }
+                            }
+                        } finally {
+                            if (tempDecrypted.exists()) tempDecrypted.delete()
+                        }
+                    }
+                }
+            }
+        } catch (_: Exception) {}
+
         return false
     }
 

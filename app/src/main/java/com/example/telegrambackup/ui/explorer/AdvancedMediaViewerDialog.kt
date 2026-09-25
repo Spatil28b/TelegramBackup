@@ -169,6 +169,7 @@ fun AdvancedMediaViewerDialog(
     var cachedDownloadedFile by remember(currentFile.telegramFileId) { mutableStateOf<File?>(null) }
     var isCloudResolving by remember(currentFile.telegramFileId) { mutableStateOf(false) }
     var showShareModal by remember { mutableStateOf(false) }
+    var showAskAiSheet by remember { mutableStateOf(false) }
 
     LaunchedEffect(currentFile) {
         if ((!localFileExists || isPdf || isAudio) && currentFile.telegramFileId.isNotBlank() && currentFile.telegramFileId != "DIR_MARKER") {
@@ -214,6 +215,12 @@ fun AdvancedMediaViewerDialog(
                     Row {
                         IconButton(onClick = {
                             triggerHapticFeedback(context, haptic)
+                            showAskAiSheet = true
+                        }) {
+                            Icon(Icons.Default.AutoAwesome, contentDescription = "Ask AI", tint = Color(0xFFFBBF24), modifier = Modifier.size(22.dp))
+                        }
+                        IconButton(onClick = {
+                            triggerHapticFeedback(context, haptic)
                             showShareModal = true
                         }) {
                             Icon(Icons.Default.Share, contentDescription = "Share Cloud Link", tint = TelegramBlue, modifier = Modifier.size(22.dp))
@@ -231,18 +238,15 @@ fun AdvancedMediaViewerDialog(
                                     var ok = false
                                     if (cachedDownloadedFile != null && cachedDownloadedFile!!.exists() && cachedDownloadedFile!!.length() > 0) {
                                         cachedDownloadedFile!!.copyTo(targetFile, overwrite = true)
-                                        FileEncryptor.ensureDecrypted(targetFile, context, currentFile.fileName)
-                                        ok = targetFile.exists() && targetFile.length() > 0
+                                        ok = TelegramMediaResolver.verifyAndFinalizeDownload(context, targetFile, currentFile)
                                     } else if (localFileExists) {
                                         localFile.copyTo(targetFile, overwrite = true)
-                                        FileEncryptor.ensureDecrypted(targetFile, context, currentFile.fileName)
-                                        ok = targetFile.exists() && targetFile.length() > 0
+                                        ok = TelegramMediaResolver.verifyAndFinalizeDownload(context, targetFile, currentFile)
                                     } else {
                                         ok = TelegramMediaResolver.restoreFileToTarget(context, currentFile, targetFile)
                                     }
 
                                     if (ok && targetFile.exists()) {
-                                        FileEncryptor.ensureDecrypted(targetFile, context, currentFile.fileName)
                                         try {
                                             android.media.MediaScannerConnection.scanFile(context, arrayOf(targetFile.absolutePath), null, null)
                                         } catch (_: Exception) {}
@@ -506,6 +510,38 @@ fun AdvancedMediaViewerDialog(
                 file = currentFile,
                 onDismiss = { showShareModal = false }
             )
+        }
+
+        if (showAskAiSheet) {
+            val targetForAi = when {
+                localFileExists -> localFile
+                cachedDownloadedFile != null && cachedDownloadedFile!!.exists() && cachedDownloadedFile!!.length() > 0 -> cachedDownloadedFile
+                else -> null
+            }
+            if (targetForAi != null) {
+                com.example.telegrambackup.ui.ai.AskPhotoSheet(
+                    targetFile = targetForAi,
+                    fileName = currentFile.fileName,
+                    filePath = currentFile.path,
+                    telegramFileId = currentFile.telegramFileId,
+                    onDismiss = { showAskAiSheet = false }
+                )
+            } else {
+                LaunchedEffect(Unit) {
+                    Toast.makeText(context, "Loading image for AI analysis...", Toast.LENGTH_SHORT).show()
+                    withContext(Dispatchers.IO) {
+                        val fetched = TelegramMediaResolver.fetchToTempCache(context, currentFile.telegramFileId, currentFile.fileName)
+                        withContext(Dispatchers.Main) {
+                            if (fetched != null && fetched.exists()) {
+                                cachedDownloadedFile = fetched
+                            } else {
+                                Toast.makeText(context, "Could not load image for AI analysis", Toast.LENGTH_SHORT).show()
+                                showAskAiSheet = false
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }

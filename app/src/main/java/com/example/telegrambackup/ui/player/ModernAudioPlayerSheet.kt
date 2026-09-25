@@ -25,6 +25,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.telegrambackup.theme.TelegramBlue
 import com.example.telegrambackup.theme.TelegramEmerald
+import com.example.telegrambackup.theme.labelMonoSmall
 import com.example.telegrambackup.utils.FileViewerHelper
 import com.example.telegrambackup.utils.TelegramMediaResolver
 import kotlinx.coroutines.delay
@@ -292,12 +293,12 @@ fun ModernAudioPlayerSheet(
                 ) {
                     Text(
                         text = formatTime(currentPosition),
-                        style = MaterialTheme.typography.labelSmall,
+                        style = MaterialTheme.typography.labelMonoSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Text(
                         text = formatTime(totalDuration),
-                        style = MaterialTheme.typography.labelSmall,
+                        style = MaterialTheme.typography.labelMonoSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }

@@ -28,6 +28,92 @@ object VersionChangelogProvider {
 
     private val releases = listOf(
         VersionRelease(
+            versionName = "2.4.1",
+            versionCode = 125,
+            releaseDate = "September 2026",
+            highlights = "Google Gemini Multimodal Vision & Ask Photos, High-Speed Gallery Thumbnails & Zero-Loss Chunk Upload Integrity",
+            entries = listOf(
+                ChangelogEntry(
+                    Icons.Default.AutoAwesome,
+                    Color(0xFF8B5CF6),
+                    "Ask Photos & Document Intelligence",
+                    "Ask natural language questions about your photos and documents like Google Photos. Instant presets for 10th/12th marksheets, 10k payment receipts, and ID documents.",
+                    "AI VISION"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Key,
+                    TelegramBlue,
+                    "Single & Multiple API Key Failover",
+                    "Add one or multiple Google Gemini API keys with automatic round-robin rotation and transparent failover on rate limits (HTTP 429).",
+                    "GEMINI"
+                ),
+                ChangelogEntry(
+                    Icons.Default.BatteryChargingFull,
+                    TelegramEmerald,
+                    "Zero Extreme Device Load",
+                    "Images are downsampled efficiently using RGB_565 under 5MB RAM before cloud reasoning, preventing battery drain, heating, or thermal throttling.",
+                    "PERFORMANCE"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Image,
+                    Color(0xFFF59E0B),
+                    "Ultra-Fast Gallery Thumbnails",
+                    "2-tier caching with 30MB memory LRU and persistent 8-12KB WebP thumbnails on disk enables buttery smooth 120Hz scrolling without downloading full files.",
+                    "GALLERY"
+                ),
+                ChangelogEntry(
+                    Icons.Default.CheckCircle,
+                    TelegramEmerald,
+                    "Hardened Chunk Upload Integrity",
+                    "Strict multi-chunk validation checks every chunk 1..totalChunks for non-empty file IDs and exact chunk counts before committing, guaranteeing zero missing chunks.",
+                    "INTEGRITY"
+                )
+            )
+        ),
+        VersionRelease(
+            versionName = "2.4.0",
+            versionCode = 124,
+            releaseDate = "September 2026",
+            highlights = "System-Wide UI/UX Typography Overhaul, Zero Font-Padding Vertical Alignment & Modern Material 3 Type System",
+            entries = listOf(
+                ChangelogEntry(
+                    Icons.Default.TextFields,
+                    TelegramBlue,
+                    "System-Wide Typography Engine",
+                    "Redesigned the entire Compose typography scale with strict letter-spacing, optical weights, and proportional line-heights for crisp readability.",
+                    "CORE UI"
+                ),
+                ChangelogEntry(
+                    Icons.Default.CheckCircle,
+                    TelegramEmerald,
+                    "Zero Font-Padding Alignment",
+                    "Eliminated legacy Android platform font-padding across all buttons, chips, tabs, search bars, and dialogs for pixel-perfect vertical centering.",
+                    "POLISH"
+                ),
+                ChangelogEntry(
+                    Icons.AutoMirrored.Filled.MenuBook,
+                    Color(0xFF8B5CF6),
+                    "Refined Navigation & Drawer Hierarchy",
+                    "Upgraded Drawer category headers with clean tracking and bold section titles, plus enhanced TopAppBar typography with proper single-line truncation.",
+                    "NAVIGATION"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Speed,
+                    Color(0xFFF59E0B),
+                    "Tabular Monospace Metrics",
+                    "Introduced dedicated monospace numeric styles for file sizes, timestamps, bitrates, and progress counters to eliminate text jitter.",
+                    "METRICS"
+                ),
+                ChangelogEntry(
+                    Icons.Default.AutoAwesome,
+                    Color(0xFF00796B),
+                    "Activity & Card Text Polishing",
+                    "Enhanced activity feed timestamps, status badges, metric counters, and secondary details with modern Material 3 contrast hierarchy.",
+                    "CARDS"
+                )
+            )
+        ),
+        VersionRelease(
             versionName = "2.3.3",
             versionCode = 117,
             releaseDate = "September 2026",

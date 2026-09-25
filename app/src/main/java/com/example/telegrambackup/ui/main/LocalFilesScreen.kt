@@ -5,6 +5,7 @@ import android.os.Environment
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.*
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -104,6 +105,7 @@ fun LocalFilesScreen() {
     var activeAudioPlayerItem by remember { mutableStateOf<Pair<String, String>?>(null) }
     var activeVideoPlayerItem by remember { mutableStateOf<Pair<String, String>?>(null) }
     var fileForMenu by remember { mutableStateOf<UploadedFile?>(null) }
+    var folderFilesForMenu by remember { mutableStateOf<List<UploadedFile>?>(null) }
 
     if (activeAudioPlayerItem != null) {
         com.example.telegrambackup.ui.player.ModernAudioPlayerSheet(
@@ -480,9 +482,20 @@ fun LocalFilesScreen() {
                         onFileLongClick = { item ->
                             try { haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress) } catch (_: Exception) {}
                             if (!isSelectionMode) {
-                                isSelectionMode = true
-                                if (!selectedPaths.contains(item.path)) {
-                                    selectedPaths.add(item.path)
+                                scope.launch(Dispatchers.IO) {
+                                    val db = com.example.telegrambackup.data.AppDatabase.getDatabase(context)
+                                    val existing = db.uploadedFileDao().getFileByPath(item.path)
+                                        ?: db.uploadedFileDao().getFileByName(item.name)
+                                    val fileObj = existing ?: UploadedFile(
+                                        path = item.path,
+                                        fileName = item.name,
+                                        size = item.size,
+                                        timestamp = item.file.lastModified()
+                                    )
+                                    withContext(Dispatchers.Main) {
+                                        folderFilesForMenu = null
+                                        fileForMenu = fileObj
+                                    }
                                 }
                             } else {
                                 if (selectedPaths.contains(item.path)) selectedPaths.remove(item.path)
@@ -529,9 +542,20 @@ fun LocalFilesScreen() {
                         onFileLongClick = { item ->
                             try { haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress) } catch (_: Exception) {}
                             if (!isSelectionMode) {
-                                isSelectionMode = true
-                                if (!selectedPaths.contains(item.path)) {
-                                    selectedPaths.add(item.path)
+                                scope.launch(Dispatchers.IO) {
+                                    val db = com.example.telegrambackup.data.AppDatabase.getDatabase(context)
+                                    val existing = db.uploadedFileDao().getFileByPath(item.path)
+                                        ?: db.uploadedFileDao().getFileByName(item.name)
+                                    val fileObj = existing ?: UploadedFile(
+                                        path = item.path,
+                                        fileName = item.name,
+                                        size = item.size,
+                                        timestamp = item.file.lastModified()
+                                    )
+                                    withContext(Dispatchers.Main) {
+                                        folderFilesForMenu = null
+                                        fileForMenu = fileObj
+                                    }
                                 }
                             } else {
                                 if (selectedPaths.contains(item.path)) selectedPaths.remove(item.path)
@@ -554,6 +578,25 @@ fun LocalFilesScreen() {
                                     fileForMenu = fileObj
                                 }
                             }
+                        },
+                        onFolderMoreOptions = { subDir ->
+                            val subFiles = filteredFiles.filter { it.path.startsWith(subDir.absolutePath) }.map {
+                                UploadedFile(
+                                    path = it.path,
+                                    fileName = it.name,
+                                    size = it.size,
+                                    timestamp = it.file.lastModified()
+                                )
+                            }
+                            val pseudo = UploadedFile(
+                                path = subDir.absolutePath,
+                                fileName = subDir.name,
+                                telegramFileId = "DIR_MARKER",
+                                size = subFiles.sumOf { it.size },
+                                totalChunks = subFiles.size
+                            )
+                            folderFilesForMenu = subFiles
+                            fileForMenu = pseudo
                         }
                     )
                 }
@@ -564,14 +607,31 @@ fun LocalFilesScreen() {
     if (fileForMenu != null) {
         com.example.telegrambackup.ui.common.FileActionMenuModal(
             file = fileForMenu!!,
-            onDismiss = { fileForMenu = null },
+            folderFiles = folderFilesForMenu,
+            onDismiss = {
+                fileForMenu = null
+                folderFilesForMenu = null
+            },
+            onSelectMode = {
+                val f = fileForMenu
+                if (f != null && f.telegramFileId != "DIR_MARKER") {
+                    if (!selectedPaths.contains(f.path)) {
+                        selectedPaths.add(f.path)
+                    }
+                    isSelectionMode = true
+                }
+            },
             onFileRenamed = { _, _, _ ->
                 fileForMenu = null
+                folderFilesForMenu = null
+                loadUnbackedFiles()
             },
             onFileDeleted = { delFile ->
                 selectedPaths.remove(delFile.path)
                 fileForMenu = null
+                folderFilesForMenu = null
                 unbackedFilesList = unbackedFilesList.filter { it.path != delFile.path }
+                loadUnbackedFiles()
             }
         )
     }
@@ -703,6 +763,7 @@ private fun CategoryWiseView(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun FolderWiseView(
     files: List<LocalFileItem>,
@@ -713,7 +774,8 @@ private fun FolderWiseView(
     isSelectionMode: Boolean,
     onFileClick: (LocalFileItem) -> Unit,
     onFileLongClick: (LocalFileItem) -> Unit,
-    onMoreOptions: (LocalFileItem) -> Unit
+    onMoreOptions: (LocalFileItem) -> Unit,
+    onFolderMoreOptions: (File) -> Unit
 ) {
     val rootStorage = Environment.getExternalStorageDirectory() ?: File("/sdcard")
     val activeDir = currentDir ?: rootStorage
@@ -771,20 +833,35 @@ private fun FolderWiseView(
                 Surface(
                     shape = RoundedCornerShape(12.dp),
                     color = MaterialTheme.colorScheme.surface,
-                    modifier = Modifier.fillMaxWidth().clickable { onNavigateToSubfolder(subDir) }
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .combinedClickable(
+                            onClick = { onNavigateToSubfolder(subDir) },
+                            onLongClick = { onFolderMoreOptions(subDir) }
+                        )
                 ) {
                     Row(
                         modifier = Modifier.padding(14.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
                             OsFolderIcon(size = 36.dp)
                             Spacer(modifier = Modifier.width(12.dp))
                             Column {
                                 Text(subDir.name, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
                                 Text("$unbackedCountInSub Unbacked Files inside", style = MaterialTheme.typography.labelSmall, color = TelegramEmerald)
                             }
+                        }
+                        IconButton(
+                            onClick = { onFolderMoreOptions(subDir) },
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.MoreVert,
+                                contentDescription = "Folder Options",
+                                tint = MaterialTheme.colorScheme.outline,
+                                modifier = Modifier.size(18.dp)
+                            )
                         }
                         Icon(Icons.Default.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.outline)
                     }

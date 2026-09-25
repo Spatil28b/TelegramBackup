@@ -483,30 +483,35 @@ fun TrashBinScreen() {
                                         }
                                     }
 
-                                    val max1 = db.uploadedFileDao().getMaxMessageId() ?: 0L
-                                    val max2 = db.chunkProgressDao().getMaxMessageId() ?: 0L
-                                    val knownMax = maxOf(max1, max2)
-
                                     val targetChatId = if (chatInfo.canonicalId != null) chatInfo.canonicalId.toString() else chat
+                                    val trashMsgIds = trashFiles.flatMap { it.getAllMessageIds() }
 
-                                    val result = serverApi.deepPurgeTelegramChatStorage(
-                                        token,
-                                        targetChatId,
-                                        knownMaxId = knownMax,
-                                        onProgress = { currentBatch, totalBatches, count ->
-                                            val fraction = if (totalBatches > 0) currentBatch.toFloat() / totalBatches.toFloat() else 0f
-                                            DynamicProcessTracker.updateProgress(
-                                                progress = fraction,
-                                                subtitle = "Scanning '${chatInfo.title}': $count purged ($currentBatch/$totalBatches)"
-                                            )
-                                        }
-                                    )
+                                    val (actuallyDeleted, scannedCount, permError) = serverApi.cleanTelegramChannelStorage(
+                                        context = context,
+                                        botToken = token,
+                                        chatId = targetChatId,
+                                        explicitMessageIds = trashMsgIds,
+                                        purgeAllRemaining = true
+                                    ) { scanned, total, count, status ->
+                                        val fraction = if (total > 0) (scanned.toFloat() / total.toFloat()).coerceIn(0f, 1f) else 0f
+                                        DynamicProcessTracker.updateProgress(
+                                            progress = fraction,
+                                            subtitle = "Purging '${chatInfo.title}': $count deleted ($scanned scanned)"
+                                        )
+                                    }
+
+                                    if (!permError) {
+                                        try {
+                                            dao.deleteTrashFiles()
+                                        } catch (_: Exception) {}
+                                    }
+
                                     withContext(Dispatchers.Main) {
                                         DynamicProcessTracker.finishProcess()
-                                        if (result.first == -1) {
+                                        if (permError) {
                                             Toast.makeText(context, "🚫 Bot CANNOT delete messages! Make bot Admin with 'Delete Messages' permission in channel '${chatInfo.title}'", Toast.LENGTH_LONG).show()
-                                        } else if (result.first > 0) {
-                                            Toast.makeText(context, "✅ Purged ${result.first} messages from Telegram channel '${chatInfo.title}' (${result.second} scanned)", Toast.LENGTH_LONG).show()
+                                        } else if (actuallyDeleted > 0) {
+                                            Toast.makeText(context, "✅ Purged $actuallyDeleted messages from Telegram channel '${chatInfo.title}' ($scannedCount scanned)", Toast.LENGTH_LONG).show()
                                         } else {
                                             Toast.makeText(context, "Channel '${chatInfo.title}' is clean — 0 messages found", Toast.LENGTH_LONG).show()
                                         }
@@ -750,6 +755,13 @@ fun TrashBinScreen() {
             file = fileForMenu!!,
             isTrashItem = true,
             onDismiss = { fileForMenu = null },
+            onSelectMode = {
+                val f = fileForMenu
+                if (f != null) {
+                    isSelectionMode = true
+                    selectedPaths = selectedPaths + f.path
+                }
+            },
             onFileDeleted = { delFile ->
                 selectedPaths = selectedPaths - delFile.path
                 fileForMenu = null

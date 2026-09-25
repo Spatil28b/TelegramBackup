@@ -94,6 +94,18 @@ interface UploadedFileDao {
     @Query("UPDATE uploaded_files SET totalChunks = :totalChunks WHERE path = :path")
     fun updateTotalChunks(path: String, totalChunks: Int): Int
 
+    @Query("DELETE FROM uploaded_files WHERE isDriveUpload = 1")
+    fun deleteDriveFiles(): Int
+
+    @Query("DELETE FROM uploaded_files WHERE isDriveUpload = 0")
+    fun deleteAutoBackupFiles(): Int
+
+    @Query("DELETE FROM uploaded_files WHERE isDeleted = 1")
+    fun deleteTrashFiles(): Int
+
+    @Query("DELETE FROM uploaded_files WHERE timestamp < :cutoffMs")
+    fun deleteOlderThan(cutoffMs: Long): Int
+
     @Query("DELETE FROM uploaded_files")
     fun deleteAll()
 }

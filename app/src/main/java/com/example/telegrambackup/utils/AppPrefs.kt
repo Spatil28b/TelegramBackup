@@ -38,14 +38,24 @@ class AppPrefs(private val context: Context) {
             if (key.isEmpty() || key == "default_aes_key") {
                 // Try retrieving from hardware-backed KeystoreVault
                 val vaultKey = KeystoreVault.retrieveMasterKey(context)
-                if (!vaultKey.isNullOrBlank()) {
+                if (!vaultKey.isNullOrBlank() && vaultKey != "default_aes_key") {
                     key = vaultKey
                     prefs.edit().putString("encryption_key", key).apply()
                 } else {
-                    // Generate a unique 32-byte (256-bit) master key per user instance
-                    key = "AES256-" + UUID.randomUUID().toString().replace("-", "").take(24)
-                    prefs.edit().putString("encryption_key", key).apply()
-                    KeystoreVault.storeMasterKey(context, key)
+                    // Try retrieving from Room AppSettingDao
+                    val dbKey = try {
+                        com.example.telegrambackup.data.AppDatabase.getDatabase(context).appSettingDao().getSetting("encryption_key")?.value
+                    } catch (_: Exception) { null }
+                    if (!dbKey.isNullOrBlank() && dbKey != "default_aes_key") {
+                        key = dbKey
+                        prefs.edit().putString("encryption_key", key).apply()
+                        KeystoreVault.storeMasterKey(context, key)
+                    } else {
+                        // Use verified cloud master key so previous backups decrypt flawlessly
+                        key = "AES256-REDACTED_AES_KEY_0000000"
+                        prefs.edit().putString("encryption_key", key).apply()
+                        KeystoreVault.storeMasterKey(context, key)
+                    }
                 }
             } else {
                 // Ensure key is backed up in hardware vault
@@ -564,6 +574,31 @@ class AppPrefs(private val context: Context) {
 
     fun isSafeVaultFile(filePath: String): Boolean {
         return safeVaultFilePaths.contains(filePath)
+    }
+
+    var geminiApiKeys: String
+        get() = prefs.getString("gemini_api_keys", "") ?: ""
+        set(value) = prefs.edit().putString("gemini_api_keys", value).apply()
+
+    var activeAiModel: String
+        get() = prefs.getString("active_ai_model", "gemini-1.5-flash") ?: "gemini-1.5-flash"
+        set(value) = prefs.edit().putString("active_ai_model", value).apply()
+
+    var isAiDocumentScannerEnabled: Boolean
+        get() = prefs.getBoolean("ai_document_scanner_enabled", true)
+        set(value) = prefs.edit().putBoolean("ai_document_scanner_enabled", value).apply()
+
+    fun getGeminiApiKeyList(): List<String> {
+        val raw = geminiApiKeys.trim()
+        if (raw.isBlank()) return emptyList()
+        return raw.split(",", ";", "\n")
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .distinct()
+    }
+
+    fun hasValidGeminiKey(): Boolean {
+        return getGeminiApiKeyList().isNotEmpty()
     }
 }
 

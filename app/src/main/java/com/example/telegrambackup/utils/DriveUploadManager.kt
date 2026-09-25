@@ -392,41 +392,62 @@ object DriveUploadManager {
             fileToUpload.delete()
         }
 
-        if (uploadedChunksMap.size >= totalChunks) {
-            val firstChunk = uploadedChunksMap[1]
-            val firstChunkFileId = firstChunk?.telegramFileId ?: ""
-            val firstChunkMsgId = firstChunk?.messageId ?: 0L
-            val primaryBotUsed = firstChunk?.botTokenUsed ?: defaultBotToken
+        val allChunksValid = (1..totalChunks).all { idx ->
+            val chunk = uploadedChunksMap[idx]
+            chunk != null && chunk.telegramFileId.isNotBlank()
+        }
 
-            try {
-                if (file.length() < 25 * 1024 * 1024L) { // Only cache small media < 25 MB for instant preview
-                    val previewCacheDir = File(context.cacheDir, "cloud_preview_cache")
-                    if (!previewCacheDir.exists()) previewCacheDir.mkdirs()
-                    val safeName = fileName.replace(Regex("[^a-zA-Z0-9._-]"), "_").ifBlank { "file" }
-                    val cachedTarget = File(previewCacheDir, "${firstChunkFileId.hashCode()}_$safeName")
-                    file.copyTo(cachedTarget, overwrite = true)
-                }
-                AppCacheManager.autoPruneCache(context)
-            } catch (_: Exception) {}
+        if (!allChunksValid || uploadedChunksMap.size < totalChunks) {
+            Log.w(TAG, "Drive file $fileName upload incomplete or corrupted: verified only ${uploadedChunksMap.count { it.value.telegramFileId.isNotBlank() }}/$totalChunks valid chunks. Aborting commit to prevent data loss.")
+            return
+        }
 
-            val chunkList = (1..totalChunks).mapNotNull { idx ->
-                uploadedChunksMap[idx]?.let { Triple(idx, it.telegramFileId, it.botTokenUsed) }
+        val firstChunk = uploadedChunksMap[1]
+        val firstChunkFileId = firstChunk?.telegramFileId ?: ""
+        val firstChunkMsgId = firstChunk?.messageId ?: 0L
+        val primaryBotUsed = firstChunk?.botTokenUsed ?: defaultBotToken
+
+        if (firstChunkFileId.isBlank()) {
+            Log.w(TAG, "Drive file $fileName first chunk fileId is blank. Aborting commit.")
+            return
+        }
+
+        try {
+            if (file.length() < 25 * 1024 * 1024L) { // Only cache small media < 25 MB for instant preview
+                val previewCacheDir = File(context.cacheDir, "cloud_preview_cache")
+                if (!previewCacheDir.exists()) previewCacheDir.mkdirs()
+                val safeName = fileName.replace(Regex("[^a-zA-Z0-9._-]"), "_").ifBlank { "file" }
+                val cachedTarget = File(previewCacheDir, "${firstChunkFileId.hashCode()}_$safeName")
+                file.copyTo(cachedTarget, overwrite = true)
             }
+            AppCacheManager.autoPruneCache(context)
+        } catch (_: Exception) {}
 
-            val entity = UploadedFile(
-                targetPath,
-                fileName,
-                firstChunkFileId,
-                System.currentTimeMillis(),
-                file.length(),
-                firstChunkMsgId
-            ).apply {
+        val chunkList = (1..totalChunks).mapNotNull { idx ->
+            uploadedChunksMap[idx]?.let { 
+                com.example.telegrambackup.data.FileChunkInfo(idx, it.telegramFileId, it.botTokenUsed, it.messageId) 
+            }
+        }
+
+        if (chunkList.size != totalChunks) {
+            Log.w(TAG, "Drive file $fileName chunk count mismatch: ${chunkList.size} != $totalChunks. Aborting commit.")
+            return
+        }
+
+        val entity = UploadedFile(
+            targetPath,
+            fileName,
+            firstChunkFileId,
+            System.currentTimeMillis(),
+            file.length(),
+            firstChunkMsgId
+        ).apply {
                 isDriveUpload = true
                 this.channelId = chatId
                 this.botTokenUsed = primaryBotUsed
                 this.totalChunks = totalChunks
                 if (chunkList.isNotEmpty()) {
-                    this.setChunks(chunkList)
+                    this.setChunkInfos(chunkList)
                 }
             }
             db.uploadedFileDao().insert(entity)
@@ -451,9 +472,8 @@ object DriveUploadManager {
                     )
                 } catch (_: Exception) {}
             }
-            BackupProgressTracker.markFileCompleted(fileName, targetPath, file.length())
-            Log.d(TAG, "⚡ Drive upload complete with multi-bot engine: $fileName")
-        }
+        BackupProgressTracker.markFileCompleted(fileName, targetPath, file.length())
+        Log.d(TAG, "⚡ Drive upload complete with multi-bot engine: $fileName")
     }
 
     private suspend fun uploadSingleChunkWithRetry(

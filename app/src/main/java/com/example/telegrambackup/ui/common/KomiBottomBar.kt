@@ -185,9 +185,10 @@ fun <T> KomiBottomBar(
                             Text(
                                 text = item.label,
                                 style = MaterialTheme.typography.labelSmall.copy(
-                                    fontSize = 10.5.sp,
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                    color = contentColor
+                                    fontSize = 11.sp,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.SemiBold,
+                                    color = contentColor,
+                                    letterSpacing = 0.2.sp
                                 ),
                                 maxLines = 1,
                                 modifier = Modifier.padding(top = 2.dp)

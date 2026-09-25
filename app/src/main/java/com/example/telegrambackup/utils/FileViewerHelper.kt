@@ -10,7 +10,13 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import android.content.pm.PackageManager
+import android.os.Build
+import android.provider.Settings
+import android.util.Log
 import com.example.telegrambackup.data.UploadedFile
+import com.example.telegrambackup.network.ServerApi
+import org.json.JSONObject
 
 object FileViewerHelper {
 
@@ -218,7 +224,126 @@ object FileViewerHelper {
         }
     }
 
+    fun installApkFile(context: Context, file: File, fileName: String) {
+        try {
+            // 1. Ensure fully decrypted using local candidates and cloud fallback
+            FileEncryptor.ensureDecrypted(file, context, fileName)
+
+            // 2. Validate APK integrity via PackageManager
+            val pm = context.packageManager
+            val pkgInfo = try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    pm.getPackageArchiveInfo(file.absolutePath, PackageManager.PackageInfoFlags.of(0))
+                } else {
+                    @Suppress("DEPRECATION")
+                    pm.getPackageArchiveInfo(file.absolutePath, 0)
+                }
+            } catch (_: Exception) { null }
+
+            if (pkgInfo == null) {
+                // If corrupted or still encrypted, try deep cloud key recovery
+                val prefs = AppPrefs(context)
+                val userEmail = prefs.userEmail.ifBlank { prefs.recoveryEmail }.trim().lowercase()
+                if (userEmail.isNotBlank()) {
+                    try {
+                        val serverSettings = kotlinx.coroutines.runBlocking(Dispatchers.IO) {
+                            ServerApi().getUserSettings(prefs.serverUrl, userEmail)
+                        }
+                        if (!serverSettings.isNullOrBlank() && serverSettings.contains("encryption_key")) {
+                            val cloudKey = JSONObject(serverSettings).optJSONObject("security")?.optString("encryption_key", "")
+                            if (!cloudKey.isNullOrBlank()) {
+                                FileEncryptor.decryptFileInPlace(file, cloudKey)
+                            }
+                        }
+                    } catch (_: Exception) {}
+                }
+            }
+
+            // Verify zip header (PK\x03\x04)
+            if (!FileEncryptor.isLikelyPlainFile(file, fileName)) {
+                Toast.makeText(context, "⚠️ APK file is corrupt or incomplete. Please re-download.", Toast.LENGTH_LONG).show()
+                return
+            }
+
+            // 3. Check unknown app sources permission for Android 8.0+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                if (!context.packageManager.canRequestPackageInstalls()) {
+                    Toast.makeText(context, "Please allow installing unknown apps for TelegramBackup", Toast.LENGTH_LONG).show()
+                    val permissionIntent = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES).apply {
+                        data = Uri.parse("package:${context.packageName}")
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                    context.startActivity(permissionIntent)
+                    return
+                }
+            }
+
+            // 4. Copy to shared cache for secure FileProvider exposure
+            val sharedDir = File(context.cacheDir, "shared_provider_cache").apply { if (!exists()) mkdirs() }
+            val sharedFile = File(sharedDir, fileName)
+            file.copyTo(sharedFile, overwrite = true)
+            sharedFile.setReadable(true, false)
+
+            val apkUri = FileProvider.getUriForFile(
+                context,
+                "${context.packageName}.fileprovider",
+                sharedFile
+            )
+
+            // 5. Target official system package installer
+            val baseIntent = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(apkUri, "application/vnd.android.package-archive")
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                clipData = android.content.ClipData.newRawUri("TelegramBackupApk", apkUri)
+            }
+
+            val resolvedList = context.packageManager.queryIntentActivities(baseIntent, PackageManager.MATCH_DEFAULT_ONLY)
+            val knownInstallers = listOf(
+                "com.google.android.packageinstaller",
+                "com.android.packageinstaller",
+                "com.samsung.android.packageinstaller",
+                "com.miui.packageinstaller",
+                "com.coloros.packageinstaller",
+                "com.vivo.packageinstaller",
+                "com.oppo.packageinstaller",
+                "com.transsion.packageinstaller",
+                "com.huawei.packageinstaller"
+            )
+
+            val targetResolve = resolvedList.firstOrNull { r ->
+                val p = r.activityInfo.packageName.lowercase()
+                knownInstallers.any { p == it || p.contains("packageinstaller") }
+            }
+
+            if (targetResolve != null) {
+                context.grantUriPermission(targetResolve.activityInfo.packageName, apkUri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                val targetIntent = Intent(baseIntent).apply {
+                    setClassName(targetResolve.activityInfo.packageName, targetResolve.activityInfo.name)
+                }
+                context.startActivity(targetIntent)
+            } else {
+                for (r in resolvedList) {
+                    try { context.grantUriPermission(r.activityInfo.packageName, apkUri, Intent.FLAG_GRANT_READ_URI_PERMISSION) } catch (_: Exception) {}
+                }
+                context.startActivity(Intent.createChooser(baseIntent, "Install $fileName").apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                })
+            }
+        } catch (e: Exception) {
+            Log.e("FileViewerHelper", "Failed to launch APK installer for $fileName", e)
+            Toast.makeText(context, "Cannot install APK: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+        }
+    }
+
     private fun launchFileProviderIntent(context: Context, file: File, fileName: String) {
+        val ext = fileName.substringAfterLast('.', "").lowercase()
+        if (ext == "apk") {
+            installApkFile(context, file, fileName)
+            return
+        }
+
         val sharedDir = File(context.cacheDir, "shared_provider_cache").apply { if (!exists()) mkdirs() }
         val sharedFile = File(sharedDir, fileName)
         val fileForUri = try {

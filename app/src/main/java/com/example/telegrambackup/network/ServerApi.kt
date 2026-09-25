@@ -726,15 +726,33 @@ class ServerApi {
             if (!body.trim().startsWith("{")) return@withContext Pair(false, emptyList())
             val jsonRes = JSONObject(body)
             if (response.isSuccessful && jsonRes.optBoolean("success")) {
+                val messageIds = mutableSetOf<Long>()
+                val allMsgIdsArr = jsonRes.optJSONArray("allMessageIds")
+                if (allMsgIdsArr != null) {
+                    for (i in 0 until allMsgIdsArr.length()) {
+                        val id = allMsgIdsArr.optLong(i, 0L)
+                        if (id > 0) messageIds.add(id)
+                    }
+                }
                 val array = jsonRes.optJSONArray("deletedItems") ?: JSONArray()
-                val messageIds = mutableListOf<Long>()
                 for (i in 0 until array.length()) {
                     val obj = array.optJSONObject(i) ?: continue
                     val msgIdStr = obj.optString("messageId", "0")
                     val msgId = obj.optLong("messageId", 0L).let { if (it > 0) it else msgIdStr.toLongOrNull() ?: 0L }
                     if (msgId > 0) messageIds.add(msgId)
+                    val chunksStr = obj.optString("chunksJson", "")
+                    if (chunksStr.isNotBlank() && chunksStr != "[]") {
+                        try {
+                            val chunkArr = JSONArray(chunksStr)
+                            for (c in 0 until chunkArr.length()) {
+                                val cObj = chunkArr.optJSONObject(c)
+                                val cMsgId = cObj?.optLong("messageId", 0L) ?: 0L
+                                if (cMsgId > 0) messageIds.add(cMsgId)
+                            }
+                        } catch (_: Exception) {}
+                    }
                 }
-                return@withContext Pair(true, messageIds)
+                return@withContext Pair(true, messageIds.toList())
             }
         } catch (e: Exception) {
             Log.e("ServerApi", "purgeFiles error", e)
@@ -763,15 +781,33 @@ class ServerApi {
             if (!body.trim().startsWith("{")) return@withContext Pair(false, emptyList())
             val jsonRes = JSONObject(body)
             if (response.isSuccessful && jsonRes.optBoolean("success")) {
+                val messageIds = mutableSetOf<Long>()
+                val allMsgIdsArr = jsonRes.optJSONArray("allMessageIds")
+                if (allMsgIdsArr != null) {
+                    for (i in 0 until allMsgIdsArr.length()) {
+                        val id = allMsgIdsArr.optLong(i, 0L)
+                        if (id > 0) messageIds.add(id)
+                    }
+                }
                 val array = jsonRes.optJSONArray("deletedItems") ?: JSONArray()
-                val messageIds = mutableListOf<Long>()
                 for (i in 0 until array.length()) {
                     val obj = array.optJSONObject(i) ?: continue
                     val msgIdStr = obj.optString("messageId", "0")
                     val msgId = obj.optLong("messageId", 0L).let { if (it > 0) it else msgIdStr.toLongOrNull() ?: 0L }
                     if (msgId > 0) messageIds.add(msgId)
+                    val chunksStr = obj.optString("chunksJson", "")
+                    if (chunksStr.isNotBlank() && chunksStr != "[]") {
+                        try {
+                            val chunkArr = JSONArray(chunksStr)
+                            for (c in 0 until chunkArr.length()) {
+                                val cObj = chunkArr.optJSONObject(c)
+                                val cMsgId = cObj?.optLong("messageId", 0L) ?: 0L
+                                if (cMsgId > 0) messageIds.add(cMsgId)
+                            }
+                        } catch (_: Exception) {}
+                    }
                 }
-                return@withContext Pair(true, messageIds)
+                return@withContext Pair(true, messageIds.toList())
             }
         } catch (e: Exception) {
             Log.e("ServerApi", "deleteAccount error", e)
@@ -795,7 +831,17 @@ class ServerApi {
         if (clean.startsWith("https://t.me/")) clean = "@" + clean.removePrefix("https://t.me/").substringBefore("/")
         if (clean.startsWith("t.me/")) clean = "@" + clean.removePrefix("t.me/").substringBefore("/")
         val num = clean.toLongOrNull()
-        if (num != null) return num
+        if (num != null) {
+            // Telegram channels and supergroups have -100 prefix
+            if (num > 0 && num.toString().length >= 9) {
+                return if (num.toString().startsWith("100")) "-$num".toLong() else "-100$num".toLong()
+            }
+            if (num < 0 && !num.toString().startsWith("-100") && num.toString().length >= 10) {
+                val absNum = kotlin.math.abs(num)
+                return "-100$absNum".toLong()
+            }
+            return num
+        }
         return clean
     }
 
@@ -934,6 +980,60 @@ class ServerApi {
     }
 
     /**
+     * Deletes a large batch of messages from a Telegram channel using all available bots in the fleet.
+     * Rotates bot tokens to bypass single-bot rate limits and provides live progress callbacks.
+     */
+    suspend fun deleteTelegramMessagesWithFleet(
+        context: android.content.Context,
+        chatId: String,
+        messageIds: List<Long>,
+        onProgress: (deleted: Int, total: Int) -> Unit = { _, _ -> }
+    ): Pair<Boolean, Int> = withContext(Dispatchers.IO) {
+        val validIds = messageIds.filter { it > 0 }.distinct()
+        if (validIds.isEmpty()) return@withContext Pair(true, 0)
+
+        val primaryToken = com.example.telegrambackup.utils.AppPrefs(context).botToken.trim()
+        val candidateTokens = com.example.telegrambackup.utils.TelegramMediaResolver.getCandidateBotTokens(context).toMutableList()
+        if (primaryToken.isNotBlank()) {
+            candidateTokens.remove(primaryToken)
+            candidateTokens.add(0, primaryToken)
+        }
+        if (candidateTokens.isEmpty()) {
+            if (primaryToken.isEmpty()) return@withContext Pair(false, 0)
+            candidateTokens.add(primaryToken)
+        }
+
+        var totalDeletedCount = 0
+        var allSuccess = true
+        val chunks = validIds.chunked(20)
+
+        for ((chunkIdx, chunk) in chunks.withIndex()) {
+            val token = candidateTokens[chunkIdx % candidateTokens.size]
+            coroutineScope {
+                val deferreds = chunk.map { msgId ->
+                    async(Dispatchers.IO) {
+                        var status = executeTelegramMessageDeletion(token, chatId, msgId)
+                        // If secondary token fails with PERMISSION_DENIED or ERROR, immediately try primary token
+                        if ((status == TelegramDeletionStatus.PERMISSION_DENIED || status == TelegramDeletionStatus.ERROR) && token != primaryToken && primaryToken.isNotBlank()) {
+                            status = executeTelegramMessageDeletion(primaryToken, chatId, msgId)
+                        }
+                        status
+                    }
+                }
+                val results = deferreds.awaitAll()
+                val chunkDeleted = results.count { it == TelegramDeletionStatus.DELETED || it == TelegramDeletionStatus.ALREADY_DELETED }
+                totalDeletedCount += chunkDeleted
+                if (results.any { it == TelegramDeletionStatus.ERROR || it == TelegramDeletionStatus.PERMISSION_DENIED }) allSuccess = false
+            }
+            onProgress(totalDeletedCount, validIds.size)
+            if (chunks.size > 1) {
+                kotlinx.coroutines.delay(100L)
+            }
+        }
+        return@withContext Pair(allSuccess, totalDeletedCount)
+    }
+
+    /**
      * Sends HTTP deleteMessage request directly to Telegram Bot API.
      */
     suspend fun deleteTelegramMessage(botToken: String, chatId: String, messageId: Long): Boolean = withContext(Dispatchers.IO) {
@@ -964,6 +1064,8 @@ class ServerApi {
         if (directId != null && directId > 0) {
             msgIds.add(directId)
         }
+        // Include all message IDs from chunksJson
+        msgIds.addAll(file.getAllMessageIds())
 
         // Query all chunk message IDs for this file path from Room database
         try {
@@ -995,9 +1097,14 @@ class ServerApi {
             val idList = msgIds.toList()
             Log.d("ServerApi", "Purging ${idList.size} Telegram messages for file ${file.fileName}: $idList")
 
+            val fallbackToken = com.example.telegrambackup.utils.AppPrefs(context).botToken.trim()
+
             // Delete each message individually for accurate results
             for (msgId in idList) {
-                val status = executeTelegramMessageDeletion(cleanToken, cleanChatId, msgId)
+                var status = executeTelegramMessageDeletion(cleanToken, cleanChatId, msgId)
+                if ((status == TelegramDeletionStatus.PERMISSION_DENIED || status == TelegramDeletionStatus.ERROR) && fallbackToken.isNotBlank() && fallbackToken != cleanToken) {
+                    status = executeTelegramMessageDeletion(fallbackToken, cleanChatId, msgId)
+                }
                 when (status) {
                     TelegramDeletionStatus.DELETED -> {
                         actuallyDeletedCount++
@@ -1050,6 +1157,127 @@ class ServerApi {
         }
 
         return@withContext deletionOk
+    }
+
+    /**
+     * Complete Telegram Channel Storage Cleanup.
+     * 1. Verifies channel administrator delete permissions.
+     * 2. Deletes all explicit message IDs provided (from local database & cloud database).
+     * 3. If purgeAllRemaining is true, performs a sequential top-down scan from the channel's highest message_id
+     *    down to 1, deleting all remaining uploaded files/messages.
+     * Returns Triple(actuallyDeletedCount, totalScannedCount, hasPermissionError).
+     */
+    suspend fun cleanTelegramChannelStorage(
+        context: android.content.Context,
+        botToken: String,
+        chatId: String,
+        explicitMessageIds: List<Long> = emptyList(),
+        purgeAllRemaining: Boolean = false,
+        onProgress: (scanned: Int, total: Int, deleted: Int, status: String) -> Unit = { _, _, _, _ -> }
+    ): Triple<Int, Int, Boolean> = withContext(Dispatchers.IO) {
+        val cleanToken = botToken.trim()
+        val targetChatId = formatChatIdForTelegram(chatId).toString()
+        if (cleanToken.isEmpty() || chatId.trim().isEmpty()) {
+            return@withContext Triple(0, 0, false)
+        }
+
+        // 1. Verify bot can delete messages in this channel
+        onProgress(0, 0, 0, "Checking bot channel administrator rights...")
+        val canDelete = verifyTelegramDeletionWorks(cleanToken, targetChatId)
+        if (!canDelete) {
+            Log.e("ServerApi", "cleanTelegramChannelStorage: Bot lacks delete permission in channel $targetChatId")
+            return@withContext Triple(0, 0, true) // hasPermissionError = true
+        }
+
+        var totalDeleted = 0
+        val deletedMsgIds = mutableSetOf<Long>()
+        val validExplicitIds = explicitMessageIds.filter { it > 0 }.distinct()
+
+        // 2. Delete explicitly known message IDs first
+        if (validExplicitIds.isNotEmpty()) {
+            onProgress(0, validExplicitIds.size, 0, "Deleting ${validExplicitIds.size} tracked files from Telegram...")
+            val chunks = validExplicitIds.chunked(25)
+            for (chunk in chunks) {
+                coroutineScope {
+                    val deferreds = chunk.map { msgId ->
+                        async(Dispatchers.IO) {
+                            Pair(msgId, executeTelegramMessageDeletion(cleanToken, targetChatId, msgId))
+                        }
+                    }
+                    val results = deferreds.awaitAll()
+                    for ((msgId, status) in results) {
+                        if (status == TelegramDeletionStatus.DELETED) {
+                            totalDeleted++
+                            deletedMsgIds.add(msgId)
+                        } else if (status == TelegramDeletionStatus.ALREADY_DELETED) {
+                            deletedMsgIds.add(msgId)
+                        }
+                    }
+                }
+                onProgress(deletedMsgIds.size, validExplicitIds.size, totalDeleted, "Deleting tracked files: $totalDeleted / ${validExplicitIds.size}...")
+                kotlinx.coroutines.delay(100L)
+            }
+        }
+
+        // 3. If purgeAllRemaining is requested (e.g. Wipe All or empty DB), scan from channel top down to 1
+        var totalScanned = validExplicitIds.size
+        if (purgeAllRemaining) {
+            onProgress(totalScanned, totalScanned, totalDeleted, "Discovering latest channel messages...")
+            val pingId = getHighestTelegramMessageId(cleanToken, targetChatId)
+            val currentHighest = if (pingId > 0) pingId + 5L else 5000L
+            val estimatedTotal = currentHighest.toInt()
+
+            Log.d("ServerApi", "cleanTelegramChannelStorage: Sweeping remaining channel messages from #$currentHighest down to 1...")
+            var currentTop = currentHighest
+            val chunkSize = 25
+            var consecutiveMisses = 0
+            val maxConsecutiveMisses = 350
+
+            while (currentTop > 0) {
+                val chunkStart = maxOf(1L, currentTop - chunkSize + 1)
+                val chunkIds = (currentTop downTo chunkStart).filter { !deletedMsgIds.contains(it) }
+
+                if (chunkIds.isNotEmpty()) {
+                    coroutineScope {
+                        val deferreds = chunkIds.map { msgId ->
+                            async(Dispatchers.IO) {
+                                Pair(msgId, executeTelegramMessageDeletion(cleanToken, targetChatId, msgId))
+                            }
+                        }
+                        val results = deferreds.awaitAll()
+                        for ((msgId, status) in results) {
+                            totalScanned++
+                            when (status) {
+                                TelegramDeletionStatus.DELETED -> {
+                                    totalDeleted++
+                                    deletedMsgIds.add(msgId)
+                                    consecutiveMisses = 0
+                                }
+                                TelegramDeletionStatus.ALREADY_DELETED -> {
+                                    deletedMsgIds.add(msgId)
+                                    consecutiveMisses++
+                                }
+                                TelegramDeletionStatus.PERMISSION_DENIED -> {
+                                    Log.e("ServerApi", "Permission denied during channel sweep at msgId #$msgId")
+                                    return@coroutineScope
+                                }
+                                TelegramDeletionStatus.ERROR -> {
+                                    consecutiveMisses++
+                                }
+                            }
+                        }
+                    }
+                }
+
+                onProgress(totalScanned, estimatedTotal, totalDeleted, "Scanning channel: $totalDeleted files purged ($totalScanned / $estimatedTotal)...")
+
+                currentTop = chunkStart - 1
+                kotlinx.coroutines.delay(60L)
+            }
+        }
+
+        Log.d("ServerApi", "cleanTelegramChannelStorage COMPLETE: $totalDeleted messages deleted ($totalScanned scanned)")
+        return@withContext Triple(totalDeleted, totalScanned, false)
     }
 
     /**

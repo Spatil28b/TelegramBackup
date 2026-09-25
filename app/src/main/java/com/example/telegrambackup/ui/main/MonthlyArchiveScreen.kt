@@ -39,6 +39,8 @@ import com.example.telegrambackup.ui.common.OsFolderIcon
 import com.example.telegrambackup.ui.common.FolderType
 import com.example.telegrambackup.ui.explorer.formatFileSize
 import com.example.telegrambackup.utils.FileViewerHelper
+import android.content.Intent
+import androidx.core.content.FileProvider
 import com.example.telegrambackup.utils.ZipBackupDownloader
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -166,6 +168,7 @@ fun MonthlyArchiveScreen() {
     var isSelectionMode by remember { mutableStateOf(false) }
 
     var fileForMenu by remember { mutableStateOf<UploadedFile?>(null) }
+    var folderFilesForMenu by remember { mutableStateOf<List<UploadedFile>?>(null) }
     val itemDateFormat = remember { SimpleDateFormat("dd MMM, hh:mm a", Locale.getDefault()) }
 
     var activeAudioPlayerItem by remember { mutableStateOf<Pair<String, String>?>(null) }
@@ -184,6 +187,151 @@ fun MonthlyArchiveScreen() {
             filePathOrUrl = activeVideoPlayerItem!!.first,
             fileName = activeVideoPlayerItem!!.second,
             onDismiss = { activeVideoPlayerItem = null }
+        )
+    }
+
+    val zipProgressState by ZipBackupDownloader.activeProgressState.collectAsState()
+
+    if (zipProgressState != null) {
+        val zipState = zipProgressState!!
+        AlertDialog(
+            onDismissRequest = {
+                if (zipState.isCompleted) ZipBackupDownloader.dismissProgress()
+            },
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            shape = RoundedCornerShape(24.dp),
+            icon = {
+                Icon(
+                    imageVector = if (zipState.isCompleted) {
+                        if (zipState.outputFile != null) Icons.Default.CheckCircle else Icons.Default.Error
+                    } else Icons.Default.Archive,
+                    contentDescription = null,
+                    tint = if (zipState.isCompleted) {
+                        if (zipState.outputFile != null) TelegramEmerald else Color(0xFFEF4444)
+                    } else TelegramBlue,
+                    modifier = Modifier.size(32.dp)
+                )
+            },
+            title = {
+                Text(
+                    text = if (zipState.isCompleted) {
+                        if (zipState.outputFile != null) "Archive Ready!" else "Archive Failed"
+                    } else "Creating ZIP Archive",
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                )
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                    Text(
+                        text = zipState.archiveTitle,
+                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold, color = TelegramBlue)
+                    )
+
+                    if (!zipState.isCompleted) {
+                        LinearProgressIndicator(
+                            progress = { zipState.progress },
+                            modifier = Modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(4.dp)),
+                            color = TelegramBlue,
+                            trackColor = MaterialTheme.colorScheme.surfaceVariant
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "${zipState.current} / ${zipState.total} files",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.outline
+                            )
+                            Text(
+                                text = "${(zipState.progress * 100).toInt()}%",
+                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                color = TelegramBlue
+                            )
+                        }
+                        if (zipState.currentFileName.isNotBlank()) {
+                            Text(
+                                text = "Processing: ${zipState.currentFileName}",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    } else {
+                        if (zipState.outputFile != null) {
+                            Text(
+                                text = "Saved ${zipState.total} files successfully to:\n${zipState.outputFile.name}",
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                            Text(
+                                text = "Location: Downloads / TelegramBackup_Archives",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.outline
+                            )
+                        } else {
+                            Text(
+                                text = zipState.errorMessage ?: "Failed to generate ZIP archive.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color(0xFFEF4444)
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                if (zipState.isCompleted) {
+                    if (zipState.outputFile != null) {
+                        Button(
+                            onClick = {
+                                try {
+                                    val uri = FileProvider.getUriForFile(
+                                        context,
+                                        "${context.packageName}.fileprovider",
+                                        zipState.outputFile
+                                    )
+                                    val intent = Intent(Intent.ACTION_VIEW).apply {
+                                        setDataAndType(uri, "application/zip")
+                                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                    }
+                                    context.startActivity(intent)
+                                } catch (_: Exception) {
+                                    Toast.makeText(context, "Archive saved in Downloads folder", Toast.LENGTH_SHORT).show()
+                                }
+                                ZipBackupDownloader.dismissProgress()
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = TelegramBlue),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Text("Open ZIP")
+                        }
+                    } else {
+                        Button(
+                            onClick = { ZipBackupDownloader.dismissProgress() },
+                            colors = ButtonDefaults.buttonColors(containerColor = TelegramBlue),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Text("Dismiss")
+                        }
+                    }
+                } else {
+                    TextButton(
+                        onClick = { ZipBackupDownloader.dismissProgress() }
+                    ) {
+                        Text("Run in Background")
+                    }
+                }
+            },
+            dismissButton = {
+                if (zipState.isCompleted && zipState.outputFile != null) {
+                    TextButton(
+                        onClick = { ZipBackupDownloader.dismissProgress() }
+                    ) {
+                        Text("Close")
+                    }
+                }
+            }
         )
     }
 
@@ -459,11 +607,25 @@ fun MonthlyArchiveScreen() {
                             color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable {
-                                    activeMonthGroup = group
-                                    currentPathSegments = emptyList()
-                                    selectedCategoryFilter = "ALL"
-                                }
+                                .combinedClickable(
+                                    onClick = {
+                                        activeMonthGroup = group
+                                        currentPathSegments = emptyList()
+                                        selectedCategoryFilter = "ALL"
+                                    },
+                                    onLongClick = {
+                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        val pseudoFolder = UploadedFile(
+                                            path = "Month_${group.label.replace(" ", "_")}",
+                                            fileName = group.label,
+                                            telegramFileId = "DIR_MARKER",
+                                            size = group.totalSize,
+                                            totalChunks = group.files.size
+                                        )
+                                        folderFilesForMenu = group.files
+                                        fileForMenu = pseudoFolder
+                                    }
+                                )
                         ) {
                             Row(
                                 modifier = Modifier
@@ -506,6 +668,23 @@ fun MonthlyArchiveScreen() {
                                     modifier = Modifier.size(36.dp)
                                 ) {
                                     Icon(Icons.Default.Download, contentDescription = "Download Month ZIP", tint = TelegramBlue, modifier = Modifier.size(20.dp))
+                                }
+
+                                IconButton(
+                                    onClick = {
+                                        val pseudoFolder = UploadedFile(
+                                            path = "Month_${group.label.replace(" ", "_")}",
+                                            fileName = group.label,
+                                            telegramFileId = "DIR_MARKER",
+                                            size = group.totalSize,
+                                            totalChunks = group.files.size
+                                        )
+                                        folderFilesForMenu = group.files
+                                        fileForMenu = pseudoFolder
+                                    },
+                                    modifier = Modifier.size(36.dp)
+                                ) {
+                                    Icon(Icons.Default.MoreVert, contentDescription = "Folder Options", tint = MaterialTheme.colorScheme.outline, modifier = Modifier.size(20.dp))
                                 }
 
                                 Icon(
@@ -560,21 +739,40 @@ fun MonthlyArchiveScreen() {
                     )
                 }
 
-                // Download Whole Month ZIP
+                // Download Subfolder ZIP or Whole Month ZIP
+                val isInsideSubfolder = currentPathSegments.isNotEmpty()
+                val targetDownloadFiles = if (isInsideSubfolder) {
+                    currentGroup.files.filter { f ->
+                        extractPathSegments(f.path, f.fileName).take(currentPathSegments.size) == currentPathSegments
+                    }
+                } else {
+                    currentGroup.files
+                }
+                val downloadTitle = if (isInsideSubfolder) {
+                    "${currentGroup.label}_${currentPathSegments.last()}"
+                } else {
+                    "Monthly_Backup_${currentGroup.label.replace(" ", "_")}"
+                }
+
                 IconButton(
                     onClick = {
-                        Toast.makeText(context, "📦 Starting ZIP download for ${currentGroup.label}...", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "📦 Starting ZIP download for $downloadTitle (${targetDownloadFiles.size} files)...", Toast.LENGTH_SHORT).show()
                         scope.launch(Dispatchers.IO) {
                             ZipBackupDownloader.downloadFilesAsZip(
                                 context = context,
-                                filesToDownload = currentGroup.files,
-                                archiveTitle = "Monthly_Backup_${currentGroup.label.replace(" ", "_")}"
+                                filesToDownload = targetDownloadFiles,
+                                archiveTitle = downloadTitle
                             )
                         }
                     },
                     modifier = Modifier.size(36.dp)
                 ) {
-                    Icon(Icons.Default.Download, contentDescription = "Download ZIP", tint = TelegramBlue, modifier = Modifier.size(20.dp))
+                    Icon(
+                        Icons.Default.Download,
+                        contentDescription = if (isInsideSubfolder) "Download Subfolder ZIP" else "Download Month ZIP",
+                        tint = TelegramBlue,
+                        modifier = Modifier.size(20.dp)
+                    )
                 }
             }
 
@@ -755,14 +953,35 @@ fun MonthlyArchiveScreen() {
                     ) {
                         // Render Subfolders
                         items(childFolders, key = { "folder_${it.first}" }) { (folderName, fileCount, folderSize) ->
+                            val targetSubfolderFiles = remember(filesWithSegments, currentPathSegments, folderName) {
+                                filesWithSegments
+                                    .filter { (_, segs) -> segs.size > depth && segs.take(depth) == currentPathSegments && segs[depth] == folderName }
+                                    .map { it.first }
+                            }
+
                             Surface(
                                 shape = RoundedCornerShape(14.dp),
                                 color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clickable {
-                                        currentPathSegments = currentPathSegments + folderName
-                                    }
+                                    .combinedClickable(
+                                        onClick = {
+                                            currentPathSegments = currentPathSegments + folderName
+                                        },
+                                        onLongClick = {
+                                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                            val folderPathStr = (currentPathSegments + folderName).joinToString("/")
+                                            val pseudoFolder = UploadedFile(
+                                                path = folderPathStr,
+                                                fileName = folderName,
+                                                telegramFileId = "DIR_MARKER",
+                                                size = folderSize,
+                                                totalChunks = fileCount
+                                            )
+                                            folderFilesForMenu = targetSubfolderFiles
+                                            fileForMenu = pseudoFolder
+                                        }
+                                    )
                             ) {
                                 Row(
                                     modifier = Modifier.padding(12.dp),
@@ -792,6 +1011,28 @@ fun MonthlyArchiveScreen() {
                                             text = "$fileCount files • ${formatFileSize(folderSize)}",
                                             style = MaterialTheme.typography.labelSmall,
                                             color = MaterialTheme.colorScheme.outline
+                                        )
+                                    }
+                                    IconButton(
+                                        onClick = {
+                                            val folderPathStr = (currentPathSegments + folderName).joinToString("/")
+                                            val pseudoFolder = UploadedFile(
+                                                path = folderPathStr,
+                                                fileName = folderName,
+                                                telegramFileId = "DIR_MARKER",
+                                                size = folderSize,
+                                                totalChunks = fileCount
+                                            )
+                                            folderFilesForMenu = targetSubfolderFiles
+                                            fileForMenu = pseudoFolder
+                                        },
+                                        modifier = Modifier.size(32.dp)
+                                    ) {
+                                        Icon(
+                                            Icons.Default.MoreVert,
+                                            contentDescription = "Folder Options",
+                                            tint = MaterialTheme.colorScheme.outline,
+                                            modifier = Modifier.size(18.dp)
                                         )
                                     }
                                     Icon(
@@ -839,8 +1080,13 @@ fun MonthlyArchiveScreen() {
                                         },
                                         onLongClick = {
                                             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                            isSelectionMode = true
-                                            selectedPaths = selectedPaths + file.path
+                                            if (isSelectionMode) {
+                                                selectedPaths = if (isSelected) selectedPaths - file.path else selectedPaths + file.path
+                                                if (selectedPaths.isEmpty()) isSelectionMode = false
+                                            } else {
+                                                folderFilesForMenu = null
+                                                fileForMenu = file
+                                            }
                                         }
                                     )
                             ) {
@@ -986,8 +1232,13 @@ fun MonthlyArchiveScreen() {
                                         },
                                         onLongClick = {
                                             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                            isSelectionMode = true
-                                            selectedPaths = selectedPaths + file.path
+                                            if (isSelectionMode) {
+                                                selectedPaths = if (isSelected) selectedPaths - file.path else selectedPaths + file.path
+                                                if (selectedPaths.isEmpty()) isSelectionMode = false
+                                            } else {
+                                                folderFilesForMenu = null
+                                                fileForMenu = file
+                                            }
                                         }
                                     )
                             ) {
@@ -1058,14 +1309,27 @@ fun MonthlyArchiveScreen() {
     if (fileForMenu != null) {
         com.example.telegrambackup.ui.common.FileActionMenuModal(
             file = fileForMenu!!,
-            onDismiss = { fileForMenu = null },
+            folderFiles = folderFilesForMenu,
+            onDismiss = {
+                fileForMenu = null
+                folderFilesForMenu = null
+            },
+            onSelectMode = {
+                val f = fileForMenu
+                if (f != null && f.telegramFileId != "DIR_MARKER") {
+                    isSelectionMode = true
+                    selectedPaths = selectedPaths + f.path
+                }
+            },
             onFileRenamed = { _, _, _ ->
                 fileForMenu = null
+                folderFilesForMenu = null
                 loadFiles()
             },
             onFileDeleted = { delFile ->
                 selectedPaths = selectedPaths - delFile.path
                 fileForMenu = null
+                folderFilesForMenu = null
                 loadFiles()
             }
         )

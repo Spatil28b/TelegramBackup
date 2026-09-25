@@ -221,18 +221,18 @@ object SettingsDbManager {
 
                 // Also populate chunk_upload_progress for multi-part files so streaming and downloads work seamlessly
                 for (file in filesToInsert) {
-                    val parsed = file.parseChunks()
+                    val parsed = file.parseChunkInfos()
                     if (parsed.isNotEmpty()) {
                         for (c in parsed) {
                             val chunkEntity = com.example.telegrambackup.data.ChunkProgressEntity(
                                 sourcePath = file.path,
-                                chunkIndex = c.first,
+                                chunkIndex = c.chunkIndex,
                                 totalChunks = file.totalChunks,
-                                telegramFileId = c.second,
-                                messageId = if (c.first == 1) file.messageId else 0L,
+                                telegramFileId = c.telegramFileId,
+                                messageId = if (c.messageId > 0L) c.messageId else if (c.chunkIndex == 1) file.messageId else 0L,
                                 chunkSize = 0L,
                                 status = "COMPLETED",
-                                botTokenUsed = c.third.ifBlank { file.botTokenUsed },
+                                botTokenUsed = c.botTokenUsed.ifBlank { file.botTokenUsed },
                                 channelId = file.channelId,
                                 uploadedAt = file.timestamp
                             )
@@ -251,8 +251,10 @@ object SettingsDbManager {
                         val savedChunks = chunkDao.getUploadedChunksForFile(local.path)
                         val completed = savedChunks.filter { it.status == "COMPLETED" && it.telegramFileId.isNotBlank() }
                         if (completed.isNotEmpty()) {
-                            val chunkList = completed.map { Triple(it.chunkIndex, it.telegramFileId, it.botTokenUsed) }
-                            local.setChunks(chunkList)
+                            val chunkList = completed.map { 
+                                com.example.telegrambackup.data.FileChunkInfo(it.chunkIndex, it.telegramFileId, it.botTokenUsed, it.messageId) 
+                            }
+                            local.setChunkInfos(chunkList)
                             local.totalChunks = maxOf(local.totalChunks, completed.size, savedChunks.maxOfOrNull { it.totalChunks } ?: 1)
                             dao.insert(local)
                         }

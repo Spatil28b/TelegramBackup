@@ -578,9 +578,14 @@ class BackupWorker(
                                     fileToUpload.delete()
                                 }
 
-                                if (uploadedChunksMap.size < totalChunks) {
+                                val allChunksValid = (1..totalChunks).all { idx ->
+                                    val chunk = uploadedChunksMap[idx]
+                                    chunk != null && chunk.telegramFileId.isNotBlank()
+                                }
+
+                                if (!allChunksValid || uploadedChunksMap.size < totalChunks) {
                                     failCount.incrementAndGet()
-                                    Log.w(TAG, "File ${file.name} upload incomplete (${uploadedChunksMap.size}/$totalChunks chunks completed).")
+                                    Log.w(TAG, "File ${file.name} upload incomplete or corrupted: verified only ${uploadedChunksMap.count { it.value.telegramFileId.isNotBlank() }}/$totalChunks valid chunks. Aborting commit to prevent data loss.")
                                     return@withPermit
                                 }
 
@@ -589,8 +594,22 @@ class BackupWorker(
                                 val firstChunkMessageId = firstChunk?.messageId ?: 0L
                                 val primaryBotTokenUsed = firstChunk?.botTokenUsed ?: botToken
 
+                                if (firstChunkFileId.isBlank()) {
+                                    failCount.incrementAndGet()
+                                    Log.w(TAG, "File ${file.name} first chunk fileId is blank. Aborting commit.")
+                                    return@withPermit
+                                }
+
                                 val chunkList = (1..totalChunks).mapNotNull { idx ->
-                                    uploadedChunksMap[idx]?.let { Triple(idx, it.telegramFileId, it.botTokenUsed) }
+                                    uploadedChunksMap[idx]?.let { 
+                                        com.example.telegrambackup.data.FileChunkInfo(idx, it.telegramFileId, it.botTokenUsed, it.messageId) 
+                                    }
+                                }
+
+                                if (chunkList.size != totalChunks) {
+                                    failCount.incrementAndGet()
+                                    Log.w(TAG, "File ${file.name} chunk list count mismatch (${chunkList.size} != $totalChunks). Aborting commit.")
+                                    return@withPermit
                                 }
 
                                 val entity = UploadedFile(
@@ -605,7 +624,7 @@ class BackupWorker(
                                     this.botTokenUsed = primaryBotTokenUsed
                                     this.totalChunks = totalChunks
                                     if (chunkList.isNotEmpty()) {
-                                        this.setChunks(chunkList)
+                                        this.setChunkInfos(chunkList)
                                     }
                                 }
                                 uploadedDao.insert(entity)

@@ -22,6 +22,7 @@ import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
+import java.io.BufferedOutputStream
 import java.io.File
 import java.io.FileOutputStream
 import java.util.concurrent.atomic.AtomicLong
@@ -514,9 +515,11 @@ object TelegramMediaResolver {
                                 tempMergedFile.copyTo(targetFile, overwrite = true)
                                 tempMergedFile.delete()
                             }
-                            if (targetFile.exists()) FileEncryptor.ensureDecrypted(targetFile, context, file.fileName)
-                            onProgress(1f)
-                            return@withContext targetFile.exists() && targetFile.length() > 0L
+                            val finalized = verifyAndFinalizeDownload(context, targetFile, file)
+                            if (finalized) {
+                                onProgress(1f)
+                                return@withContext true
+                            }
                         }
                     }
                     if (tempMergedFile.exists()) tempMergedFile.delete()
@@ -535,11 +538,13 @@ object TelegramMediaResolver {
             }
         } else {
             // Multi-part chunked file: parallel multi-bot fleet download
-            val partFiles = mutableListOf<File>()
+            val partFiles = mutableListOf<Pair<Int, File>>()
             val chunkCount = chunks.size
             val downloadedBytes = AtomicLong(0L)
             val totalEstimatedSize = if (file.size > 0L) file.size else chunkCount.toLong() * FileChunker.CHUNK_SIZE
-            val concurrency = minOf(candidateTokens.size, maxOf(AppPrefs(context).uploadThreads, 16))
+            val botCount = maxOf(candidateTokens.size, 1)
+            val userThreads = AppPrefs(context).uploadThreads
+            val concurrency = maxOf(6, minOf(20, maxOf(userThreads, botCount * 4)))
             val semaphore = Semaphore(concurrency)
 
             var downloadFailed = false
@@ -550,7 +555,7 @@ object TelegramMediaResolver {
                             if (downloadFailed) return@withPermit
                             val partFile = File(parentDir, "${targetFile.name}.part%03d.tmp".format(chunkIdx))
                             if (partFile.exists() && partFile.length() > 0) {
-                                synchronized(partFiles) { partFiles.add(partFile) }
+                                synchronized(partFiles) { partFiles.add(Pair(chunkIdx, partFile)) }
                                 downloadedBytes.addAndGet(partFile.length())
                                 return@withPermit
                             }
@@ -571,7 +576,7 @@ object TelegramMediaResolver {
                                     onProgress(totalProg)
                                 }
                                 if (ok && partFile.exists() && partFile.length() > 0) {
-                                    synchronized(partFiles) { partFiles.add(partFile) }
+                                    synchronized(partFiles) { partFiles.add(Pair(chunkIdx, partFile)) }
                                     downloadedBytes.addAndGet(partFile.length())
                                     chunkOk = true
                                     break
@@ -591,21 +596,23 @@ object TelegramMediaResolver {
             }
 
             if (downloadFailed || partFiles.size < chunkCount || (targetTotalChunks > 1 && partFiles.size < targetTotalChunks)) {
-                partFiles.forEach { if (it.exists()) it.delete() }
+                partFiles.forEach { if (it.second.exists()) it.second.delete() }
                 if (tempMergedFile.exists()) tempMergedFile.delete()
                 return@withContext false
             }
 
-            // Merge all downloaded chunks in sequential order
-            partFiles.sortBy { it.name }
-            FileChunker.mergeChunks(partFiles, tempMergedFile)
-            partFiles.forEach { if (it.exists()) it.delete() }
+            // Merge all downloaded chunks in strict sequential chunkIndex order
+            partFiles.sortBy { it.first }
+            val orderedFiles = partFiles.map { it.second }
+            FileChunker.mergeChunks(orderedFiles, tempMergedFile)
+            orderedFiles.forEach { if (it.exists()) it.delete() }
 
             if (!tempMergedFile.exists() || tempMergedFile.length() == 0L) {
                 return@withContext false
             }
         }
 
+        // Decrypt in place using candidate keys (handles both modern and legacy cipherstreams)
         // Decrypt in place using candidate keys (handles both modern and legacy cipherstreams)
         FileEncryptor.ensureDecrypted(tempMergedFile, context, file.fileName)
 
@@ -616,22 +623,11 @@ object TelegramMediaResolver {
             tempMergedFile.delete()
         }
 
-        // Final safety check: ensure targetFile is confirmed decrypted and non-truncated
-        if (targetFile.exists()) {
-            FileEncryptor.ensureDecrypted(targetFile, context, file.fileName)
-            if (file.size > 0L) {
-                val actualSize = targetFile.length()
-                val minAcceptable = (file.size * 0.90).toLong()
-                if (actualSize < minAcceptable) {
-                    Log.e(TAG, "Download integrity check failed for ${file.fileName}: got $actualSize bytes, expected at least $minAcceptable bytes (declared ${file.size}). Purging corrupt download.")
-                    targetFile.delete()
-                    return@withContext false
-                }
-            }
-        }
+        val finalized = verifyAndFinalizeDownload(context, targetFile, file)
+        if (!finalized) return@withContext false
 
         onProgress(1f)
-        return@withContext targetFile.exists() && targetFile.length() > 0L
+        return@withContext true
     }
 
     /**
@@ -651,7 +647,7 @@ object TelegramMediaResolver {
 
         if (targetFile.exists() && targetFile.length() > 0) {
             if (!FileEncryptor.isLikelyPlainFile(targetFile, file.fileName)) {
-                val ok = FileEncryptor.ensureDecrypted(targetFile, context, file.fileName)
+                val ok = verifyAndFinalizeDownload(context, targetFile, file)
                 if (ok && FileEncryptor.isLikelyPlainFile(targetFile, file.fileName)) {
                     return@withContext targetFile
                 } else {
@@ -670,9 +666,14 @@ object TelegramMediaResolver {
             BackupProgressTracker.finishDownload()
             AppCacheManager.autoPruneCache(context)
             if (ok && targetFile.exists() && targetFile.length() > 0) {
-                FileEncryptor.ensureDecrypted(targetFile, context, file.fileName)
-                AppNotificationHelper.showDownloadFinishedNotification(context, file.fileName, targetFile.absolutePath)
-                return@withContext targetFile
+                val verified = verifyAndFinalizeDownload(context, targetFile, file)
+                if (verified) {
+                    AppNotificationHelper.showDownloadFinishedNotification(context, file.fileName, targetFile.absolutePath)
+                    return@withContext targetFile
+                } else {
+                    targetFile.delete()
+                    return@withContext null
+                }
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error fetching ${file.fileName} to cache", e)
@@ -746,9 +747,9 @@ object TelegramMediaResolver {
         targetFile: File,
         onProgress: (Float) -> Unit = {}
     ): Boolean {
-        // Use uploadClient with 15-minute read timeout instead of default 30-second client
-        // to prevent silent stream closures on slow mobile connections (was causing 4.19MB stall)
-        val client = HttpClientProvider.uploadClient
+        // Use dedicated downloadClient with high concurrency (maxRequestsPerHost = 32)
+        // and 15-minute read timeout to support ultra-fast parallel chunk streaming
+        val client = HttpClientProvider.downloadClient
         val request = Request.Builder().url(url).get().build()
         return try {
             val response = client.newCall(request).execute()
@@ -756,17 +757,22 @@ object TelegramMediaResolver {
             val body = response.body ?: return false
             val contentLength = body.contentLength()
             body.byteStream().use { input ->
-                FileOutputStream(targetFile).use { output ->
-                    val buffer = ByteArray(32 * 1024)
+                BufferedOutputStream(FileOutputStream(targetFile), 128 * 1024).use { output ->
+                    val buffer = ByteArray(64 * 1024)
                     var bytesRead: Int
                     var totalRead = 0L
+                    var lastProgressTime = 0L
                     while (input.read(buffer).also { bytesRead = it } != -1) {
                         output.write(buffer, 0, bytesRead)
                         totalRead += bytesRead
                         BackupProgressTracker.reportBytesDownloaded(bytesRead.toLong())
                         if (contentLength > 0) {
-                            val prog = (totalRead.toFloat() / contentLength.toFloat()).coerceIn(0f, 1f)
-                            onProgress(prog)
+                            val now = System.currentTimeMillis()
+                            if (now - lastProgressTime > 150L || totalRead == contentLength) {
+                                lastProgressTime = now
+                                val prog = (totalRead.toFloat() / contentLength.toFloat()).coerceIn(0f, 1f)
+                                onProgress(prog)
+                            }
                         }
                     }
                     output.flush()
@@ -828,9 +834,63 @@ object TelegramMediaResolver {
         targetFile: File,
         onProgress: (Float) -> Unit = {}
     ): Boolean = withContext(Dispatchers.IO) {
+        // Fast-path 1: Check if already present in preview cache
+        val cacheDir = File(context.cacheDir, "cloud_preview_cache")
+        val safeName = file.fileName.replace(Regex("[^a-zA-Z0-9._-]"), "_").ifBlank { "file" }
+        val cachedPreview = File(cacheDir, "${file.telegramFileId.hashCode()}_$safeName")
+        if (cachedPreview.exists() && cachedPreview.length() > 0 && FileEncryptor.isLikelyPlainFile(cachedPreview, file.fileName)) {
+            try {
+                if (targetFile.exists()) targetFile.delete()
+                val parent = targetFile.parentFile
+                if (parent != null && !parent.exists()) parent.mkdirs()
+                cachedPreview.copyTo(targetFile, overwrite = true)
+                if (targetFile.exists() && targetFile.length() > 0) {
+                    onProgress(1f)
+                    try {
+                        android.media.MediaScannerConnection.scanFile(
+                            context,
+                            arrayOf(targetFile.absolutePath),
+                            null,
+                            null
+                        )
+                    } catch (_: Exception) {}
+                    return@withContext true
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Fast-path copy from cache failed, falling back to download: ${e.message}")
+            }
+        }
+
+        // Fast-path 2: Check if original local file exists on device storage
+        val localOriginal = FileViewerHelper.findLocalFile(file.path, file.fileName)
+        if (localOriginal != null && localOriginal.exists() && localOriginal.length() > 0 && localOriginal.absolutePath != targetFile.absolutePath) {
+            try {
+                if (targetFile.exists()) targetFile.delete()
+                val parent = targetFile.parentFile
+                if (parent != null && !parent.exists()) parent.mkdirs()
+                localOriginal.copyTo(targetFile, overwrite = true)
+                FileEncryptor.ensureDecrypted(targetFile, context, file.fileName)
+                if (targetFile.exists() && targetFile.length() > 0 && FileEncryptor.isLikelyPlainFile(targetFile, file.fileName)) {
+                    onProgress(1f)
+                    try {
+                        android.media.MediaScannerConnection.scanFile(
+                            context,
+                            arrayOf(targetFile.absolutePath),
+                            null,
+                            null
+                        )
+                    } catch (_: Exception) {}
+                    return@withContext true
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Fast-path copy from local file failed, falling back to download: ${e.message}")
+            }
+        }
+
         val ok = downloadAndAssembleFile(context, file, targetFile, onProgress)
         if (ok && targetFile.exists()) {
-            FileEncryptor.ensureDecrypted(targetFile, context, file.fileName)
+            val verified = verifyAndFinalizeDownload(context, targetFile, file)
+            if (!verified) return@withContext false
             try {
                 android.media.MediaScannerConnection.scanFile(
                     context,
@@ -839,7 +899,72 @@ object TelegramMediaResolver {
                     null
                 )
             } catch (_: Exception) {}
+            return@withContext true
         }
-        return@withContext ok
+        return@withContext false
+    }
+
+    /**
+     * Deeply verifies that a downloaded or restored file is fully decrypted and valid.
+     * Prevents delivering raw encrypted ciphertext or corrupt files to user or system.
+     */
+    fun verifyAndFinalizeDownload(
+        context: Context,
+        targetFile: File,
+        file: UploadedFile
+    ): Boolean {
+        if (!targetFile.exists() || targetFile.length() == 0L) return false
+
+        // Ensure decrypted with all candidate keys and fallback cloud key
+        FileEncryptor.ensureDecrypted(targetFile, context, file.fileName)
+
+        var isStillEncrypted = FileEncryptor.isEncryptedFile(targetFile, file.fileName) || FileEncryptor.isEncryptedWithMagicHeader(targetFile)
+        if (isStillEncrypted) {
+            // Force fetch cloud key and attempt recovery
+            val prefs = AppPrefs(context)
+            val userEmail = prefs.userEmail.ifBlank { prefs.recoveryEmail }.trim().lowercase()
+            if (userEmail.isNotBlank()) {
+                try {
+                    val serverSettings = kotlinx.coroutines.runBlocking(Dispatchers.IO) {
+                        com.example.telegrambackup.network.ServerApi().getUserSettings(prefs.serverUrl, userEmail)
+                    }
+                    if (!serverSettings.isNullOrBlank() && serverSettings.contains("encryption_key")) {
+                        val cloudKey = org.json.JSONObject(serverSettings).optJSONObject("security")?.optString("encryption_key", "")
+                        if (!cloudKey.isNullOrBlank()) {
+                            FileEncryptor.decryptFileInPlace(targetFile, cloudKey)
+                            prefs.forceSetEncryptionKey(cloudKey)
+                            isStillEncrypted = FileEncryptor.isEncryptedFile(targetFile, file.fileName) || FileEncryptor.isEncryptedWithMagicHeader(targetFile)
+                        }
+                    }
+                } catch (_: Exception) {}
+            }
+        }
+
+        if (isStillEncrypted) {
+            Log.e(TAG, "FATAL: Downloaded file ${file.fileName} remains encrypted after all decryption attempts! Purging unreadable ciphertext.")
+            targetFile.delete()
+            return false
+        }
+
+        val ext = file.fileName.substringAfterLast('.', "").lowercase()
+        if (ext == "apk" || ext == "zip") {
+            if (!FileEncryptor.isLikelyPlainFile(targetFile, file.fileName)) {
+                Log.e(TAG, "FATAL: $ext file ${file.fileName} lacks valid ZIP/APK magic header (PK\\x03\\x04). Purging corrupt download.")
+                targetFile.delete()
+                return false
+            }
+        }
+
+        if (file.size > 0L) {
+            val actualSize = targetFile.length()
+            val minAcceptable = (file.size * 0.90).toLong()
+            if (actualSize < minAcceptable) {
+                Log.e(TAG, "Download integrity check failed for ${file.fileName}: got $actualSize bytes, expected at least $minAcceptable bytes. Purging corrupt download.")
+                targetFile.delete()
+                return false
+            }
+        }
+
+        return true
     }
 }

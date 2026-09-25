@@ -191,9 +191,7 @@ fun BackupExplorerScreen(
     var isSelectionModeActive by remember { mutableStateOf(false) }
     val selectedFilesList = remember { mutableStateListOf<UploadedFile>() }
 
-    var infoSheetFile by remember { mutableStateOf<UploadedFile?>(null) }
-    var infoSheetFolder by remember { mutableStateOf<LocalFolderModel?>(null) }
-    var showDetailedMetadataDialog by remember { mutableStateOf(false) }
+    var actionMenuFolderFiles by remember { mutableStateOf<List<UploadedFile>?>(null) }
 
     var activeViewerIndex by remember { mutableIntStateOf(-1) }
     var activeAudioPlayerItem by remember { mutableStateOf<Pair<String, String>?>(null) }
@@ -277,10 +275,29 @@ fun BackupExplorerScreen(
     if (actionMenuFile != null) {
         FileActionMenuModal(
             file = actionMenuFile!!,
-            onDismiss = { actionMenuFile = null },
-            onFileRenamed = { _, _, _ -> refreshCloudData() },
+            folderFiles = actionMenuFolderFiles,
+            onDismiss = {
+                actionMenuFile = null
+                actionMenuFolderFiles = null
+            },
+            onSelectMode = {
+                val f = actionMenuFile
+                if (f != null && f.telegramFileId != "DIR_MARKER") {
+                    if (!selectedFilesList.any { it.path == f.path }) {
+                        selectedFilesList.add(f)
+                    }
+                    isSelectionModeActive = true
+                }
+            },
+            onFileRenamed = { _, _, _ ->
+                actionMenuFile = null
+                actionMenuFolderFiles = null
+                refreshCloudData()
+            },
             onFileDeleted = { delFile ->
                 selectedFilesList.removeAll { it.path == delFile.path }
+                actionMenuFile = null
+                actionMenuFolderFiles = null
                 refreshCloudData()
             }
         )
@@ -343,13 +360,9 @@ fun BackupExplorerScreen(
         }
     }
 
-    BackHandler(enabled = activeViewerIndex != -1 || infoSheetFile != null || infoSheetFolder != null || selectedFilesList.isNotEmpty() || selectedCategoryTitle != null || folderPathHistory.size > 1 || currentFolderDirectoryPath != "Internal Storage" || isSearching) {
+    BackHandler(enabled = activeViewerIndex != -1 || selectedFilesList.isNotEmpty() || selectedCategoryTitle != null || folderPathHistory.size > 1 || currentFolderDirectoryPath != "Internal Storage" || isSearching) {
         if (activeViewerIndex != -1) {
             activeViewerIndex = -1
-        } else if (infoSheetFile != null || infoSheetFolder != null) {
-            infoSheetFile = null
-            infoSheetFolder = null
-            showDetailedMetadataDialog = false
         } else if (selectedFilesList.isNotEmpty()) {
             selectedFilesList.clear()
             isSelectionModeActive = false
@@ -586,126 +599,6 @@ fun BackupExplorerScreen(
         list
     }
 
-    // LONG PRESS ITEM OPTIONS & INFO MODAL
-    if (infoSheetFile != null || infoSheetFolder != null) {
-        val itemName = infoSheetFile?.fileName ?: infoSheetFolder?.folderName ?: "Item Info"
-        AlertDialog(
-            onDismissRequest = { infoSheetFile = null; infoSheetFolder = null; showDetailedMetadataDialog = false },
-            title = { Text(itemName, fontWeight = FontWeight.Bold, maxLines = 1) },
-            text = {
-                Column {
-                    if (showDetailedMetadataDialog) {
-                        Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
-                            Column(modifier = Modifier.padding(12.dp)) {
-                                Text("Full Metadata & Size", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold))
-                                Spacer(modifier = Modifier.height(4.dp))
-                                if (infoSheetFile != null) {
-                                    val f = infoSheetFile!!
-                                    Text("Path: ${f.path}", style = MaterialTheme.typography.labelSmall)
-                                    Text("File Size: ${formatFileSize(f.size)}", style = MaterialTheme.typography.labelSmall)
-                                    Text("Telegram ID: ${f.telegramFileId}", style = MaterialTheme.typography.labelSmall)
-                                    Text("Encryption: AES-256 GCM Valid", style = MaterialTheme.typography.labelSmall, color = TelegramEmerald)
-                                } else if (infoSheetFolder != null) {
-                                    val fol = infoSheetFolder!!
-                                    Text("Folder Path: ${fol.folderPath}", style = MaterialTheme.typography.labelSmall)
-                                    Text("Files Inside: ${fol.filesCount}", style = MaterialTheme.typography.labelSmall)
-                                    Text("Total Storage: ${formatFileSize(fol.totalSizeBytes)}", style = MaterialTheme.typography.labelSmall)
-                                }
-                            }
-                        }
-                    }
-
-                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Row(modifier = Modifier.fillMaxWidth().clickable { showDetailedMetadataDialog = !showDetailedMetadataDialog }.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Info, contentDescription = null, tint = TelegramBlue, modifier = Modifier.size(22.dp))
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Text("View Full Info & Size", style = MaterialTheme.typography.bodyMedium)
-                        }
-                        HorizontalDivider()
-                        Row(modifier = Modifier.fillMaxWidth().clickable {
-                            triggerHapticFeedback(context, haptic)
-                            val targetFiles = if (infoSheetFile != null) listOf(infoSheetFile!!) else cloudFileList
-                            restoreTargetFiles = targetFiles
-                            infoSheetFile = null; infoSheetFolder = null
-                            showCloudRestoreWizard = true
-                        }.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.CloudDownload, contentDescription = null, tint = TelegramBlue, modifier = Modifier.size(22.dp))
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Text("Restore & Download Item to Device", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold))
-                        }
-                        HorizontalDivider()
-                        if (infoSheetFile != null) {
-                            Row(modifier = Modifier.fillMaxWidth().clickable {
-                                triggerHapticFeedback(context, haptic)
-                                val f = infoSheetFile
-                                infoSheetFile = null; infoSheetFolder = null
-                                shareModalFile = f
-                            }.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Default.Share, contentDescription = null, tint = TelegramBlue, modifier = Modifier.size(22.dp))
-                                Spacer(modifier = Modifier.width(12.dp))
-                                Text("Generate Fast Cloud Share Link", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold))
-                            }
-                        } else if (infoSheetFolder != null) {
-                            Row(modifier = Modifier.fillMaxWidth().clickable {
-                                triggerHapticFeedback(context, haptic)
-                                val fol = infoSheetFolder!!
-                                infoSheetFolder = null
-                                scope.launch {
-                                    Toast.makeText(context, "📦 Compressing '${fol.folderName}' into ZIP...", Toast.LENGTH_SHORT).show()
-                                    val filesInFolder = cloudFileList.filter { it.path.startsWith(fol.folderPath) || it.path.contains(fol.folderName) }
-                                    val zip = FolderZipDownloader.downloadFolderAsZip(context, fol.folderName, filesInFolder) { _, _, _ -> }
-                                    withContext(Dispatchers.Main) {
-                                        if (zip != null) {
-                                            Toast.makeText(context, "✓ Saved ${zip.name} in Downloads/TelegramBackup_Zips!", Toast.LENGTH_LONG).show()
-                                        } else {
-                                            Toast.makeText(context, "Could not create ZIP", Toast.LENGTH_SHORT).show()
-                                        }
-                                    }
-                                }
-                            }.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Default.Archive, contentDescription = null, tint = TelegramEmerald, modifier = Modifier.size(22.dp))
-                                Spacer(modifier = Modifier.width(12.dp))
-                                Text("Download Entire Folder as ZIP", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold, color = TelegramEmerald))
-                            }
-                        }
-                        HorizontalDivider()
-                        Row(modifier = Modifier.fillMaxWidth().clickable {
-                            triggerHapticFeedback(context, haptic)
-                            if (infoSheetFile != null) {
-                                val fileToDelete = infoSheetFile!!
-                                scope.launch(Dispatchers.IO) {
-                                    AppDatabase.getDatabase(context).uploadedFileDao().softDelete(fileToDelete.path, fileToDelete.telegramFileId, System.currentTimeMillis())
-                                    withContext(Dispatchers.Main) {
-                                        Toast.makeText(context, "Moved ${fileToDelete.fileName} to Trash Bin!", Toast.LENGTH_SHORT).show()
-                                        infoSheetFile = null
-                                        refreshCloudData()
-                                    }
-                                }
-                            } else if (infoSheetFolder != null) {
-                                val fol = infoSheetFolder!!
-                                scope.launch(Dispatchers.IO) {
-                                    val db = AppDatabase.getDatabase(context)
-                                    val filesInFol = db.uploadedFileDao().getAllFiles().filter { it.path.startsWith(fol.folderPath) }
-                                    filesInFol.forEach { db.uploadedFileDao().softDelete(it.path, it.telegramFileId, System.currentTimeMillis()) }
-                                    withContext(Dispatchers.Main) {
-                                        Toast.makeText(context, "Moved folder '${fol.folderName}' to Trash Bin!", Toast.LENGTH_SHORT).show()
-                                        infoSheetFolder = null
-                                        refreshCloudData()
-                                    }
-                                }
-                            }
-                        }.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(22.dp))
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Text("Move to Trash Bin", style = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.error))
-                        }
-                    }
-                }
-            },
-            confirmButton = { TextButton(onClick = { infoSheetFile = null; infoSheetFolder = null; showDetailedMetadataDialog = false }) { Text("Close") } }
-        )
-    }
-
     // ADVANCED NATIVE MEDIA VIEWER
     if (activeViewerIndex >= 0 && activeViewerIndex < activeDisplayFiles.size) {
         AdvancedMediaViewerDialog(
@@ -723,7 +616,8 @@ fun BackupExplorerScreen(
                 }
             },
             onInfoRequested = { fileInfo ->
-                infoSheetFile = fileInfo
+                actionMenuFolderFiles = null
+                actionMenuFile = fileInfo
             }
         )
     }
@@ -981,6 +875,15 @@ fun BackupExplorerScreen(
                         contentPadding = PaddingValues(bottom = 24.dp)
                     ) {
                         items(monthlyTimelineFolders) { folder ->
+                            val timelineFolderFiles = remember(cloudFileList, folder.folderName) {
+                                val monthName = folder.folderName
+                                val format = java.text.SimpleDateFormat("yyyy - MMMM", Locale.US)
+                                cloudFileList.filter { f ->
+                                    val dateKey = if (f.timestamp > 0) format.format(java.util.Date(f.timestamp)) else "Unknown Date"
+                                    dateKey == monthName
+                                }
+                            }
+
                             Surface(
                                 shape = RoundedCornerShape(16.dp),
                                 color = MaterialTheme.colorScheme.surfaceContainerLow,
@@ -995,7 +898,15 @@ fun BackupExplorerScreen(
                                         },
                                         onLongClick = {
                                             triggerHapticFeedback(context, haptic)
-                                            infoSheetFolder = folder
+                                            val pseudoFolder = UploadedFile(
+                                                path = folder.folderPath,
+                                                fileName = folder.folderName,
+                                                telegramFileId = "DIR_MARKER",
+                                                size = folder.totalSizeBytes,
+                                                totalChunks = folder.filesCount
+                                            )
+                                            actionMenuFolderFiles = timelineFolderFiles
+                                            actionMenuFile = pseudoFolder
                                         }
                                     )
                             ) {
@@ -1015,6 +926,28 @@ fun BackupExplorerScreen(
                                     Column(modifier = Modifier.weight(1f)) {
                                         Text(folder.folderName, style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold))
                                         Text("${folder.filesCount} items • ${formatFileSize(folder.totalSizeBytes)}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+                                    }
+
+                                    IconButton(
+                                        onClick = {
+                                            val pseudoFolder = UploadedFile(
+                                                path = folder.folderPath,
+                                                fileName = folder.folderName,
+                                                telegramFileId = "DIR_MARKER",
+                                                size = folder.totalSizeBytes,
+                                                totalChunks = folder.filesCount
+                                            )
+                                            actionMenuFolderFiles = timelineFolderFiles
+                                            actionMenuFile = pseudoFolder
+                                        },
+                                        modifier = Modifier.size(32.dp)
+                                    ) {
+                                        Icon(
+                                            Icons.Default.MoreVert,
+                                            contentDescription = "Folder Options",
+                                            tint = MaterialTheme.colorScheme.outline,
+                                            modifier = Modifier.size(18.dp)
+                                        )
                                     }
 
                                     Icon(Icons.Default.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.outline)
@@ -1072,6 +1005,13 @@ fun BackupExplorerScreen(
                         contentPadding = PaddingValues(bottom = 24.dp)
                     ) {
                         items(currentPathSubFolders) { folder ->
+                            val subfolderFiles = remember(cloudFileList, folder.folderPath) {
+                                cloudFileList.filter { f ->
+                                    val p = if (f.path.startsWith("/storage/emulated/0")) "Internal Storage" + f.path.removePrefix("/storage/emulated/0") else f.path
+                                    p.startsWith(folder.folderPath)
+                                }
+                            }
+
                             Surface(
                                 shape = RoundedCornerShape(16.dp),
                                 color = MaterialTheme.colorScheme.surfaceContainerLow,
@@ -1086,7 +1026,15 @@ fun BackupExplorerScreen(
                                         },
                                         onLongClick = {
                                             triggerHapticFeedback(context, haptic)
-                                            infoSheetFolder = folder
+                                            val pseudoFolder = UploadedFile(
+                                                path = folder.folderPath,
+                                                fileName = folder.folderName,
+                                                telegramFileId = "DIR_MARKER",
+                                                size = folder.totalSizeBytes,
+                                                totalChunks = folder.filesCount
+                                            )
+                                            actionMenuFolderFiles = subfolderFiles
+                                            actionMenuFile = pseudoFolder
                                         }
                                     )
                             ) {
@@ -1105,7 +1053,29 @@ fun BackupExplorerScreen(
 
                                     Column(modifier = Modifier.weight(1f)) {
                                         Text(folder.folderName, style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold))
-                                        Text("${folder.filesCount} cloud files", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+                                        Text("${folder.filesCount} cloud files • ${formatFileSize(folder.totalSizeBytes)}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+                                    }
+
+                                    IconButton(
+                                        onClick = {
+                                            val pseudoFolder = UploadedFile(
+                                                path = folder.folderPath,
+                                                fileName = folder.folderName,
+                                                telegramFileId = "DIR_MARKER",
+                                                size = folder.totalSizeBytes,
+                                                totalChunks = folder.filesCount
+                                            )
+                                            actionMenuFolderFiles = subfolderFiles
+                                            actionMenuFile = pseudoFolder
+                                        },
+                                        modifier = Modifier.size(32.dp)
+                                    ) {
+                                        Icon(
+                                            Icons.Default.MoreVert,
+                                            contentDescription = "Folder Options",
+                                            tint = MaterialTheme.colorScheme.outline,
+                                            modifier = Modifier.size(18.dp)
+                                        )
                                     }
 
                                     Icon(Icons.Default.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.outline)
@@ -1821,6 +1791,7 @@ fun GoogleFilesSearchPill(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun RecentFileGoogleCard(
     cloudFile: UploadedFile,
@@ -1833,7 +1804,7 @@ fun RecentFileGoogleCard(
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
         modifier = Modifier
             .width(118.dp)
-            .clickable(onClick = onClick)
+            .combinedClickable(onClick = onClick, onLongClick = onMoreOptions)
     ) {
         Column(modifier = Modifier.padding(8.dp)) {
             Box(

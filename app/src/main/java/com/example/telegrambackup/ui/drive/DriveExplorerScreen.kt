@@ -629,8 +629,19 @@ fun DriveExplorerScreen(
 
     // ITEM OPTIONS MODAL (MATERIAL 3 UNIFIED ACTIONS MODAL)
     if (itemOptionsFile != null) {
+        val folderFiles = if (itemOptionsFile!!.telegramFileId == "DIR_MARKER") {
+            allDriveUploadedFiles.filter { it.path.startsWith("${itemOptionsFile!!.path}/") && it.telegramFileId != "DIR_MARKER" }
+        } else null
+
         FileActionMenuModal(
             file = itemOptionsFile!!,
+            folderFiles = folderFiles,
+            onSelectMode = {
+                isDriveSelectionActive = true
+                if (!selectedDriveItems.any { it.path == itemOptionsFile!!.path }) {
+                    selectedDriveItems.add(itemOptionsFile!!)
+                }
+            },
             onDismiss = { itemOptionsFile = null },
             onFileRenamed = { _, _, _ ->
                 selectedDriveItems.clear()
@@ -902,8 +913,16 @@ fun DriveExplorerScreen(
                                 },
                                 onLongClick = {
                                     triggerHapticFeedback(context, haptic)
-                                    isDriveSelectionActive = true
-                                    if (!isSelected) selectedDriveItems.add(driveItem)
+                                    if (isDriveSelectionActive) {
+                                        if (isSelected) {
+                                            selectedDriveItems.removeAll { it.path == driveItem.path }
+                                            if (selectedDriveItems.isEmpty()) isDriveSelectionActive = false
+                                        } else {
+                                            selectedDriveItems.add(driveItem)
+                                        }
+                                    } else {
+                                        itemOptionsFile = driveItem
+                                    }
                                 },
                                 onOverflowClick = {
                                     itemOptionsFile = driveItem
@@ -931,8 +950,16 @@ fun DriveExplorerScreen(
                                 },
                                 onLongClick = {
                                     triggerHapticFeedback(context, haptic)
-                                    isDriveSelectionActive = true
-                                    if (!isSelected) selectedDriveItems.add(driveItem)
+                                    if (isDriveSelectionActive) {
+                                        if (isSelected) {
+                                            selectedDriveItems.removeAll { it.path == driveItem.path }
+                                            if (selectedDriveItems.isEmpty()) isDriveSelectionActive = false
+                                        } else {
+                                            selectedDriveItems.add(driveItem)
+                                        }
+                                    } else {
+                                        itemOptionsFile = driveItem
+                                    }
                                 },
                                 onOverflowClick = {
                                     itemOptionsFile = driveItem

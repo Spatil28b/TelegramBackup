@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.dp
 import coil.compose.SubcomposeAsyncImage
 import coil.request.ImageRequest
 import com.example.telegrambackup.utils.TelegramMediaResolver
+import com.example.telegrambackup.utils.ThumbnailManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -140,8 +141,25 @@ fun FileThumbnailView(
     }
     val localFileExists = localFile != null && localFile.exists() && localFile.length() > 0
 
+    val thumbKey = remember(filePath, telegramFileId, fileName) {
+        ThumbnailManager.getThumbnailKey(filePath, telegramFileId, fileName)
+    }
+    var diskThumbFile by remember(thumbKey) {
+        mutableStateOf(ThumbnailManager.getDiskThumbnail(context, thumbKey))
+    }
+
+    LaunchedEffect(thumbKey, localFileExists) {
+        val target = localFile
+        if (diskThumbFile == null && localFileExists && target != null) {
+            val generated = ThumbnailManager.getOrCreateThumbnail(context, target, thumbKey)
+            if (generated != null) {
+                diskThumbFile = generated
+            }
+        }
+    }
+
     when {
-        // 1. IMAGE PREVIEW (Local Storage or Cloud Bitmap)
+        // 1. IMAGE PREVIEW (Local Storage, Persistent Thumbnail, or Cloud Bitmap)
         isImage -> {
             var cloudBitmap by remember(telegramFileId) { mutableStateOf<Bitmap?>(null) }
             var coilFailed by remember(filePath, telegramFileId) { mutableStateOf(false) }
@@ -156,6 +174,7 @@ fun FileThumbnailView(
             }
 
             val imageModel: Any? = when {
+                diskThumbFile != null -> diskThumbFile
                 localFileExists -> localFile
                 filePath.startsWith("content://") -> Uri.parse(filePath)
                 filePath.startsWith("file://") -> Uri.parse(filePath)
