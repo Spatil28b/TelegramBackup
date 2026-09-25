@@ -427,10 +427,10 @@ object AiVisionManager {
             return@withContext Result.failure(IllegalStateException("No Gemini API keys configured."))
         }
 
-        // Build base64 for each candidate with low memory footprint & fast upload (max 384px, quality 75)
+        // Build base64 for each candidate with optimal balance of readability & fast upload (max 640px, quality 80)
         val validImages = mutableListOf<Pair<BatchImageCandidate, String>>()
         for (cand in candidates) {
-            val b64 = prepareOptimizedImageBase64(cand.imageFile, maxDimension = 384, quality = 75)
+            val b64 = prepareOptimizedImageBase64(cand.imageFile, maxDimension = 640, quality = 80)
             if (b64 != null) {
                 validImages.add(Pair(cand, b64))
             }
@@ -453,30 +453,29 @@ object AiVisionManager {
                 val endpoint = "https://generativelanguage.googleapis.com/v1beta/models/$modelName:generateContent?key=$apiKey"
 
                 val prompt = """
-                    You are a high-precision AI document and photo classifier.
+                    You are a high-precision multimodal AI visual search engine (like Google Photos).
                     The user is searching for: "$searchQuery"
 
-                    Attached are ${validImages.size} image(s). Examine each image's text, visual elements, stamps, architecture, and layout.
+                    Attached are ${validImages.size} image(s). Carefully inspect the visual content, objects, text, signs, scenery, people, and architectural elements of each image.
 
-                    SEARCH INTENT & CLASSIFICATION RULES:
-                    1. Natural query handling: The query may contain filler words like 'image', 'photo', 'photos', 'pic', 'show me' (e.g. 'xyz college image', 'society photo', 'id card'). Focus on the target subject itself.
-                    2. "id card" / "identity card" / "student id" / "college id" / "employee id" / "aadhaar card" / "voter id" / "license": MUST match if the image displays any personal or institutional ID card (Student ID, College ID, Office/Staff Card, Aadhaar, Voter Card, Driving License) showing person photo, name, institution/company name, or card number.
-                    3. "medical prescription" / "prescription" / "doctor prescription" / "doctor slip" / "rx": MUST match if the image displays a doctor's prescription slip, clinic/hospital consultation note, Rx pad, medicine dosage list, clinical report, or pharmacy receipt.
-                    4. "college" / "university" / "campus" / "school" / "institute" (including named e.g. "XYZ College"): MUST match if the image displays a college/university campus building, institutional entrance, gate, signboard, auditorium, classroom, or campus grounds.
-                    5. "building" / "society" / "residency" / "apartment" / "tower" / "complex" (including named e.g. "XYZ Building", "ABC Society"): MUST match if the image displays an architectural building facade, residential housing society entrance gate, signboard, apartment tower, or residential enclave.
-                    6. "bonafide certificate": MUST show an official academic/institutional certificate or college/school letterhead certifying student enrollment/bonafide status, study certificate, or official seal/stamp.
-                    7. "payment receipt" / "10k receipt" / "transaction": MUST show financial transaction or payment details (UPI, GPay, PhonePe, Paytm, Bank Transfer, UTR/Ref #, currency ₹/Rs/$, or bill breakdown).
-                    8. "pan card": MUST be an Indian Income Tax Department Permanent Account Number (PAN) card showing Indian emblem, 10-digit alphanumeric PAN, photo, or father's name.
-                    9. "marksheet" / "result": MUST show subjects, marks, grades, roll number, or examination board (CBSE, ICSE, State Board, University).
-                    10. "party photos" / "celebration": MUST show an actual party, birthday cake, celebration event, party decorations, or group celebrating. Do NOT match ordinary solo selfies, nature, food plates, or mundane indoor shots.
-                    11. "electricity bill" / "utility bill": MUST show electric utility provider (BESCOM, MSEB, TNEB, etc.), meter reading, consumer ID, or power bill layout.
-                    12. Other queries: ONLY match if the image directly and clearly portrays "$searchQuery". If uncertain or only vaguely related, mark matched: false.
+                    SEARCH & MATCH RULES:
+                    1. Natural search query: Remove conversational filler words (e.g., 'image', 'photo', 'show me', 'having', 'with info'). Match the actual core intent.
+                    2. "id card" / "identity card" / "student id" / "college id" / "employee id" / "aadhaar" / "license": Match ANY image showing a personal ID card, student ID, workplace badge, Aadhaar, PAN, voter card, or license with photo/name/card layout.
+                    3. "medical prescription" / "prescription" / "doctor slip" / "rx": Match ANY doctor's prescription slip, clinical consultation note, medicine prescription, Rx pad, dosage schedule, or hospital discharge summary.
+                    4. "college" / "university" / "campus" / "school" / "institute" (or specific names e.g., "XYZ College", "Engineering College"): Match ANY photo of educational campus buildings, classrooms, auditoriums, campus grounds, or entrance gates/signboards with the institution name.
+                    5. "building" / "society" / "residency" / "apartment" / "complex" / "tower" (or specific names e.g., "XYZ Society", "ABC Building"): Match ANY photo depicting residential apartment buildings, residential housing societies, towers, architectural buildings, or society signboards/entrance gates.
+                    6. "bonafide certificate" / "certificate": Match official academic, study, bonafide, or completion certificates with institutional stamps or letterheads.
+                    7. "payment receipt" / "transaction" / "10k": Match payment confirmations, UPI / Google Pay / PhonePe / Paytm screenshots, bank transfer slips, or cash invoices.
+                    8. "pan card": Match Indian Income Tax Department PAN cards.
+                    9. "marksheet" / "result": Match academic marksheets, scorecards, or result transcripts.
+                    10. "party" / "celebration": Match photos of parties, celebrations, birthday events, gatherings, or festive occasions.
+                    11. General queries (e.g. food, car, bike, pet, sunset, document, laptop, etc.): Match if the image clearly depicts or contains the queried subject, text, or scene.
 
-                    Return ONLY a JSON array with one object per matching image with confidence >= 0.70:
+                    Return ONLY a valid JSON array of objects for matching images (confidence >= 0.60):
                     [
-                      {"id": "candidate_id", "matched": true, "reason": "Specific 4-8 word reason", "tags": ["tag1", "tag2"], "confidence": 0.95}
+                      {"id": "candidate_id", "matched": true, "reason": "Specific 4-8 word reason", "tags": ["tag1", "tag2"], "confidence": 0.90}
                     ]
-                    If no images match with high confidence, return []. Do NOT include markdown code blocks or backticks.
+                    If no images match, return []. Do NOT output markdown code blocks or backticks.
                 """.trimIndent()
 
                 val partsArray = JSONArray()
@@ -572,7 +571,7 @@ object AiVisionManager {
                         for (k in 0 until tagsArr.length()) {
                             tags.add(tagsArr.optString(k))
                         }
-                        if (matched && confidence >= 0.70 && id.isNotBlank()) {
+                        if (matched && confidence >= 0.60 && id.isNotBlank()) {
                             resultsList.add(BatchMatchResult(id, true, reason, tags))
                             // Persist to local AI search tag cache
                             AiSearchTagCache.putTagEntry(context, id, reason, tags)

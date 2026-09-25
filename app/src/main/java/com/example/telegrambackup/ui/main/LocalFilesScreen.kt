@@ -836,31 +836,55 @@ private fun FolderWiseView(
     val rootStorage = Environment.getExternalStorageDirectory() ?: File("/sdcard")
     val activeDir = currentDir ?: rootStorage
 
-    // Compute subfolders inside activeDir that have remaining unbacked files using safe canonical paths
-    val currentLevelFiles = remember(files, activeDir) {
-        val activePath = try { activeDir.canonicalPath } catch (_: Exception) { activeDir.absolutePath }
-        files.filter {
-            val parentPath = try { it.file.parentFile?.canonicalPath } catch (_: Exception) { it.file.parentFile?.absolutePath }
-            parentPath == activePath
-        }
-    }
+    // Safe canonical path helper that never throws
+    fun File.safeCanonicalPath(): String = try { canonicalPath } catch (_: Exception) { absolutePath }
 
-    val subFoldersWithUnbackedFiles = remember(files, activeDir) {
-        val activePath = try { activeDir.canonicalPath } catch (_: Exception) { activeDir.absolutePath }
-        files.mapNotNull { it.file.parentFile }
-            .mapNotNull { parent ->
-                try {
-                    val parentCanon = parent.canonicalPath
-                    if (parentCanon.startsWith(activePath) && parentCanon != activePath) {
-                        val rel = parentCanon.removePrefix(activePath).removePrefix(File.separator)
-                        val firstSegment = rel.split(File.separatorChar).firstOrNull()
-                        if (!firstSegment.isNullOrBlank()) {
-                            File(activePath, firstSegment)
+    // Compute subfolders and current-level files off Main thread to prevent crashes and ANR
+    var currentLevelFiles by remember { mutableStateOf<List<LocalFileItem>>(emptyList()) }
+    var subFoldersWithUnbackedFiles by remember { mutableStateOf<List<File>>(emptyList()) }
+    var isComputing by remember { mutableStateOf(true) }
+
+    LaunchedEffect(files, activeDir) {
+        isComputing = true
+        withContext(Dispatchers.Default) {
+            try {
+                val activePath = activeDir.safeCanonicalPath()
+
+                val levelFiles = files.filter { item ->
+                    try {
+                        val parentPath = item.file.parentFile?.safeCanonicalPath()
+                        parentPath == activePath
+                    } catch (_: Exception) { false }
+                }
+
+                val subFolders = files.mapNotNull { item ->
+                    try { item.file.parentFile } catch (_: Exception) { null }
+                }.mapNotNull { parent ->
+                    try {
+                        val parentCanon = parent.safeCanonicalPath()
+                        if (parentCanon.startsWith(activePath) && parentCanon != activePath) {
+                            val rel = parentCanon.removePrefix(activePath).removePrefix(File.separator)
+                            val firstSegment = rel.split(File.separatorChar).firstOrNull()
+                            if (!firstSegment.isNullOrBlank()) {
+                                File(activePath, firstSegment)
+                            } else null
                         } else null
-                    } else null
-                } catch (_: Exception) { null }
+                    } catch (_: Exception) { null }
+                }.distinctBy { it.absolutePath }
+
+                withContext(Dispatchers.Main) {
+                    currentLevelFiles = levelFiles
+                    subFoldersWithUnbackedFiles = subFolders
+                    isComputing = false
+                }
+            } catch (_: Exception) {
+                withContext(Dispatchers.Main) {
+                    currentLevelFiles = emptyList()
+                    subFoldersWithUnbackedFiles = emptyList()
+                    isComputing = false
+                }
             }
-            .distinctBy { it.absolutePath }
+        }
     }
 
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
@@ -888,6 +912,13 @@ private fun FolderWiseView(
             verticalArrangement = Arrangement.spacedBy(8.dp),
             modifier = Modifier.fillMaxSize()
         ) {
+            if (isComputing) {
+                item {
+                    Box(modifier = Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(color = TelegramBlue, modifier = Modifier.size(28.dp))
+                    }
+                }
+            } else {
             // Render subfolders that contain unbacked files
             itemsIndexed(
                 items = subFoldersWithUnbackedFiles,
@@ -980,6 +1011,7 @@ private fun FolderWiseView(
                     }
                 }
             }
+            } // end else !isComputing
         }
     }
 }

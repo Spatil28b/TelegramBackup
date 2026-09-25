@@ -341,7 +341,7 @@ object AiPhotoSearchManager {
             if (isDocumentQuery || isPlaceOrBuildingQuery || scannablePool.isNotEmpty()) {
                 val ocrCandidates = scannablePool
                     .sortedWith(compareByDescending<EvaluatableCandidate> { it.score }.thenByDescending { it.file.timestamp })
-                    .take(60)
+                    .take(120)
 
                 var ocrChecked = 0
                 for (cand in ocrCandidates) {
@@ -406,7 +406,7 @@ object AiPhotoSearchManager {
                     !matchedKeys.contains(key)
                 }
                 .sortedWith(compareByDescending<EvaluatableCandidate> { it.score }.thenByDescending { it.file.timestamp })
-                .take(24) // Evaluate remaining photos with Gemini Vision
+                .take(48) // Evaluate remaining photos with Gemini Vision
 
             if (remainingCandidates.isEmpty()) {
                 withContext(Dispatchers.Main) {
@@ -453,6 +453,12 @@ object AiPhotoSearchManager {
                                 for (match in matches) {
                                     if (match.matched && !matchedKeys.contains(match.candidateId)) {
                                         matchedKeys.add(match.candidateId)
+                                        AiSearchTagCache.putTagEntry(
+                                            context,
+                                            match.candidateId,
+                                            match.reason,
+                                            match.tags + listOf(cleanQuery, effectiveQuery)
+                                        )
                                         val matchedCand = chunk.find { (it.file.telegramFileId.ifBlank { it.file.path }) == match.candidateId }
                                         if (matchedCand != null) {
                                             val resultItem = AiSearchResultItem(

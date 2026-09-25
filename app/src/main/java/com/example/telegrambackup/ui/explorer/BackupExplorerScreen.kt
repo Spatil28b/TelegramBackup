@@ -435,66 +435,84 @@ fun BackupExplorerScreen(
         }
     }
 
-    val categoriesData = remember(cloudFileList, monthlyTimelineFolders.size) {
-        var downloadsCount = 0; var downloadsSize = 0L
-        var imagesCount = 0; var imagesSize = 0L
-        var videosCount = 0; var videosSize = 0L
-        var audioCount = 0; var audioSize = 0L
-        var docsCount = 0; var docsSize = 0L
-        var appsCount = 0; var appsSize = 0L
-        var archivesCount = 0; var archivesSize = 0L
-        var totalVaultSize = 0L
+    var categoriesData by remember { mutableStateOf<List<ExplorerCategoryModel>>(emptyList()) }
+    var starredCount by remember { mutableIntStateOf(0) }
+    var safeVaultCount by remember { mutableIntStateOf(0) }
+    var totalCloudSize by remember { mutableStateOf(0L) }
 
-        for (f in cloudFileList) {
-            totalVaultSize += f.size
-            if (prefs.isSafeVaultFile(f.path)) continue
+    LaunchedEffect(cloudFileList, monthlyTimelineFolders.size) {
+        withContext(Dispatchers.Default) {
+            // Cache safe vault paths ONCE instead of calling SharedPreferences per-file
+            val safeVaultPaths = prefs.safeVaultFilePaths
 
-            val name = f.fileName.lowercase()
-            val path = f.path.lowercase()
+            var downloadsCount = 0; var downloadsSize = 0L
+            var imagesCount = 0; var imagesSize = 0L
+            var videosCount = 0; var videosSize = 0L
+            var audioCount = 0; var audioSize = 0L
+            var docsCount = 0; var docsSize = 0L
+            var appsCount = 0; var appsSize = 0L
+            var archivesCount = 0; var archivesSize = 0L
+            var totalVaultSize = 0L
+            var starredCnt = 0
+            var safeVaultCnt = 0
 
-            when {
-                name.endsWith(".jpg") || name.endsWith(".jpeg") || name.endsWith(".png") ||
-                name.endsWith(".webp") || name.endsWith(".heic") || name.endsWith(".gif") ||
-                name.endsWith(".bmp") || name.endsWith(".svg") -> {
-                    imagesCount++
-                    imagesSize += f.size
+            for (f in cloudFileList) {
+                totalVaultSize += f.size
+                val isSafe = safeVaultPaths.contains(f.path)
+                if (isSafe) {
+                    safeVaultCnt++
+                    continue
                 }
-                name.endsWith(".mp4") || name.endsWith(".mkv") || name.endsWith(".avi") ||
-                name.endsWith(".mov") || name.endsWith(".webm") || name.endsWith(".3gp") ||
-                name.endsWith(".flv") -> {
-                    videosCount++
-                    videosSize += f.size
+                if (prefs.isFileStarred(f.path)) {
+                    starredCnt++
                 }
-                name.endsWith(".mp3") || name.endsWith(".wav") || name.endsWith(".aac") ||
-                name.endsWith(".flac") || name.endsWith(".m4a") || name.endsWith(".ogg") ||
-                name.endsWith(".opus") -> {
-                    audioCount++
-                    audioSize += f.size
+
+                val name = f.fileName.lowercase()
+                val path = f.path.lowercase()
+
+                when {
+                    name.endsWith(".jpg") || name.endsWith(".jpeg") || name.endsWith(".png") ||
+                    name.endsWith(".webp") || name.endsWith(".heic") || name.endsWith(".gif") ||
+                    name.endsWith(".bmp") || name.endsWith(".svg") -> {
+                        imagesCount++
+                        imagesSize += f.size
+                    }
+                    name.endsWith(".mp4") || name.endsWith(".mkv") || name.endsWith(".avi") ||
+                    name.endsWith(".mov") || name.endsWith(".webm") || name.endsWith(".3gp") ||
+                    name.endsWith(".flv") -> {
+                        videosCount++
+                        videosSize += f.size
+                    }
+                    name.endsWith(".mp3") || name.endsWith(".wav") || name.endsWith(".aac") ||
+                    name.endsWith(".flac") || name.endsWith(".m4a") || name.endsWith(".ogg") ||
+                    name.endsWith(".opus") -> {
+                        audioCount++
+                        audioSize += f.size
+                    }
+                    name.endsWith(".pdf") || name.endsWith(".docx") || name.endsWith(".doc") ||
+                    name.endsWith(".txt") || name.endsWith(".xlsx") || name.endsWith(".xls") ||
+                    name.endsWith(".pptx") || name.endsWith(".ppt") || name.endsWith(".csv") -> {
+                        docsCount++
+                        docsSize += f.size
+                    }
+                    name.endsWith(".apk") || name.endsWith(".xapk") -> {
+                        appsCount++
+                        appsSize += 25_000_000L
+                    }
+                    name.endsWith(".zip") || name.endsWith(".rar") || name.endsWith(".7z") ||
+                    name.endsWith(".tar") || name.endsWith(".gz") || name.endsWith(".bz2") -> {
+                        archivesCount++
+                        archivesSize += f.size
+                    }
                 }
-                name.endsWith(".pdf") || name.endsWith(".docx") || name.endsWith(".doc") ||
-                name.endsWith(".txt") || name.endsWith(".xlsx") || name.endsWith(".xls") ||
-                name.endsWith(".pptx") || name.endsWith(".ppt") || name.endsWith(".csv") -> {
-                    docsCount++
-                    docsSize += f.size
-                }
-                name.endsWith(".apk") || name.endsWith(".xapk") -> {
-                    appsCount++
-                    appsSize += 25_000_000L
-                }
-                name.endsWith(".zip") || name.endsWith(".rar") || name.endsWith(".7z") ||
-                name.endsWith(".tar") || name.endsWith(".gz") || name.endsWith(".bz2") -> {
-                    archivesCount++
-                    archivesSize += f.size
+
+                if (path.contains("download") || name.contains("download")) {
+                    downloadsCount++
+                    downloadsSize += f.size
                 }
             }
 
-            if (path.contains("download") || name.contains("download")) {
-                downloadsCount++
-                downloadsSize += f.size
-            }
-        }
-
-        listOf(
+            val result = listOf(
             ExplorerCategoryModel(
                 title = "Downloads",
                 count = downloadsCount,
@@ -560,6 +578,14 @@ fun BackupExplorerScreen(
                 containerTint = Color(0xFFEDE7F6)
             )
         )
+
+            withContext(Dispatchers.Main) {
+                categoriesData = result
+                starredCount = starredCnt
+                safeVaultCount = safeVaultCnt
+                totalCloudSize = totalVaultSize
+            }
+        }
     }
 
     val recentCloudFiles = remember(cloudFileList) {
@@ -572,7 +598,7 @@ fun BackupExplorerScreen(
         var clean = path.replace("\\", "/").trim()
         if (clean.contains("storage/emulated/0")) {
             clean = clean.substringAfter("storage/emulated/0").removePrefix("/")
-        } else if (clean.matches(Regex("^[A-Za-z]:[/\\\\].*"))) {
+        } else if (clean.length >= 2 && clean[0].isLetter() && clean[1] == ':') {
             clean = clean.substring(2).removePrefix("/")
         } else if (clean.startsWith("primary:")) {
             clean = clean.removePrefix("primary:").removePrefix("/")
@@ -828,7 +854,7 @@ fun BackupExplorerScreen(
                         Spacer(modifier = Modifier.height(2.dp))
                         GoogleCollectionItemCard(
                             title = "Starred",
-                            subtitle = "${cloudFileList.count { prefs.isFileStarred(it.path) && !prefs.isSafeVaultFile(it.path) }} files",
+                            subtitle = "$starredCount files",
                             icon = Icons.Default.Star,
                             iconTint = Color(0xFFF59E0B),
                             iconBg = Color(0xFFFEF3C7),
@@ -840,7 +866,7 @@ fun BackupExplorerScreen(
                         )
                         GoogleCollectionItemCard(
                             title = "Safe folder",
-                            subtitle = "${cloudFileList.count { prefs.isSafeVaultFile(it.path) }} files • PIN/Biometric",
+                            subtitle = "$safeVaultCount files • PIN/Biometric",
                             icon = Icons.Default.Lock,
                             iconTint = TelegramBlue,
                             iconBg = TelegramBlue.copy(alpha = 0.12f),
@@ -974,15 +1000,6 @@ fun BackupExplorerScreen(
                         contentPadding = PaddingValues(bottom = 24.dp)
                     ) {
                         items(monthlyTimelineFolders) { folder ->
-                            val timelineFolderFiles = remember(cloudFileList, folder.folderName) {
-                                val monthName = folder.folderName
-                                val format = java.text.SimpleDateFormat("yyyy - MMMM", Locale.US)
-                                cloudFileList.filter { f ->
-                                    val dateKey = if (f.timestamp > 0) format.format(java.util.Date(f.timestamp)) else "Unknown Date"
-                                    dateKey == monthName
-                                }
-                            }
-
                             Surface(
                                 shape = RoundedCornerShape(16.dp),
                                 color = MaterialTheme.colorScheme.surfaceContainerLow,
@@ -1004,7 +1021,12 @@ fun BackupExplorerScreen(
                                                 size = folder.totalSizeBytes,
                                                 totalChunks = folder.filesCount
                                             )
-                                            actionMenuFolderFiles = timelineFolderFiles
+                                            val monthName = folder.folderName
+                                            val format = java.text.SimpleDateFormat("yyyy - MMMM", Locale.US)
+                                            actionMenuFolderFiles = cloudFileList.filter { f ->
+                                                val dateKey = if (f.timestamp > 0) format.format(java.util.Date(f.timestamp)) else "Unknown Date"
+                                                dateKey == monthName
+                                            }
                                             actionMenuFile = pseudoFolder
                                         }
                                     )
@@ -1036,7 +1058,12 @@ fun BackupExplorerScreen(
                                                 size = folder.totalSizeBytes,
                                                 totalChunks = folder.filesCount
                                             )
-                                            actionMenuFolderFiles = timelineFolderFiles
+                                            val monthName = folder.folderName
+                                            val format = java.text.SimpleDateFormat("yyyy - MMMM", Locale.US)
+                                            actionMenuFolderFiles = cloudFileList.filter { f ->
+                                                val dateKey = if (f.timestamp > 0) format.format(java.util.Date(f.timestamp)) else "Unknown Date"
+                                                dateKey == monthName
+                                            }
                                             actionMenuFile = pseudoFolder
                                         },
                                         modifier = Modifier.size(32.dp)
@@ -1104,13 +1131,6 @@ fun BackupExplorerScreen(
                         contentPadding = PaddingValues(bottom = 24.dp)
                     ) {
                         items(currentPathSubFolders) { folder ->
-                            val subfolderFiles = remember(cloudFileList, folder.folderPath) {
-                                cloudFileList.filter { f ->
-                                    val p = if (f.path.startsWith("/storage/emulated/0")) "Internal Storage" + f.path.removePrefix("/storage/emulated/0") else f.path
-                                    p.startsWith(folder.folderPath)
-                                }
-                            }
-
                             Surface(
                                 shape = RoundedCornerShape(16.dp),
                                 color = MaterialTheme.colorScheme.surfaceContainerLow,
@@ -1132,7 +1152,10 @@ fun BackupExplorerScreen(
                                                 size = folder.totalSizeBytes,
                                                 totalChunks = folder.filesCount
                                             )
-                                            actionMenuFolderFiles = subfolderFiles
+                                            actionMenuFolderFiles = cloudFileList.filter { f ->
+                                                val p = if (f.path.startsWith("/storage/emulated/0")) "Internal Storage" + f.path.removePrefix("/storage/emulated/0") else f.path
+                                                p.startsWith(folder.folderPath)
+                                            }
                                             actionMenuFile = pseudoFolder
                                         }
                                     )
@@ -1164,7 +1187,10 @@ fun BackupExplorerScreen(
                                                 size = folder.totalSizeBytes,
                                                 totalChunks = folder.filesCount
                                             )
-                                            actionMenuFolderFiles = subfolderFiles
+                                            actionMenuFolderFiles = cloudFileList.filter { f ->
+                                                val p = if (f.path.startsWith("/storage/emulated/0")) "Internal Storage" + f.path.removePrefix("/storage/emulated/0") else f.path
+                                                p.startsWith(folder.folderPath)
+                                            }
                                             actionMenuFile = pseudoFolder
                                         },
                                         modifier = Modifier.size(32.dp)

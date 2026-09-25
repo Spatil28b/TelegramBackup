@@ -97,6 +97,7 @@ object OnDeviceOcrHelper {
     fun evaluateOcrMatch(query: String, ocrText: String): Pair<Boolean, String> {
         val rawQuery = query.trim().lowercase()
         val text = ocrText.lowercase()
+        val normalizedText = text.replace(Regex("[^a-z0-9\\s]"), " ")
         if (text.isBlank() || rawQuery.isBlank()) return Pair(false, "")
 
         // Extract core tokens by removing filler words ("image", "photo", "pic", etc.)
@@ -116,7 +117,10 @@ object OnDeviceOcrHelper {
         if (isIdCardQuery) {
             // Check for explicit ID card header or title
             val hasIdHeader = text.contains("identity card") || text.contains("identity") ||
-                    text.contains("id card") || text.contains("i.d. card") || text.contains("identification")
+                    text.contains("id card") || text.contains("i.d. card") || text.contains("identification") ||
+                    text.contains("i-card") || text.contains("i card") || text.contains("student id") ||
+                    text.contains("employee id") || text.contains("staff id") || text.contains("campus card") ||
+                    text.contains("smart card") || text.contains("pass")
 
             // Check for Aadhaar Card
             val isAadhaar = text.contains("uidai") || text.contains("aadhaar") || text.contains("aadhar") ||
@@ -147,7 +151,8 @@ object OnDeviceOcrHelper {
                     text.contains("reg no") || text.contains("dob") || text.contains("date of birth") ||
                     text.contains("blood group") || text.contains("valid upto") || text.contains("valid till") ||
                     text.contains("class") || text.contains("department") || text.contains("academic year") ||
-                    text.contains("enrollment") || text.contains("admission")
+                    text.contains("enrollment") || text.contains("admission") || text.contains("card no") ||
+                    text.contains("badge no") || text.contains("signature")
 
             if (hasIdHeader || (hasAcademicOrg && hasIdFields)) {
                 return Pair(true, "Found Student / College Identity Card")
@@ -161,7 +166,9 @@ object OnDeviceOcrHelper {
             }
 
             // General ID card with person name, photo ID, card number, or blood group
-            if (text.contains("card no") || (text.contains("blood group") && (text.contains("valid") || text.contains("signature")))) {
+            if (hasIdHeader || text.contains("card no") || text.contains("id no") ||
+                (text.contains("blood group") && (text.contains("valid") || text.contains("signature") || text.contains("name")))
+            ) {
                 return Pair(true, "Found Identity Card details")
             }
         }
@@ -172,23 +179,25 @@ object OnDeviceOcrHelper {
                 q.contains("dr") || q.contains("pharma")
 
         if (isMedicalQuery) {
-            val hasRx = text.contains("rx") || text.contains("℞") || text.contains("prescription")
+            val hasRx = text.contains("rx") || text.contains("℞") || text.contains("r/x") || text.contains("prescription") || text.contains("prescribed")
             val hasDoctorClinic = text.contains("dr.") || text.contains("dr ") || text.contains("doctor") ||
                     text.contains("hospital") || text.contains("clinic") || text.contains("dispensary") ||
                     text.contains("healthcare") || text.contains("m.b.b.s") || text.contains("mbbs") ||
-                    text.contains("m.d.") || text.contains("consultant") || text.contains("physician")
+                    text.contains("m.d.") || text.contains("consultant") || text.contains("physician") ||
+                    text.contains("nursing home") || text.contains("medical center")
 
-            val hasMedicineTerms = text.contains("patient") || text.contains("tablet") || text.contains("tab") ||
-                    text.contains("capsule") || text.contains("cap") || text.contains("syrup") || text.contains("syp") ||
-                    text.contains("inj") || text.contains("mg") || text.contains("ml") || text.contains("dosage") ||
-                    text.contains("od") || text.contains("bd") || text.contains("tds") || text.contains("sos") ||
-                    text.contains("before food") || text.contains("after food") || text.contains("diagnosis") ||
-                    text.contains("symptoms") || text.contains("pharmacy") || text.contains("bp:") || text.contains("pulse")
+            val medicineMarkers = listOf(
+                "patient", "tablet", "tab", "capsule", "cap", "syrup", "syp", "inj", "injection",
+                "dosage", "mg", "ml", "od", "bd", "tds", "sos", "before food", "after food",
+                "diagnosis", "symptoms", "pharmacy", "bp:", "pulse", "treatment", "advice",
+                "c/o", "h/o", "complaints", "follow up", "next visit", "investigation"
+            )
+            val matchedMedTerms = medicineMarkers.count { text.contains(it) }
 
-            if (hasRx || (hasDoctorClinic && hasMedicineTerms)) {
+            if (hasRx || (hasDoctorClinic && matchedMedTerms >= 1) || matchedMedTerms >= 2) {
                 return Pair(true, "Found medical doctor prescription or clinical note")
             }
-            if (hasDoctorClinic && (text.contains("patient name") || text.contains("age") || text.contains("opd"))) {
+            if (hasDoctorClinic && (text.contains("patient name") || text.contains("age") || text.contains("opd") || text.contains("ipd"))) {
                 return Pair(true, "Found medical hospital/doctor consultation slip")
             }
         }
@@ -201,16 +210,17 @@ object OnDeviceOcrHelper {
         if (isCollegeQuery) {
             val institutionalMarkers = listOf(
                 "college", "university", "institute", "campus", "school", "vidyalaya",
-                "academy", "polytechnic", "department of", "faculty of", "autonomous", "accredited"
+                "academy", "polytechnic", "department of", "faculty of", "autonomous", "accredited", "engineering"
             )
-            val hasInstMarker = institutionalMarkers.any { text.contains(it) }
+            val hasInstMarker = institutionalMarkers.any { text.contains(it) || normalizedText.contains(it) }
 
             // Extract distinctive non-category tokens (e.g. "xyz" in "xyz college")
             val categoryWords = setOf("college", "university", "institute", "campus", "school", "vidyalaya", "academy", "polytechnic", "engineering")
             val nameTokens = coreTokens.filter { it !in categoryWords && it.length >= 2 }
 
             if (nameTokens.isNotEmpty()) {
-                val matchesName = nameTokens.all { text.contains(it) }
+                val matchesName = nameTokens.all { text.contains(it) || normalizedText.contains(it) } ||
+                        nameTokens.any { (text.contains(it) || normalizedText.contains(it)) && it.length >= 3 }
                 if (matchesName && hasInstMarker) {
                     return Pair(true, "Found '${nameTokens.joinToString(" ")}' educational institution / college text")
                 }
@@ -234,7 +244,7 @@ object OnDeviceOcrHelper {
                 "heights", "enclave", "complex", "plaza", "chs", "co-op", "housing", "villas",
                 "wing", "block", "floor", "flat", "gate"
             )
-            val hasBuildingMarker = buildingMarkers.any { text.contains(it) }
+            val hasBuildingMarker = buildingMarkers.any { text.contains(it) || normalizedText.contains(it) }
 
             val buildingCategoryWords = setOf(
                 "society", "building", "apartment", "apartments", "residency", "tower",
@@ -243,7 +253,8 @@ object OnDeviceOcrHelper {
             val nameTokens = coreTokens.filter { it !in buildingCategoryWords && it.length >= 2 }
 
             if (nameTokens.isNotEmpty()) {
-                val matchesName = nameTokens.all { text.contains(it) }
+                val matchesName = nameTokens.all { text.contains(it) || normalizedText.contains(it) } ||
+                        nameTokens.any { (text.contains(it) || normalizedText.contains(it)) && it.length >= 3 }
                 if (matchesName && hasBuildingMarker) {
                     return Pair(true, "Found '${nameTokens.joinToString(" ")}' building / society signboard text")
                 }
@@ -317,13 +328,14 @@ object OnDeviceOcrHelper {
         // 10. Smart Multi-Token Match (Fallback for any custom user query)
         // Uses clean non-filler tokens (e.g. for "xyz building photo" -> ["xyz", "building"])
         if (coreTokens.isNotEmpty()) {
-            val matchedTokens = coreTokens.filter { text.contains(it) }
+            val matchedTokens = coreTokens.filter { text.contains(it) || normalizedText.contains(it) }
             val matchRatio = matchedTokens.size.toFloat() / coreTokens.size.toFloat()
 
-            // If all core words match, or >= 60% of multiple words match with at least 1 match
             if (matchedTokens.size == coreTokens.size) {
                 return Pair(true, "Matched text: \"${matchedTokens.joinToString(" ")}\"")
-            } else if (coreTokens.size >= 2 && matchRatio >= 0.5f && matchedTokens.isNotEmpty()) {
+            } else if (coreTokens.size == 2 && matchedTokens.isNotEmpty()) {
+                return Pair(true, "Matched: \"${matchedTokens.joinToString(" ")}\"")
+            } else if (coreTokens.size >= 3 && matchRatio >= 0.4f) {
                 return Pair(true, "Matched keywords: \"${matchedTokens.joinToString(" ")}\"")
             }
         }

@@ -74,9 +74,22 @@ class AppPrefs(private val context: Context) {
             }
         }
 
+    @Volatile
+    private var cachedStarredPaths: Set<String>? = null
+
     var starredFilePaths: Set<String>
-        get() = prefs.getStringSet("starred_file_paths", emptySet()) ?: emptySet()
-        set(value) = prefs.edit().putStringSet("starred_file_paths", value).apply()
+        get() {
+            var cached = cachedStarredPaths
+            if (cached == null) {
+                cached = prefs.getStringSet("starred_file_paths", emptySet())?.toSet() ?: emptySet()
+                cachedStarredPaths = cached
+            }
+            return cached
+        }
+        set(value) {
+            cachedStarredPaths = value.toSet()
+            prefs.edit().putStringSet("starred_file_paths", value).apply()
+        }
 
     fun toggleStarredFile(filePath: String): Boolean {
         val current = starredFilePaths.toMutableSet()
@@ -559,9 +572,22 @@ class AppPrefs(private val context: Context) {
         set(value) = prefs.edit().putBoolean("bottom_nav_haptic", value).apply()
 
     // Dedicated Safe Folder Vault Files Set
+    @Volatile
+    private var cachedSafeVaultPaths: Set<String>? = null
+
     var safeVaultFilePaths: Set<String>
-        get() = prefs.getStringSet("safe_vault_file_paths", emptySet()) ?: emptySet()
-        set(value) = prefs.edit().putStringSet("safe_vault_file_paths", value).apply()
+        get() {
+            var cached = cachedSafeVaultPaths
+            if (cached == null) {
+                cached = prefs.getStringSet("safe_vault_file_paths", emptySet())?.toSet() ?: emptySet()
+                cachedSafeVaultPaths = cached
+            }
+            return cached
+        }
+        set(value) {
+            cachedSafeVaultPaths = value.toSet()
+            prefs.edit().putStringSet("safe_vault_file_paths", value).apply()
+        }
 
     fun toggleSafeVaultFile(filePath: String): Boolean {
         val current = safeVaultFilePaths.toMutableSet()

@@ -28,6 +28,56 @@ object VersionChangelogProvider {
 
     private val releases = listOf(
         VersionRelease(
+            versionName = "2.4.8",
+            versionCode = 132,
+            releaseDate = "September 2026",
+            highlights = "Local Storage Crash Guard, 0ms Instant Browse Flow, Google Photos-Grade Visual OCR & Multimodal Search",
+            entries = listOf(
+                ChangelogEntry(
+                    Icons.Default.Storage,
+                    Color(0xFF10B981),
+                    "Local Storage Path Protection & Async Loading",
+                    "Eliminated crash when entering Local Storage via safe path canonicalization and asynchronous directory discovery on Android 11+.",
+                    "FIX"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Speed,
+                    TelegramBlue,
+                    "Instant Browse Navigation (0ms Lag)",
+                    "Added in-memory volatile caching for Starred and Safe Vault collections, eliminating continuous disk I/O and XML deserialization stutter.",
+                    "PERFORMANCE"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Badge,
+                    Color(0xFF8B5CF6),
+                    "Advanced ID & Document Recognition",
+                    "High-precision pattern matcher for college/student IDs, office badges, Aadhaar (UIDAI), Voter IDs, and Driving Licenses with signature and field validation.",
+                    "AI SEARCH"
+                ),
+                ChangelogEntry(
+                    Icons.Default.MedicalServices,
+                    Color(0xFFEC4899),
+                    "Medical Prescriptions & Doctor Slips",
+                    "Instant OCR detection for medical prescriptions (Rx/℞), clinic consultation notes, hospital OPD/IPD slips, and medicine dosage markers.",
+                    "OCR ENGINE"
+                ),
+                ChangelogEntry(
+                    Icons.Default.LocationCity,
+                    Color(0xFFF59E0B),
+                    "Colleges, Societies & Buildings AI Recognition",
+                    "Deep recognition for universities, campuses, residential societies, apartment complexes, and towers via OCR signboards and Gemini 2.0 Vision.",
+                    "VISION"
+                ),
+                ChangelogEntry(
+                    Icons.Default.AutoAwesome,
+                    Color(0xFF06B6D4),
+                    "Google Photos-Grade 640px Vision Reasoning",
+                    "Upgraded multimodal candidate resolution to 640px @ 80% JPEG with 48-candidate pool and persistent local AI tag caching.",
+                    "AI SEARCH"
+                )
+            )
+        ),
+        VersionRelease(
             versionName = "2.4.7",
             versionCode = 131,
             releaseDate = "September 2026",
