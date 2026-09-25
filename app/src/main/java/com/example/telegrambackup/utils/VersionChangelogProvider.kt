@@ -28,6 +28,35 @@ object VersionChangelogProvider {
 
     private val releases = listOf(
         VersionRelease(
+            versionName = "2.4.2",
+            versionCode = 126,
+            releaseDate = "September 2026",
+            highlights = "Dynamic Google Gemini 2.0/2.5 Flash Auto-Discovery, Self-Healing Model Failover & Deprecated Model Migration",
+            entries = listOf(
+                ChangelogEntry(
+                    Icons.Default.AutoAwesome,
+                    Color(0xFF8B5CF6),
+                    "Google ModelService Auto-Discovery",
+                    "Dynamic detection of active models via Google's ModelService API, eliminating HTTP 404 connection errors from deprecated models like gemini-1.5-flash.",
+                    "AI ENGINE"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Bolt,
+                    TelegramBlue,
+                    "Gemini 2.0 & 2.5 Flash Engine",
+                    "Upgraded default vision intelligence engine to Google's latest Gemini 2.0 / 2.5 Flash architectures for sub-second responses and superior OCR precision.",
+                    "PERFORMANCE"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Build,
+                    TelegramEmerald,
+                    "Self-Healing Model Fallover",
+                    "Automatic runtime fallback and retry if any requested model is sunset or unsupported, ensuring 100% uninterrupted Ask Photo Q&A.",
+                    "STABILITY"
+                )
+            )
+        ),
+        VersionRelease(
             versionName = "2.4.1",
             versionCode = 125,
             releaseDate = "September 2026",

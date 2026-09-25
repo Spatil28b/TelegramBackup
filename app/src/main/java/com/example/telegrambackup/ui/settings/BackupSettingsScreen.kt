@@ -3674,11 +3674,11 @@ fun BackupSettingsScreen(
                                         }
 
                                         scope.launch {
-                                            val res = AiVisionManager.testApiKey(firstKey)
+                                            val res = AiVisionManager.testApiKey(firstKey, selectedAiModel)
                                             isTestingKey = false
                                             if (res.isSuccess) {
                                                 testResultSuccess = true
-                                                testResultText = "✅ Connected successfully! (${res.getOrNull()?.take(60)}...)"
+                                                testResultText = "✅ ${res.getOrNull()}"
                                                 prefs.geminiApiKeys = geminiKeysInput.trim()
                                             } else {
                                                 testResultSuccess = false
@@ -3760,8 +3760,10 @@ fun BackupSettingsScreen(
                     ) {
                         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                             listOf(
-                                "gemini-1.5-flash" to ("Gemini 1.5 Flash (Recommended)" to "Fastest responses (1-2s), generous free rate limits & low latency"),
-                                "gemini-1.5-pro" to ("Gemini 1.5 Pro" to "High-complexity visual reasoning, longer documents & table parsing")
+                                "auto" to ("Auto-Detect Best Model (Recommended)" to "Automatically discovers & connects to the active Gemini vision model supported by your key"),
+                                "gemini-2.0-flash" to ("Gemini 2.0 Flash" to "Fastest responses (1-2s), latest Google Gemini 2.0 vision engine"),
+                                "gemini-2.5-flash" to ("Gemini 2.5 Flash" to "Next-generation multimodal reasoning and document parsing"),
+                                "gemini-2.0-pro-exp-02-05" to ("Gemini 2.0 Pro" to "High-complexity visual reasoning, complex tables & multi-page receipts")
                             ).forEach { (modelId, info) ->
                                 val (title, subtitle) = info
                                 val isSelected = selectedAiModel == modelId

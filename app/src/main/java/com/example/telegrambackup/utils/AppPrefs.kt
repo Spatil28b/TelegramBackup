@@ -581,7 +581,10 @@ class AppPrefs(private val context: Context) {
         set(value) = prefs.edit().putString("gemini_api_keys", value).apply()
 
     var activeAiModel: String
-        get() = prefs.getString("active_ai_model", "gemini-1.5-flash") ?: "gemini-1.5-flash"
+        get() {
+            val saved = prefs.getString("active_ai_model", "auto") ?: "auto"
+            return if (saved.contains("1.5")) "auto" else saved
+        }
         set(value) = prefs.edit().putString("active_ai_model", value).apply()
 
     var isAiDocumentScannerEnabled: Boolean

@@ -15,6 +15,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
@@ -41,21 +42,117 @@ object AiVisionManager {
 
     data class PresetPrompt(val title: String, val prompt: String)
 
+    private val modelCache = ConcurrentHashMap<String, String>()
+
     /**
-     * Verifies whether an API key is functional by calling the Gemini text endpoint.
+     * Queries Google's ModelService.ListModels endpoint to discover active models supporting generateContent for this key.
      */
-    suspend fun testApiKey(apiKey: String, model: String = "gemini-1.5-flash"): Result<String> = withContext(Dispatchers.IO) {
-        if (apiKey.isBlank()) {
+    suspend fun fetchAvailableModels(apiKey: String): Result<List<String>> = withContext(Dispatchers.IO) {
+        val trimmedKey = apiKey.trim()
+        if (trimmedKey.isBlank()) {
             return@withContext Result.failure(IllegalArgumentException("API Key cannot be blank"))
         }
 
         try {
-            val endpoint = "https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent?key=${apiKey.trim()}"
+            val endpoint = "https://generativelanguage.googleapis.com/v1beta/models?key=$trimmedKey"
+            val request = Request.Builder().url(endpoint).get().build()
+            val response = HttpClientProvider.client.newCall(request).execute()
+            val responseText = response.body?.string() ?: ""
+
+            if (!response.isSuccessful) {
+                val errorMsg = try {
+                    val errJson = JSONObject(responseText)
+                    errJson.optJSONObject("error")?.optString("message", "HTTP ${response.code}") ?: "HTTP ${response.code}"
+                } catch (_: Exception) {
+                    "HTTP ${response.code}: ${response.message}"
+                }
+                return@withContext Result.failure(Exception(errorMsg))
+            }
+
+            val respJson = JSONObject(responseText)
+            val modelsArray = respJson.optJSONArray("models") ?: JSONArray()
+            val supported = mutableListOf<String>()
+
+            for (i in 0 until modelsArray.length()) {
+                val modelObj = modelsArray.optJSONObject(i) ?: continue
+                val rawName = modelObj.optString("name", "")
+                val cleanName = rawName.removePrefix("models/")
+                val methods = modelObj.optJSONArray("supportedGenerationMethods")
+                var canGenerate = false
+                if (methods != null) {
+                    for (j in 0 until methods.length()) {
+                        if (methods.optString(j) == "generateContent") {
+                            canGenerate = true
+                            break
+                        }
+                    }
+                }
+                if (canGenerate && cleanName.isNotBlank()) {
+                    supported.add(cleanName)
+                }
+            }
+
+            if (supported.isEmpty()) {
+                Result.failure(Exception("No models supporting generateContent found for this API key."))
+            } else {
+                Result.success(supported)
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Selects the most optimal active model from available models or based on user preference.
+     */
+    fun selectBestModel(availableModels: List<String>, preferredModel: String? = null): String {
+        val preferred = preferredModel?.removePrefix("models/")?.trim()
+        if (!preferred.isNullOrBlank() && preferred != "auto" && !preferred.contains("1.5") && availableModels.contains(preferred)) {
+            return preferred
+        }
+
+        // Priority heuristics for fast multimodal vision:
+        return availableModels.firstOrNull { it.contains("2.5-flash", ignoreCase = true) }
+            ?: availableModels.firstOrNull { it.contains("2.0-flash", ignoreCase = true) }
+            ?: availableModels.firstOrNull { it.contains("flash", ignoreCase = true) && !it.contains("1.5") }
+            ?: availableModels.firstOrNull { it.contains("flash", ignoreCase = true) }
+            ?: availableModels.firstOrNull { it.contains("2.5-pro", ignoreCase = true) }
+            ?: availableModels.firstOrNull { it.contains("2.0-pro", ignoreCase = true) }
+            ?: availableModels.firstOrNull { it.contains("pro", ignoreCase = true) }
+            ?: availableModels.firstOrNull()
+            ?: "gemini-2.0-flash"
+    }
+
+    /**
+     * Verifies whether an API key is functional by calling the Gemini endpoint.
+     * Uses dynamic model discovery to avoid broken/deprecated hardcoded model names.
+     */
+    suspend fun testApiKey(apiKey: String, model: String = "auto"): Result<String> = withContext(Dispatchers.IO) {
+        val trimmedKey = apiKey.trim()
+        if (trimmedKey.isBlank()) {
+            return@withContext Result.failure(IllegalArgumentException("API Key cannot be blank"))
+        }
+
+        // Step 1: Query available models for this specific API key
+        val modelsResult = fetchAvailableModels(trimmedKey)
+        val availableModels = modelsResult.getOrNull()
+        if (modelsResult.isFailure || availableModels.isNullOrEmpty()) {
+            val err = modelsResult.exceptionOrNull()?.message ?: "Could not verify models for API key"
+            return@withContext Result.failure(Exception("Connection failed ($err)"))
+        }
+
+        // Step 2: Select best working model
+        val targetModel = selectBestModel(availableModels, if (model == "auto" || model.contains("1.5")) null else model)
+        val cleanModel = targetModel.removePrefix("models/")
+
+        // Step 3: Test generateContent call with the discovered model
+        try {
+            val endpoint = "https://generativelanguage.googleapis.com/v1beta/models/$cleanModel:generateContent?key=$trimmedKey"
             val requestJson = JSONObject().apply {
                 val contents = JSONArray().apply {
                     val contentObj = JSONObject().apply {
                         val parts = JSONArray().apply {
-                            put(JSONObject().apply { put("text", "Hello, please confirm in one sentence that this API connection is working.") })
+                            put(JSONObject().apply { put("text", "Hello! Please reply in one short sentence confirming API connection is working.") })
                         }
                         put("parts", parts)
                     }
@@ -81,13 +178,16 @@ object AiVisionManager {
                 return@withContext Result.failure(Exception("Connection failed ($errorMsg)"))
             }
 
+            // Cache discovered working model
+            modelCache[trimmedKey] = cleanModel
+
             val respJson = JSONObject(responseText)
             val candidates = respJson.optJSONArray("candidates")
             val firstCandidate = candidates?.optJSONObject(0)
             val parts = firstCandidate?.optJSONObject("content")?.optJSONArray("parts")
-            val replyText = parts?.optJSONObject(0)?.optString("text", "Connection Successful!").orEmpty()
+            val replyText = parts?.optJSONObject(0)?.optString("text", "Ready").orEmpty().trim()
 
-            Result.success(replyText.ifBlank { "Connection Successful!" })
+            Result.success("Connected via $cleanModel! $replyText")
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -161,7 +261,7 @@ object AiVisionManager {
         val base64Image = prepareOptimizedImageBase64(imageFile)
             ?: return@withContext Result.failure(Exception("Could not process image for AI vision."))
 
-        val modelName = prefs.activeAiModel.ifBlank { "gemini-1.5-flash" }
+        val prefModel = prefs.activeAiModel.ifBlank { "auto" }
         var lastError: Exception? = null
 
         // Try available keys starting from current index
@@ -171,6 +271,9 @@ object AiVisionManager {
             val apiKey = keyList[keyIndex]
 
             try {
+                var modelName = modelCache[apiKey]
+                    ?: if (prefModel == "auto" || prefModel.contains("1.5")) "gemini-2.0-flash" else prefModel.removePrefix("models/")
+
                 val endpoint = "https://generativelanguage.googleapis.com/v1beta/models/$modelName:generateContent?key=$apiKey"
 
                 val requestJson = JSONObject().apply {
@@ -210,8 +313,26 @@ object AiVisionManager {
                     .post(requestBody)
                     .build()
 
-                val response = HttpClientProvider.client.newCall(request).execute()
-                val responseText = response.body?.string() ?: ""
+                var response = HttpClientProvider.client.newCall(request).execute()
+                var responseText = response.body?.string() ?: ""
+
+                // Auto-healing: If model not found (404) or unsupported, dynamically discover working model
+                if (response.code == 404 || (!response.isSuccessful && (responseText.contains("not found", ignoreCase = true) || responseText.contains("not supported", ignoreCase = true)))) {
+                    Log.w(TAG, "Model '$modelName' failed with ${response.code}. Auto-discovering supported models for key #${keyIndex + 1}...")
+                    val discovery = fetchAvailableModels(apiKey)
+                    val liveModels = discovery.getOrNull()
+                    if (!liveModels.isNullOrEmpty()) {
+                        val resolvedModel = selectBestModel(liveModels, null)
+                        modelCache[apiKey] = resolvedModel
+                        prefs.activeAiModel = resolvedModel
+                        Log.i(TAG, "Auto-switched model to active model: $resolvedModel")
+
+                        val retryEndpoint = "https://generativelanguage.googleapis.com/v1beta/models/$resolvedModel:generateContent?key=$apiKey"
+                        val retryRequest = Request.Builder().url(retryEndpoint).post(requestBody).build()
+                        response = HttpClientProvider.client.newCall(retryRequest).execute()
+                        responseText = response.body?.string() ?: ""
+                    }
+                }
 
                 if (response.code == 429 || response.code == 403) {
                     Log.w(TAG, "Key #${keyIndex + 1} hit rate limit / quota (${response.code}). Failing over to next key...")
