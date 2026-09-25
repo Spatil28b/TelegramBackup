@@ -76,6 +76,7 @@ import com.example.telegrambackup.ui.main.MonthlyArchiveScreen
 import com.example.telegrambackup.ui.main.GuideScreen
 import com.example.telegrambackup.ui.main.LocalFilesScreen
 import com.example.telegrambackup.ui.main.LiveProgressScreen
+import com.example.telegrambackup.ui.main.VaultHealthScreen
 import com.example.telegrambackup.ui.settings.BackupSettingsScreen
 import com.example.telegrambackup.utils.AppPrefs
 import com.example.telegrambackup.utils.BackupProgressTracker
@@ -114,7 +115,8 @@ enum class MainTab {
     EXCEPTIONS,
     ACTIVITY,
     SETTINGS,
-    PROFILE
+    PROFILE,
+    VAULT_HEALTH
 }
 
 class MainActivity : FragmentActivity() {
@@ -179,6 +181,7 @@ private fun getTabNavigationIndex(tab: MainTab): Int = when (tab) {
     MainTab.GUIDE -> 9
     MainTab.SETTINGS -> 10
     MainTab.PROFILE -> 11
+    MainTab.VAULT_HEALTH -> 12
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -424,23 +427,7 @@ fun MainApp(
             displayUserAvatarUri = com.example.telegrambackup.utils.ProfileManager.getAvatarUri(context)?.toString() ?: prefs.profilePictureUri
             scope.launch(Dispatchers.IO) {
                 try {
-                    val db = AppDatabase.getDatabase(context)
-                    db.uploadedFileDao().sanitizeCorruptedTimestamps(System.currentTimeMillis())
-                    val legacyFiles = db.uploadedFileDao().getAllRawFiles().filter {
-                        it.timestamp == 1784030400000L || it.timestamp < 946684800000L
-                    }
-                    if (legacyFiles.isNotEmpty()) {
-                        val fixed = legacyFiles.map { f ->
-                            val local = FileViewerHelper.findLocalFile(f.path, f.fileName)
-                            val ts = if (local != null && local.exists() && local.lastModified() > 946684800000L) {
-                                local.lastModified()
-                            } else {
-                                System.currentTimeMillis()
-                            }
-                            f.copy(timestamp = ts)
-                        }
-                        db.uploadedFileDao().insertAll(fixed)
-                    }
+                    com.example.telegrambackup.utils.DateRecoveryHelper.recoverAuthenticDates(context)
                 } catch (_: Exception) {}
                 try { SettingsDbManager.fetchAndSyncSettingsOnAppOpen(context) } catch (_: Exception) {}
                 try { SettingsDbManager.restoreCloudFileIndexToRoom(context) } catch (_: Exception) {}
@@ -743,6 +730,19 @@ fun MainApp(
                             colors = drawerItemColors
                         )
 
+                        NavigationDrawerItem(
+                            icon = { Icon(Icons.Default.HealthAndSafety, contentDescription = null) },
+                            label = { Text("Vault Health & Recovery", fontWeight = FontWeight.Medium) },
+                            selected = selectedTab == MainTab.VAULT_HEALTH,
+                            onClick = {
+                                triggerHapticFeedback(context, haptic)
+                                selectedTab = MainTab.VAULT_HEALTH
+                                scope.launch { drawerState.close() }
+                            },
+                            shape = CircleShape,
+                            colors = drawerItemColors
+                        )
+
                         Spacer(modifier = Modifier.height(8.dp))
                         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f), modifier = Modifier.padding(horizontal = 12.dp))
                         Spacer(modifier = Modifier.height(4.dp))
@@ -950,6 +950,7 @@ fun MainApp(
                                         selectedTab == MainTab.TRASH -> "Trash Bin"
                                         selectedTab == MainTab.EXCEPTIONS -> "Backup Exceptions"
                                         selectedTab == MainTab.ACTIVITY -> "Activity Log"
+                                        selectedTab == MainTab.VAULT_HEALTH -> "Vault Health & Recovery"
                                         selectedTab == MainTab.SETTINGS -> "Settings"
                                         selectedTab == MainTab.PROFILE -> "My Profile"
                                         else -> "Files"
@@ -1083,6 +1084,8 @@ fun MainApp(
                                 onQuickActionClick = { catIndex ->
                                     if (catIndex == -1) {
                                         selectedTab = MainTab.TRASH
+                                    } else if (catIndex == -2) {
+                                        selectedTab = MainTab.VAULT_HEALTH
                                     } else {
                                         explorerInitialTab = 2
                                         targetCategoryTitle = when (catIndex) {
@@ -1142,6 +1145,12 @@ fun MainApp(
                                 onProfileUpdated = { newName, newAvatar ->
                                     displayUserName = newName
                                     displayUserAvatarUri = newAvatar
+                                }
+                            )
+                            MainTab.VAULT_HEALTH -> VaultHealthScreen(
+                                onNavigateToProgress = { selectedTab = MainTab.PROGRESS },
+                                onFileClick = { file ->
+                                    FileViewerHelper.openFile(context, file.path, file.fileName, file.telegramFileId)
                                 }
                             )
                         }

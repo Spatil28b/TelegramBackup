@@ -28,6 +28,49 @@ object VersionChangelogProvider {
 
     private val releases = listOf(
         VersionRelease(
+            versionName = "2.3.3",
+            versionCode = 117,
+            releaseDate = "September 2026",
+            highlights = "Vault Health & File Integrity Hub, Incomplete Chunk Diagnosis & Historical Date Recovery",
+            entries = listOf(
+                ChangelogEntry(
+                    Icons.Default.HealthAndSafety,
+                    TelegramBlue,
+                    "Vault Health & Recovery Hub",
+                    "Brand-new dedicated section in Navigation Drawer and Clean Dashboard to inspect 100% of your cloud files with health score and diagnostic indicators.",
+                    "NEW HUB"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Warning,
+                    Color(0xFFF59E0B),
+                    "Incomplete Chunk Diagnosis & Inspector",
+                    "Instantly identifies files with missing or incomplete chunks with a visual chunk breakdown sheet showing all parts, file IDs, and upload status.",
+                    "DIAGNOSTICS"
+                ),
+                ChangelogEntry(
+                    Icons.Default.DateRange,
+                    TelegramEmerald,
+                    "Authentic Capture Date Recovery",
+                    "Permanently fixed dates shifting to recent days by accurately parsing capture dates from Camera, WhatsApp, Screenshot filenames and local files.",
+                    "DATE HEALING"
+                ),
+                ChangelogEntry(
+                    Icons.Default.AutoFixHigh,
+                    Color(0xFF8B5CF6),
+                    "One-Tap Auto-Repair All",
+                    "Restores authentic dates across your entire vault and syncs local chunk upload mappings to the cloud database with one tap.",
+                    "REPAIR TOOL"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Upload,
+                    Color(0xFF10B981),
+                    "Resume Incomplete Uploads",
+                    "Identifies files present on device storage that have missing chunks in the cloud, allowing 1-tap background upload resumption.",
+                    "RESUME"
+                )
+            )
+        ),
+        VersionRelease(
             versionName = "2.3.2",
             versionCode = 116,
             releaseDate = "September 2026",

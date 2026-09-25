@@ -381,6 +381,35 @@ fun DashboardHomeScreen(
         }
 
         // =========================================================================
+        // 0. VAULT HEALTH & CHUNK INTEGRITY (DIAGNOSTIC & RECOVERY)
+        // =========================================================================
+        item {
+            GoogleCleanCard(
+                icon = Icons.Default.HealthAndSafety,
+                iconTint = TelegramBlue,
+                title = "Vault Health & File Integrity",
+                subtitle = "Diagnose incomplete chunks, recover dates & verify files",
+                actionLabel = "Inspect Vault",
+                actionColor = TelegramBlue,
+                isCompleted = false,
+                isLoading = false,
+                previewContent = {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        JunkTypeChip(Icons.Default.Warning, "Chunks", Color(0xFFF59E0B), Modifier.weight(1f))
+                        JunkTypeChip(Icons.Default.DateRange, "Dates", TelegramBlue, Modifier.weight(1f))
+                        JunkTypeChip(Icons.Default.CheckCircle, "Integrity", TelegramEmerald, Modifier.weight(1f))
+                    }
+                },
+                onClick = {
+                    onQuickActionClick(-2)
+                }
+            )
+        }
+
+        // =========================================================================
         // 1. JUNK FILES CLEANER CARD (Google Files Signature Card)
         // =========================================================================
         item {
