@@ -215,7 +215,7 @@ fun BackupExplorerScreen(
         }
     }
 
-    fun refreshCloudData() {
+    fun refreshCloudData(forceRemoteSync: Boolean = false) {
         scope.launch {
             val localFiles = withContext(Dispatchers.IO) {
                 try {
@@ -229,17 +229,20 @@ fun BackupExplorerScreen(
                 isDataLoading = false
             }
 
-            withContext(Dispatchers.IO) {
-                try {
-                    SettingsDbManager.restoreCloudFileIndexToRoom(context)
-                    val syncedFiles = database.uploadedFileDao().getAllFiles()
-                    withContext(Dispatchers.Main) {
-                        cloudFileList = syncedFiles
-                        isDataLoading = false
-                    }
-                } catch (_: Exception) {
-                    withContext(Dispatchers.Main) {
-                        isDataLoading = false
+            // Only perform heavy remote database re-indexing if local database is completely empty or explicitly requested
+            if (localFiles.isEmpty() || forceRemoteSync) {
+                withContext(Dispatchers.IO) {
+                    try {
+                        SettingsDbManager.restoreCloudFileIndexToRoom(context)
+                        val syncedFiles = database.uploadedFileDao().getAllFiles()
+                        withContext(Dispatchers.Main) {
+                            cloudFileList = syncedFiles
+                            isDataLoading = false
+                        }
+                    } catch (_: Exception) {
+                        withContext(Dispatchers.Main) {
+                            isDataLoading = false
+                        }
                     }
                 }
             }
@@ -247,7 +250,7 @@ fun BackupExplorerScreen(
     }
 
     LaunchedEffect(Unit) {
-        refreshCloudData()
+        refreshCloudData(forceRemoteSync = false)
     }
 
     val personalFileUploadLauncher = rememberLauncherForActivityResult(contract = ActivityResultContracts.GetMultipleContents()) { uris: List<Uri> ->
@@ -517,11 +520,22 @@ fun BackupExplorerScreen(
             val parentPath = File(normPath).parent ?: "Internal Storage"
             val normalizedParent = parentPath.replace("\\", "/")
 
-            if (currentFolderDirectoryPath == "Internal Storage") {
+            if (currentFolderDirectoryPath == "Internal Storage" || currentFolderDirectoryPath == "Internal Storage/Phone Folders") {
                 val relative = normalizedParent.removePrefix("Internal Storage").removePrefix("/")
                 val topDirName = if (relative.isEmpty()) "General Storage" else relative.split("/").first()
-                val fullTopPath = "Internal Storage/$topDirName"
+                val fullTopPath = "Internal Storage/Phone Folders/$topDirName"
                 folderMap.getOrPut(fullTopPath) { mutableListOf() }.add(file)
+            } else if (currentFolderDirectoryPath.startsWith("Internal Storage/Phone Folders/")) {
+                val subRelative = currentFolderDirectoryPath.removePrefix("Internal Storage/Phone Folders/").removePrefix("/")
+                val targetPrefix = "Internal Storage/$subRelative"
+                if (normalizedParent.startsWith(targetPrefix) && normalizedParent != targetPrefix) {
+                    val rel = normalizedParent.removePrefix(targetPrefix).removePrefix("/")
+                    val subDirName = rel.split("/").firstOrNull() ?: ""
+                    if (subDirName.isNotEmpty()) {
+                        val fullSubPath = "$currentFolderDirectoryPath/$subDirName"
+                        folderMap.getOrPut(fullSubPath) { mutableListOf() }.add(file)
+                    }
+                }
             } else if (normalizedParent.startsWith(currentFolderDirectoryPath) && normalizedParent != currentFolderDirectoryPath) {
                 val relative = normalizedParent.removePrefix(currentFolderDirectoryPath).removePrefix("/")
                 val subDirName = relative.split("/").firstOrNull() ?: ""
@@ -560,7 +574,21 @@ fun BackupExplorerScreen(
         } else if (currentFolderDirectoryPath == "Internal Storage/Private Safe Vault") {
             cloudFileList.filter { prefs.isSafeVaultFile(it.path) || it.path.contains("Safe") || it.path.contains(".private") }
         } else if (currentFolderDirectoryPath == "Internal Storage/Phone Folders" || currentFolderDirectoryPath == "Internal Storage") {
-            cloudFileList.filter { !prefs.isSafeVaultFile(it.path) }
+            cloudFileList.filter { f ->
+                if (prefs.isSafeVaultFile(f.path)) return@filter false
+                val norm = normalizePath(f.path)
+                val parent = (File(norm).parent ?: "Internal Storage").replace("\\", "/")
+                parent == "Internal Storage"
+            }
+        } else if (currentFolderDirectoryPath.startsWith("Internal Storage/Phone Folders/")) {
+            val subRelative = currentFolderDirectoryPath.removePrefix("Internal Storage/Phone Folders/").removePrefix("/")
+            val targetPrefix = "Internal Storage/$subRelative"
+            cloudFileList.filter { f ->
+                if (prefs.isSafeVaultFile(f.path)) return@filter false
+                val norm = normalizePath(f.path)
+                val parent = (File(norm).parent ?: "Internal Storage").replace("\\", "/")
+                parent == targetPrefix || norm.startsWith(targetPrefix)
+            }
         } else {
             cloudFileList.filter { f ->
                 if (prefs.isSafeVaultFile(f.path)) return@filter false

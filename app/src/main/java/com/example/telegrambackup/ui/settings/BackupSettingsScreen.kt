@@ -820,21 +820,12 @@ fun BackupSettingsScreen(
                 workManager.enqueueUniquePeriodicWork("SmartPeriodicBackupWork", policy, req)
             }
             2 -> {
-                // Night Express: schedule for target hour with initial delay
-                val now = Calendar.getInstance()
-                val target = Calendar.getInstance().apply {
-                    set(Calendar.HOUR_OF_DAY, nightBackupHour)
-                    set(Calendar.MINUTE, 0)
-                    set(Calendar.SECOND, 0)
-                    if (before(now)) add(Calendar.DAY_OF_YEAR, 1)
-                }
-                val delayMs = target.timeInMillis - now.timeInMillis
-                val constraints = Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()
-                val req = PeriodicWorkRequestBuilder<BackupWorker>(24, TimeUnit.HOURS)
-                    .setInitialDelay(delayMs, TimeUnit.MILLISECONDS)
-                    .setConstraints(constraints).build()
-                workManager.enqueueUniquePeriodicWork("SmartPeriodicBackupWork", policy, req)
+                // Strict Night Express: Scheduled via AlarmManager exact wakeup (Doze-immune)
+                com.example.telegrambackup.utils.NightBackupScheduler.scheduleStrictNightBackup(context)
             }
+        }
+        if (smartBackupMode != 2) {
+            com.example.telegrambackup.utils.NightBackupScheduler.cancelNightBackup(context)
         }
     }
 
@@ -2946,7 +2937,7 @@ fun BackupSettingsScreen(
                     )
 
                     Text(
-                        "CHOOSE YOUR THEME (TOP 6 ESSENTIAL STYLES)",
+                        "CHOOSE YOUR THEME (MATERIAL YOU & VAULT STYLES)",
                         style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, letterSpacing = 0.8.sp)
                     )
 
@@ -2988,6 +2979,24 @@ fun BackupSettingsScreen(
                                                 verticalAlignment = Alignment.CenterVertically,
                                                 modifier = Modifier.padding(start = 6.dp)
                                             ) {
+                                                if (themeMode == AppThemeMode.DYNAMIC_WALLPAPER) {
+                                                    Surface(
+                                                        shape = RoundedCornerShape(6.dp),
+                                                        color = Color(0xFFA855F7).copy(alpha = 0.15f)
+                                                    ) {
+                                                        Text(
+                                                            text = "Monet",
+                                                            style = MaterialTheme.typography.labelSmall.copy(
+                                                                color = Color(0xFFC084FC),
+                                                                fontWeight = FontWeight.Bold,
+                                                                fontSize = 10.5.sp
+                                                            ),
+                                                            maxLines = 1,
+                                                            softWrap = false,
+                                                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.5.dp)
+                                                        )
+                                                    }
+                                                }
                                                 if (themeMode == AppThemeMode.SYSTEM) {
                                                     Surface(
                                                         shape = RoundedCornerShape(6.dp),

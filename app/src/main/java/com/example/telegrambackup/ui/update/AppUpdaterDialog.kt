@@ -531,11 +531,11 @@ fun AppUpdaterDialog(
                                 .build()
 
                             val candidateUrls = mutableListOf<String>()
-                            // Prioritize server proxy endpoint which provides pre-signed CDN redirect without auth issues
-                            if (versionInfo.downloadUrl.isNotBlank()) {
+                            // 1. Primary: Server Proxy pre-signed CDN resolver (immune to auth mismatches & GitHub release private 404s)
+                            candidateUrls.add("https://telegram-backup-backend.vercel.app/api/app/download-latest")
+                            if (versionInfo.downloadUrl.isNotBlank() && !candidateUrls.contains(versionInfo.downloadUrl)) {
                                 candidateUrls.add(versionInfo.downloadUrl)
                             }
-                            candidateUrls.add("https://telegram-backup-backend.vercel.app/api/app/download-latest")
 
                             // Query GitHub Releases API for direct asset download URLs
                             try {
@@ -571,9 +571,9 @@ fun AppUpdaterDialog(
                                 }
                             } catch (_: Exception) {}
 
-                            candidateUrls.add("https://github.com/sid-codes28/telegram_backup_backend/releases/download/v${versionInfo.versionName}/TelegramBackup-v${versionInfo.versionName}.apk")
+                            candidateUrls.add("https://raw.githubusercontent.com/sid-codes28/telegram_backup_backend/main/Releases/TelegramBackup-latest.apk")
                             candidateUrls.add("https://github.com/sid-codes28/telegram_backup_backend/releases/download/v${versionInfo.versionName}/TelegramBackup-latest.apk")
-                            candidateUrls.add("https://github.com/sid-codes28/telegram_backup_backend/raw/main/Releases/TelegramBackup-latest.apk")
+                            candidateUrls.add("https://github.com/sid-codes28/telegram_backup_backend/releases/download/v${versionInfo.versionName}/TelegramBackup-v${versionInfo.versionName}.apk")
 
                             val distinctUrls = candidateUrls.distinct()
                             var downloadSuccess = false
@@ -582,7 +582,7 @@ fun AppUpdaterDialog(
                             val updateDir = File(context.cacheDir, "updates").apply { mkdirs() }
                             val updateFile = File(updateDir, "TelegramBackup_v${versionInfo.versionName}.apk")
 
-                            for ((index, targetUrl) in distinctUrls.withIndex()) {
+                            for ((index, rawTargetUrl) in distinctUrls.withIndex()) {
                                 try {
                                     withContext(Dispatchers.Main) {
                                         downloadStatusText = if (index == 0) "Connecting to update server..." else "Trying fallback source (${index + 1}/${distinctUrls.size})..."
@@ -592,19 +592,45 @@ fun AppUpdaterDialog(
                                         updateFile.delete()
                                     }
 
-                                    val req = Request.Builder()
-                                        .url(targetUrl)
-                                        .header("User-Agent", "TelegramBackup-Updater/2.2")
-                                        .apply {
-                                            // Only send Authorization header to api.github.com asset API endpoints
-                                            // Sending Authorization to public github.com/releases/download/... URLs causes 404
-                                            if (targetUrl.contains("api.github.com/repos") && targetUrl.contains("/assets/")) {
-                                                header("Authorization", "Bearer $ghToken")
-                                                header("Accept", "application/octet-stream")
-                                            }
-                                        }
-                                        .build()
+                                    var effectiveUrl = rawTargetUrl
+                                    val effectiveHeaders = mutableMapOf<String, String>()
 
+                                    // For GitHub Asset API endpoints, resolve the 302 redirect manually to prevent header pollution on S3/Azure Blob
+                                    if (rawTargetUrl.contains("api.github.com/repos") && rawTargetUrl.contains("/assets/")) {
+                                        try {
+                                            val nonRedirectClient = client.newBuilder().followRedirects(false).build()
+                                            val probeReq = Request.Builder()
+                                                .url(rawTargetUrl)
+                                                .header("User-Agent", "TelegramBackup-Updater/2.2")
+                                                .header("Authorization", "Bearer $ghToken")
+                                                .header("Accept", "application/octet-stream")
+                                                .build()
+                                            val probeRes = nonRedirectClient.newCall(probeReq).execute()
+                                            val redirectLoc = probeRes.header("Location")
+                                            probeRes.close()
+                                            if (!redirectLoc.isNullOrBlank()) {
+                                                effectiveUrl = redirectLoc
+                                            } else {
+                                                effectiveHeaders["Authorization"] = "Bearer $ghToken"
+                                                effectiveHeaders["Accept"] = "application/octet-stream"
+                                            }
+                                        } catch (_: Exception) {
+                                            effectiveHeaders["Authorization"] = "Bearer $ghToken"
+                                            effectiveHeaders["Accept"] = "application/octet-stream"
+                                        }
+                                    } else if (rawTargetUrl.contains("raw.githubusercontent.com")) {
+                                        effectiveHeaders["Authorization"] = "Bearer $ghToken"
+                                    }
+
+                                    val reqBuilder = Request.Builder()
+                                        .url(effectiveUrl)
+                                        .header("User-Agent", "TelegramBackup-Updater/2.2")
+
+                                    effectiveHeaders.forEach { (k, v) ->
+                                        reqBuilder.header(k, v)
+                                    }
+
+                                    val req = reqBuilder.build()
                                     val res = client.newCall(req).execute()
                                     val body = res.body
 

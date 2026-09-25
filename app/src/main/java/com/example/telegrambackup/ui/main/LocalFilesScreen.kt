@@ -187,8 +187,15 @@ fun LocalFilesScreen() {
                                 .onEnter { subDir ->
                                     try {
                                         val name = subDir.name.lowercase()
-                                        !name.startsWith(".") && name != "android" && name != "cache" && name != "tmp" && name != "thumbnails" && name != ".thumbnails" && name != "node_modules"
-                                    } catch (e: Exception) { false }
+                                        val path = subDir.absolutePath
+                                        if (name.startsWith(".") || name == "android" || name == "cache" || name == "tmp" ||
+                                            name == "thumbnails" || name == ".thumbnails" || name == "node_modules") return@onEnter false
+                                        if (path.contains("/Android/data", ignoreCase = true) || path.contains("/Android/obb", ignoreCase = true)) return@onEnter false
+                                        subDir.canRead()
+                                    } catch (_: Exception) { false }
+                                }
+                                .onFail { _, _ ->
+                                    kotlin.io.OnErrorAction.SKIP
                                 }
                                 .filter { it.isFile && !it.name.startsWith(".") && it.length() > 0 }
                                 .forEach { file ->
@@ -232,15 +239,6 @@ fun LocalFilesScreen() {
 
     LaunchedEffect(Unit) {
         loadUnbackedFiles()
-    }
-
-    BackHandler(enabled = isSelectionMode || folderHistory.isNotEmpty()) {
-        if (isSelectionMode) {
-            isSelectionMode = false
-            selectedPaths.clear()
-        } else if (folderHistory.isNotEmpty()) {
-            currentFolderDir = folderHistory.removeAt(folderHistory.size - 1)
-        }
     }
 
     val triggerBackupForSelected = {
@@ -635,7 +633,10 @@ fun LocalFilesScreen() {
             }
         )
     }
-}@Composable
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
 private fun CategoryWiseView(
     files: List<LocalFileItem>,
     selectedPaths: List<String>,
@@ -647,26 +648,41 @@ private fun CategoryWiseView(
     val categoryGroups = remember(files) {
         files.groupBy { it.category }
     }
+    val expandedCategories = remember { mutableStateMapOf<String, Boolean>() }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+        verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         categoryGroups.forEach { (categoryName, categoryFiles) ->
-            item {
-                Card(
+            val isExpanded = expandedCategories[categoryName] ?: true
+            val totalBytes = categoryFiles.sumOf { it.size }
+
+            item(key = "header_$categoryName") {
+                Surface(
                     shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { expandedCategories[categoryName] = !isExpanded }
                 ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 14.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                            Box(
+                                modifier = Modifier
+                                    .size(38.dp)
+                                    .clip(CircleShape)
+                                    .background(TelegramBlue.copy(alpha = 0.12f)),
+                                contentAlignment = Alignment.Center
+                            ) {
                                 Icon(
                                     imageVector = when (categoryName) {
                                         "Images" -> Icons.Default.Image
@@ -678,81 +694,105 @@ private fun CategoryWiseView(
                                     },
                                     contentDescription = null,
                                     tint = TelegramBlue,
-                                    modifier = Modifier.size(24.dp)
+                                    modifier = Modifier.size(22.dp)
                                 )
-                                Spacer(modifier = Modifier.width(10.dp))
+                            }
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
                                 Text(
                                     text = categoryName,
                                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
                                 )
+                                Text(
+                                    text = "${formatFileSize(totalBytes)} • ${categoryFiles.size} unbacked",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.outline
+                                )
                             }
+                        }
 
+                        Row(verticalAlignment = Alignment.CenterVertically) {
                             Surface(
                                 shape = RoundedCornerShape(8.dp),
                                 color = TelegramEmerald.copy(alpha = 0.15f)
                             ) {
                                 Text(
-                                    text = "${categoryFiles.size} Remaining",
+                                    text = "${categoryFiles.size}",
                                     style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, color = TelegramEmerald),
                                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                                 )
                             }
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Icon(
+                                imageVector = if (isExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                                contentDescription = if (isExpanded) "Collapse" else "Expand",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         }
+                    }
+                }
+            }
 
-                        Spacer(modifier = Modifier.height(12.dp))
-                        HorizontalDivider()
-
-                        categoryFiles.forEach { item ->
-                            val isSelected = selectedPaths.contains(item.path)
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .combinedClickable(
-                                        onClick = { onFileClick(item) },
-                                        onLongClick = { onFileLongClick(item) }
+            if (isExpanded) {
+                items(
+                    items = categoryFiles,
+                    key = { "file_${categoryName}_${it.path}" }
+                ) { item ->
+                    val isSelected = selectedPaths.contains(item.path)
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = if (isSelected) TelegramBlue.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surface,
+                        border = androidx.compose.foundation.BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f)),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .combinedClickable(
+                                onClick = { onFileClick(item) },
+                                onLongClick = { onFileLongClick(item) }
+                            )
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            if (isSelectionMode) {
+                                Checkbox(
+                                    checked = isSelected,
+                                    onCheckedChange = { onFileClick(item) }
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                            }
+                            Box(modifier = Modifier.size(40.dp), contentAlignment = Alignment.Center) {
+                                FileThumbnailView(fileName = item.name, filePath = item.path, iconSize = 34.dp, modifier = Modifier.size(38.dp))
+                            }
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = item.name,
+                                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Text(
+                                    text = "${formatFileSize(item.size)} • ${item.path}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.outline,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                            if (!isSelectionMode) {
+                                IconButton(
+                                    onClick = { onMoreOptions(item) },
+                                    modifier = Modifier.size(32.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.MoreVert,
+                                        contentDescription = "Options",
+                                        tint = MaterialTheme.colorScheme.outline,
+                                        modifier = Modifier.size(18.dp)
                                     )
-                                    .background(if (isSelected) TelegramBlue.copy(alpha = 0.15f) else Color.Transparent)
-                                    .padding(vertical = 10.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                if (isSelectionMode) {
-                                    Checkbox(
-                                        checked = isSelected,
-                                        onCheckedChange = { onFileClick(item) }
-                                    )
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                }
-                                Box(modifier = Modifier.size(38.dp), contentAlignment = Alignment.Center) {
-                                    FileThumbnailView(fileName = item.name, filePath = item.path, iconSize = 34.dp, modifier = Modifier.size(36.dp))
-                                }
-                                Spacer(modifier = Modifier.width(12.dp))
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = item.name,
-                                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                    Text(
-                                        text = "${formatFileSize(item.size)} • ${item.path}",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.outline,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                }
-                                if (!isSelectionMode) {
-                                    IconButton(
-                                        onClick = { onMoreOptions(item) },
-                                        modifier = Modifier.size(32.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.MoreVert,
-                                            contentDescription = "Options",
-                                            tint = MaterialTheme.colorScheme.outline,
-                                            modifier = Modifier.size(18.dp)
-                                        )
-                                    }
                                 }
                             }
                         }
@@ -780,24 +820,29 @@ private fun FolderWiseView(
     val rootStorage = Environment.getExternalStorageDirectory() ?: File("/sdcard")
     val activeDir = currentDir ?: rootStorage
 
-    // Compute subfolders inside activeDir that have remaining unbacked files
+    // Compute subfolders inside activeDir that have remaining unbacked files using safe canonical paths
     val currentLevelFiles = remember(files, activeDir) {
-        files.filter { it.file.parentFile?.absolutePath == activeDir.absolutePath }
+        val activePath = try { activeDir.canonicalPath } catch (_: Exception) { activeDir.absolutePath }
+        files.filter {
+            val parentPath = try { it.file.parentFile?.canonicalPath } catch (_: Exception) { it.file.parentFile?.absolutePath }
+            parentPath == activePath
+        }
     }
 
     val subFoldersWithUnbackedFiles = remember(files, activeDir) {
-        val activePath = activeDir.absolutePath
+        val activePath = try { activeDir.canonicalPath } catch (_: Exception) { activeDir.absolutePath }
         files.mapNotNull { it.file.parentFile }
-            .filter { parent ->
-                parent.absolutePath.startsWith(activePath) && parent.absolutePath != activePath
-            }
-            .map { child ->
-                // Get direct subfolder under activePath
-                var temp = child
-                while (temp.parentFile != null && temp.parentFile?.absolutePath != activePath) {
-                    temp = temp.parentFile!!
-                }
-                temp
+            .mapNotNull { parent ->
+                try {
+                    val parentCanon = parent.canonicalPath
+                    if (parentCanon.startsWith(activePath) && parentCanon != activePath) {
+                        val rel = parentCanon.removePrefix(activePath).removePrefix(File.separator)
+                        val firstSegment = rel.split(File.separatorChar).firstOrNull()
+                        if (!firstSegment.isNullOrBlank()) {
+                            File(activePath, firstSegment)
+                        } else null
+                    } else null
+                } catch (_: Exception) { null }
             }
             .distinctBy { it.absolutePath }
     }

@@ -27,8 +27,11 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import coil.compose.AsyncImage
 import coil.compose.SubcomposeAsyncImage
 import coil.request.ImageRequest
+import coil.size.Precision
+import coil.size.Scale
 import com.example.telegrambackup.utils.TelegramMediaResolver
 import com.example.telegrambackup.utils.ThumbnailManager
 import kotlinx.coroutines.Dispatchers
@@ -183,39 +186,20 @@ fun FileThumbnailView(
             }
 
             if (imageModel != null && !coilFailed) {
-                SubcomposeAsyncImage(
+                AsyncImage(
                     model = ImageRequest.Builder(context)
                         .data(imageModel)
+                        .size(256, 256)
+                        .scale(Scale.FILL)
+                        .precision(Precision.INEXACT)
                         .crossfade(true)
                         .build(),
                     contentDescription = fileName,
                     contentScale = contentScale,
+                    onError = { coilFailed = true },
                     modifier = modifier
                         .fillMaxSize()
-                        .clip(shape),
-                    loading = {
-                        ShimmerBox(
-                            modifier = Modifier.fillMaxSize(),
-                            shape = shape
-                        )
-                    },
-                    error = {
-                        LaunchedEffect(Unit) {
-                            coilFailed = true
-                        }
-                        if (cloudBitmap != null) {
-                            Image(
-                                bitmap = cloudBitmap!!.asImageBitmap(),
-                                contentDescription = fileName,
-                                contentScale = contentScale,
-                                modifier = Modifier.fillMaxSize().clip(shape)
-                            )
-                        } else {
-                            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                OsFileIcon(fileName = fileName, size = iconSize)
-                            }
-                        }
-                    }
+                        .clip(shape)
                 )
             } else if (cloudBitmap != null) {
                 Box(

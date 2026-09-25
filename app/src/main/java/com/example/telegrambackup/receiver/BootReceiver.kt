@@ -55,18 +55,7 @@ class BootReceiver : BroadcastReceiver() {
                             workManager.enqueueUniquePeriodicWork("SmartPeriodicBackupWork", policy, req)
                         }
                         2 -> {
-                            val now = Calendar.getInstance()
-                            val target = Calendar.getInstance().apply {
-                                set(Calendar.HOUR_OF_DAY, prefs.nightBackupHour)
-                                set(Calendar.MINUTE, 0)
-                                set(Calendar.SECOND, 0)
-                                if (before(now)) add(Calendar.DAY_OF_YEAR, 1)
-                            }
-                            val delayMs = target.timeInMillis - now.timeInMillis
-                            val req = PeriodicWorkRequestBuilder<BackupWorker>(24, TimeUnit.HOURS)
-                                .setInitialDelay(delayMs, TimeUnit.MILLISECONDS)
-                                .setConstraints(constraints).build()
-                            workManager.enqueueUniquePeriodicWork("SmartPeriodicBackupWork", policy, req)
+                            com.example.telegrambackup.utils.NightBackupScheduler.scheduleStrictNightBackup(context)
                         }
                     }
 

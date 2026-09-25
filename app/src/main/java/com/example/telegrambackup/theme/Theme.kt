@@ -1,12 +1,16 @@
 package com.example.telegrambackup.theme
 
+import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.dynamicDarkColorScheme
+import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 
 // 0 & 2: Midnight Dark (Linear/Spotify/Google Files Midnight Slate Style)
 private val DarkColorScheme = darkColorScheme(
@@ -157,7 +161,8 @@ enum class AppThemeMode(
     DARK(2, "Midnight Dark", "Slate navy with modern Spotify/Discord midnight styling", Color(0xFF38BDF8), Color(0xFF2DD4BF), Color(0xFF0B0F19), Color(0xFF111827)),
     AMOLED(3, "Pure AMOLED Black", "100% pitch black with electric cyber accents for OLED", Color(0xFF00F0FF), Color(0xFF38BDF8), Color(0xFF000000), Color(0xFF121215)),
     EMERALD(4, "Emerald Forest", "Deep jade slate with lush mint & botanical emerald", Color(0xFF10B981), Color(0xFF34D399), Color(0xFF03140D), Color(0xFF0F3A27)),
-    SUNSET(5, "Sunset Amber", "Obsidian espresso with warm golden amber & copper", Color(0xFFF59E0B), Color(0xFFFB923C), Color(0xFF100A05), Color(0xFF301F10));
+    SUNSET(5, "Sunset Amber", "Obsidian espresso with warm golden amber & copper", Color(0xFFF59E0B), Color(0xFFFB923C), Color(0xFF100A05), Color(0xFF301F10)),
+    DYNAMIC_WALLPAPER(6, "Material You Dynamic", "Adaptive palette extracted live from your device wallpaper (Android 12+)", Color(0xFF8B5CF6), Color(0xFFEC4899), Color(0xFF0F172A), Color(0xFF1E293B));
 
     companion object {
         fun fromId(id: Int): AppThemeMode = entries.firstOrNull { it.id == id } ?: SYSTEM
@@ -170,6 +175,7 @@ fun TelegramBackupTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     content: @Composable () -> Unit
 ) {
+    val context = LocalContext.current
     val mode = AppThemeMode.fromId(themeMode)
     val colorScheme: ColorScheme = when (mode) {
         AppThemeMode.SYSTEM -> if (darkTheme) DarkColorScheme else LightColorScheme
@@ -178,6 +184,13 @@ fun TelegramBackupTheme(
         AppThemeMode.AMOLED -> AmoledColorScheme
         AppThemeMode.EMERALD -> EmeraldColorScheme
         AppThemeMode.SUNSET -> SunsetAmberColorScheme
+        AppThemeMode.DYNAMIC_WALLPAPER -> {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+            } else {
+                if (darkTheme) DarkColorScheme else LightColorScheme
+            }
+        }
     }
 
     MaterialTheme(

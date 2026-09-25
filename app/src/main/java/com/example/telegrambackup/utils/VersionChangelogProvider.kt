@@ -28,6 +28,70 @@ object VersionChangelogProvider {
 
     private val releases = listOf(
         VersionRelease(
+            versionName = "2.4.6",
+            versionCode = 130,
+            releaseDate = "September 2026",
+            highlights = "Updater 404 Resolution, Material You Monet Theming, Duplicate Cleaner, Floating Audio Mini-Player, Smooth Thumbnails & Night Backup",
+            entries = listOf(
+                ChangelogEntry(
+                    Icons.Default.SystemUpdate,
+                    TelegramBlue,
+                    "In-App Updater 404 Resolution",
+                    "Direct pre-signed CDN resolution and redirect-sanitized downloads eliminate HTTP 404 on updates.",
+                    "UPDATER FIX"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Palette,
+                    Color(0xFF8B5CF6),
+                    "Material You Dynamic Theming",
+                    "Extracts Monet dynamic wallpaper color schemes on Android 12+ with dynamic dark/light surface tones.",
+                    "MONET THEME"
+                ),
+                ChangelogEntry(
+                    Icons.Default.CleaningServices,
+                    Color(0xFF10B981),
+                    "Visual Duplicate Cleaner",
+                    "Side-by-side thumbnail comparison cards and smart 'Auto-Keep Best' algorithm favoring original camera captures.",
+                    "CLEANER"
+                ),
+                ChangelogEntry(
+                    Icons.Default.MusicNote,
+                    Color(0xFFEC4899),
+                    "Mini Audio Player & Speed Controls",
+                    "Floating audio mini-player capsule above navigation with background playback and 0.5x–2.0x playback speeds.",
+                    "AUDIO PLAYER"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Speed,
+                    Color(0xFFF59E0B),
+                    "60/120fps Smooth Thumbnail Scrolling",
+                    "Optimized thumbnail downsampling while strictly preserving 100% original uncompressed quality for downloads, viewer, and sharing.",
+                    "PERFORMANCE"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Alarm,
+                    Color(0xFF3B82F6),
+                    "Strict Wi-Fi Night Backup",
+                    "Exact alarm wakeup at 2:00 AM immune to Android Doze mode (AlarmManager.setAlarmClock) with Wi-Fi network validation.",
+                    "NIGHT BACKUP"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Notifications,
+                    TelegramEmerald,
+                    "Modernized M3 Notifications & App Icon",
+                    "Upgraded notifications to clean Material 3 typography and redesigned app icon to an obsidian/emerald vault shield.",
+                    "UI DESIGN"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Folder,
+                    TelegramBlue,
+                    "Internal Storage Navigation Polish",
+                    "Fixed internal storage directory resolution, folder category expansion, and eliminated tab navigation freezes.",
+                    "STORAGE"
+                )
+            )
+        ),
+        VersionRelease(
             versionName = "2.4.5",
             versionCode = 129,
             releaseDate = "September 2026",

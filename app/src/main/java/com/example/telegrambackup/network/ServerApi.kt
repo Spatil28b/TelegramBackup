@@ -127,19 +127,22 @@ class ServerApi {
                 val tagName = json.optString("tag_name", "").removePrefix("v")
                 val bodyText = json.optString("body", "New updates on GitHub.")
                 val assets = json.optJSONArray("assets")
-                var apkUrl = ""
+                var apkUrl = cleanUrl(serverUrl, "/api/app/download-latest")
+                if (apkUrl.isBlank() || apkUrl.contains("localhost")) {
+                    apkUrl = "https://telegram-backup-backend.vercel.app/api/app/download-latest"
+                }
                 if (assets != null) {
                     for (i in 0 until assets.length()) {
                         val asset = assets.optJSONObject(i)
                         val name = asset?.optString("name", "") ?: ""
                         if (name.endsWith(".apk", ignoreCase = true)) {
-                            apkUrl = asset?.optString("browser_download_url", "") ?: ""
+                            val assetApiUrl = asset?.optString("url", "") ?: ""
+                            if (assetApiUrl.isNotBlank()) {
+                                apkUrl = assetApiUrl
+                            }
                             break
                         }
                     }
-                }
-                if (apkUrl.isEmpty()) {
-                    apkUrl = "https://github.com/sid-codes28/telegram_backup_backend/raw/main/Releases/TelegramBackup-latest.apk"
                 }
                 val parts = tagName.split(".").mapNotNull { it.toIntOrNull() }
                 val code = if (parts.size >= 3) {

@@ -32,6 +32,10 @@ class AppPrefs(private val context: Context) {
         get() = prefs.getBoolean("encryption_enabled", true)
         set(value) = prefs.edit().putBoolean("encryption_enabled", value).apply()
 
+    var backupOverWifi: Boolean
+        get() = prefs.getBoolean("backup_over_wifi", true)
+        set(value) = prefs.edit().putBoolean("backup_over_wifi", value).apply()
+
     var encryptionKey: String
         get() {
             var key = prefs.getString("encryption_key", "") ?: ""

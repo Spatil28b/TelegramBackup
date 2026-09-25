@@ -149,24 +149,25 @@ object AppNotificationHelper {
         val stopPendingIntent = createControlPendingIntent(context, BackupControlReceiver.ACTION_STOP_BACKUP, 102)
 
         val title = when {
-            isRunning -> "☁️ ⚡ Online"
-            prefs.stopAllBackups -> "☁️ ⏸️ Paused"
-            else -> "☁️ ✓ Ready"
+            isRunning -> "TSpace Vault Syncing"
+            prefs.stopAllBackups -> "TSpace Sync Paused"
+            else -> "TSpace Vault Ready"
         }
 
         val content = when {
             statusText.isNotBlank() -> statusText
-            isRunning -> "⬆️ Active • 🛡️ Safe"
-            prefs.stopAllBackups -> "⏸️ Standby"
-            else -> "✓ Protected • ☁️ Vault"
+            isRunning -> "Active encrypted backup to Telegram Cloud"
+            prefs.stopAllBackups -> "Sync paused by user • Storage secure"
+            else -> "Cloud vault protected • Auto-backup ready"
         }
 
         val builder = NotificationCompat.Builder(context, CHANNEL_ID_CONTROLLER)
             .setSmallIcon(if (isRunning) R.drawable.ic_notif_cloud_upload else R.drawable.ic_notif_cloud_done)
             .setColor(if (isRunning) COLOR_PRIMARY else COLOR_SUCCESS)
-            .setSubText("☁️ • ⚡")
+            .setSubText("TSpace Cloud Vault")
             .setContentTitle(title)
             .setContentText(content)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(content))
             .setOngoing(true)
             .setContentIntent(openAppPendingIntent)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
@@ -175,12 +176,12 @@ object AppNotificationHelper {
             .setShowWhen(false)
 
         if (isRunning) {
-            builder.addAction(R.drawable.ic_pause, "⏸️ Pause", stopPendingIntent)
-            builder.addAction(R.drawable.ic_cloud_upload, "📊 Progress", openAppPendingIntent)
-            builder.addAction(R.drawable.ic_folder, "📁 Drive", openDrivePendingIntent)
+            builder.addAction(R.drawable.ic_pause, "Pause", stopPendingIntent)
+            builder.addAction(R.drawable.ic_cloud_upload, "View Progress", openAppPendingIntent)
+            builder.addAction(R.drawable.ic_folder, "Open Vault", openDrivePendingIntent)
         } else {
-            builder.addAction(R.drawable.ic_play, "▶️ Sync", startPendingIntent)
-            builder.addAction(R.drawable.ic_folder, "📁 Drive", openDrivePendingIntent)
+            builder.addAction(R.drawable.ic_play, "Sync Now", startPendingIntent)
+            builder.addAction(R.drawable.ic_folder, "Open Vault", openDrivePendingIntent)
         }
 
         manager.notify(NOTIFICATION_ID_CONTROLLER, builder.build())
@@ -209,13 +210,13 @@ object AppNotificationHelper {
         val openDrivePendingIntent = createNavPendingIntent(context, "DRIVE", 202)
         val stopPendingIntent = createControlPendingIntent(context, BackupControlReceiver.ACTION_STOP_BACKUP, 201)
 
-        val displayTitle = if (totalFiles > 0) "⬆️ $completedFiles/$totalFiles • $progressPercent%" else "⬆️ $progressPercent%"
+        val displayTitle = if (totalFiles > 0) "Backing Up ($completedFiles of $totalFiles) • $progressPercent%" else "Backing Up • $progressPercent%"
+        val cleanName = if (fileName.length > 28) fileName.take(16) + "…" + fileName.takeLast(10) else fileName
         val displayContent = if (fileName.isNotEmpty()) {
-            val cleanName = if (fileName.length > 28) fileName.take(16) + "…" + fileName.takeLast(10) else fileName
-            if (speedStr.isNotBlank()) "📄 $cleanName • ⚡ $speedStr" else "📄 $cleanName"
-        } else "⏳ Processing..."
+            if (speedStr.isNotBlank()) "$cleanName • $speedStr" else cleanName
+        } else "Transferring files to vault..."
 
-        val subtextSpeed = if (speedStr.isNotBlank()) "⚡ $speedStr" else "☁️ Sync"
+        val subtextSpeed = if (speedStr.isNotBlank()) "TSpace • $speedStr" else "TSpace Cloud Sync"
 
         val notification = NotificationCompat.Builder(context, CHANNEL_ID_UPLOADS)
             .setSmallIcon(R.drawable.ic_notif_cloud_upload)
@@ -223,13 +224,18 @@ object AppNotificationHelper {
             .setSubText(subtextSpeed)
             .setContentTitle(displayTitle)
             .setContentText(displayContent)
+            .setStyle(
+                NotificationCompat.BigTextStyle().bigText(
+                    "Transferring $fileName\n$completedFiles of $totalFiles files transferred ($progressPercent%)\n${if (speedStr.isNotBlank()) "Transfer Speed: $speedStr" else "Optimizing transfer..."}"
+                )
+            )
             .setProgress(100, progressPercent.coerceIn(0, 100), progressPercent <= 0)
             .setOngoing(true)
             .setContentIntent(openAppPendingIntent)
             .setCategory(NotificationCompat.CATEGORY_PROGRESS)
-            .addAction(R.drawable.ic_pause, "⏸️ Pause", stopPendingIntent)
-            .addAction(R.drawable.ic_cloud_upload, "📊 Progress", openAppPendingIntent)
-            .addAction(R.drawable.ic_folder, "📁 Drive", openDrivePendingIntent)
+            .addAction(R.drawable.ic_pause, "Pause", stopPendingIntent)
+            .addAction(R.drawable.ic_cloud_upload, "Progress", openAppPendingIntent)
+            .addAction(R.drawable.ic_folder, "Vault", openDrivePendingIntent)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setOnlyAlertOnce(true)
             .build()
@@ -256,20 +262,25 @@ object AppNotificationHelper {
         val openAppPendingIntent = createNavPendingIntent(context, "DRIVE", 300)
 
         val cleanName = if (fileName.length > 26) fileName.take(14) + "…" + fileName.takeLast(10) else fileName
-        val displayContent = if (speedStr.isNotBlank()) "⚡ $speedStr • 💾 $progressPercent%" else "💾 $progressPercent%"
-        val subtext = if (speedStr.isNotBlank()) "⚡ $speedStr" else "⬇️ Cloud"
+        val displayContent = if (speedStr.isNotBlank()) "$progressPercent% • $speedStr" else "$progressPercent% downloaded"
+        val subtext = if (speedStr.isNotBlank()) "TSpace • $speedStr" else "TSpace Download"
 
         val notification = NotificationCompat.Builder(context, CHANNEL_ID_DOWNLOADS)
             .setSmallIcon(R.drawable.ic_notif_download)
             .setColor(COLOR_PRIMARY)
             .setSubText(subtext)
-            .setContentTitle("⬇️ $cleanName")
+            .setContentTitle("Downloading: $cleanName")
             .setContentText(displayContent)
+            .setStyle(
+                NotificationCompat.BigTextStyle().bigText(
+                    "Downloading $fileName from cloud vault.\nProgress: $progressPercent%\n${if (speedStr.isNotBlank()) "Speed: $speedStr" else ""}"
+                )
+            )
             .setProgress(100, progressPercent.coerceIn(0, 100), progressPercent <= 0)
             .setOngoing(true)
             .setContentIntent(openAppPendingIntent)
             .setCategory(NotificationCompat.CATEGORY_PROGRESS)
-            .addAction(R.drawable.ic_folder, "📁 Drive", openAppPendingIntent)
+            .addAction(R.drawable.ic_folder, "Open Vault", openAppPendingIntent)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setOnlyAlertOnce(true)
             .build()

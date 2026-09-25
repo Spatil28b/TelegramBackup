@@ -82,6 +82,9 @@ import com.example.telegrambackup.ui.main.LocalFilesScreen
 import com.example.telegrambackup.ui.main.LiveProgressScreen
 import com.example.telegrambackup.ui.main.VaultHealthScreen
 import com.example.telegrambackup.ui.settings.BackupSettingsScreen
+import com.example.telegrambackup.ui.player.AudioPlayerManager
+import com.example.telegrambackup.ui.player.ModernAudioPlayerSheet
+import com.example.telegrambackup.ui.player.ModernMiniPlayerCapsule
 import com.example.telegrambackup.utils.AppPrefs
 import com.example.telegrambackup.utils.BackupProgressTracker
 import com.example.telegrambackup.utils.BiometricHelper
@@ -1128,6 +1131,12 @@ fun MainApp(
 
                         val activeTabsToDisplay = allTabsConfig.filter { visibleTabsKeys.contains(it.key) }
 
+                        if (AudioPlayerManager.hasActiveTrack) {
+                            ModernMiniPlayerCapsule(
+                                onExpand = { AudioPlayerManager.isExpandedSheetOpen = true }
+                            )
+                        }
+
                         KomiBottomBar(
                             items = activeTabsToDisplay,
                             selectedTab = selectedTab,
@@ -1141,25 +1150,26 @@ fun MainApp(
                             hapticFeedbackEnabled = prefs.bottomNavHapticFeedback
                         )
                     }
+
+                    if (AudioPlayerManager.isExpandedSheetOpen && AudioPlayerManager.hasActiveTrack) {
+                        ModernAudioPlayerSheet(
+                            filePathOrUrl = AudioPlayerManager.activeTrackPath ?: "",
+                            fileName = AudioPlayerManager.activeTrackName ?: "",
+                            onDismiss = { AudioPlayerManager.isExpandedSheetOpen = false }
+                        )
+                    }
                 }
             ) { paddingValues ->
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(top = paddingValues.calculateTopPadding())
-                        .nestedScroll(scrollNavBarConnection)
-                        .pointerInput(Unit) {
-                            detectTapGestures {
-                                // Tapping on empty screen margins or background toggles/hides the bottom nav bar
-                                isNavBarVisibleState.value = !isNavBarVisibleState.value
-                            }
-                        }
                 ) {
                     AnimatedContent(
                         targetState = selectedTab,
                         transitionSpec = {
-                            fadeIn(animationSpec = tween(140, easing = LinearOutSlowInEasing)).togetherWith(
-                                fadeOut(animationSpec = tween(100, easing = FastOutLinearInEasing))
+                            fadeIn(animationSpec = tween(120, easing = LinearOutSlowInEasing)).togetherWith(
+                                fadeOut(animationSpec = tween(90, easing = FastOutLinearInEasing))
                             )
                         },
                         label = "MainTabAnimatedContent",

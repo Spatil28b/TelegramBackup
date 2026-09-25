@@ -1,11 +1,9 @@
 package com.example.telegrambackup.ui.player
 
-import android.content.Context
-import android.media.MediaPlayer
-import android.net.Uri
-import android.widget.Toast
 import androidx.compose.animation.core.*
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -26,18 +24,14 @@ import androidx.compose.ui.unit.dp
 import com.example.telegrambackup.theme.TelegramBlue
 import com.example.telegrambackup.theme.TelegramEmerald
 import com.example.telegrambackup.theme.labelMonoSmall
-import com.example.telegrambackup.utils.FileViewerHelper
-import com.example.telegrambackup.utils.TelegramMediaResolver
-import kotlinx.coroutines.delay
-import java.io.File
 import java.util.Locale
 
 /**
  * =====================================================================================
- * BUILT-IN LIGHTWEIGHT & MODERN MP3 AUDIO PLAYER MODAL
+ * BUILT-IN LIGHTWEIGHT & MODERN AUDIO PLAYER SHEET
  * =====================================================================================
- * Sleek, modern bottom sheet audio player with album art animation, live seekbar,
- * volume controls, and lightweight Android MediaPlayer integration.
+ * Powered by AudioPlayerManager: supports background playback across app tabs,
+ * floating mini-player pill capsule, and instant speed controls (0.5x - 2.0x).
  * =====================================================================================
  */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -49,14 +43,19 @@ fun ModernAudioPlayerSheet(
 ) {
     val context = LocalContext.current
 
-    var isPlaying by remember { mutableStateOf(false) }
-    var currentPosition by remember { mutableFloatStateOf(0f) }
-    var totalDuration by remember { mutableFloatStateOf(1f) }
-    var isMuted by remember { mutableStateOf(false) }
-    var isLooping by remember { mutableStateOf(false) }
-    var isBuffering by remember { mutableStateOf(true) }
+    LaunchedEffect(filePathOrUrl, fileName) {
+        if (filePathOrUrl.isNotBlank() && fileName.isNotBlank()) {
+            AudioPlayerManager.playTrack(context, filePathOrUrl, fileName)
+        }
+    }
 
-    val mediaPlayer = remember { MediaPlayer() }
+    val isPlaying = AudioPlayerManager.isPlaying
+    val currentPosition = AudioPlayerManager.currentPositionMs
+    val totalDuration = AudioPlayerManager.totalDurationMs
+    val isBuffering = AudioPlayerManager.isBuffering
+    val isLooping = AudioPlayerManager.isLooping
+    val isMuted = AudioPlayerManager.isMuted
+    val currentSpeed = AudioPlayerManager.playbackSpeed
 
     // Disc rotation animation
     val infiniteTransition = rememberInfiniteTransition(label = "disc_spin")
@@ -70,7 +69,6 @@ fun ModernAudioPlayerSheet(
         label = "spin_angle"
     )
 
-    // Format milliseconds to MM:SS
     fun formatTime(ms: Float): String {
         val totalSecs = (ms / 1000).toInt().coerceAtLeast(0)
         val mins = totalSecs / 60
@@ -78,97 +76,7 @@ fun ModernAudioPlayerSheet(
         return String.format(Locale.getDefault(), "%02d:%02d", mins, secs)
     }
 
-    // Initialize MediaPlayer safely
-    LaunchedEffect(filePathOrUrl) {
-        try {
-            isBuffering = true
-            mediaPlayer.reset()
-
-            var activeSource: String? = null
-            val localResolved = FileViewerHelper.findLocalFile(filePathOrUrl, fileName)
-            if (filePathOrUrl.startsWith("http://") || filePathOrUrl.startsWith("https://")) {
-                activeSource = filePathOrUrl
-            } else if (localResolved != null && localResolved.exists() && localResolved.length() > 0) {
-                activeSource = localResolved.absolutePath
-            } else {
-                val db = com.example.telegrambackup.data.AppDatabase.getDatabase(context)
-                val fileRecord = db.uploadedFileDao().getFileByPath(filePathOrUrl)
-                    ?: db.uploadedFileDao().getFileByName(fileName)
-                    ?: db.uploadedFileDao().getFileByTelegramFileId(filePathOrUrl)
-                val tgId = fileRecord?.telegramFileId ?: filePathOrUrl
-
-                val directUrl = if (tgId.isNotBlank() && tgId != "DIR_MARKER") TelegramMediaResolver.resolveDirectUrl(context, tgId) else null
-                if (directUrl != null) {
-                    activeSource = directUrl
-                } else {
-                    val cached = if (fileRecord != null) {
-                        TelegramMediaResolver.fetchToTempCache(context, fileRecord)
-                    } else {
-                        TelegramMediaResolver.fetchToTempCache(context, tgId, fileName)
-                    }
-                    activeSource = cached?.absolutePath
-                }
-            }
-
-            if (activeSource != null) {
-                if (activeSource.startsWith("http://") || activeSource.startsWith("https://")) {
-                    mediaPlayer.setDataSource(context, Uri.parse(activeSource))
-                } else {
-                    mediaPlayer.setDataSource(activeSource)
-                }
-
-                mediaPlayer.setOnPreparedListener { mp ->
-                    isBuffering = false
-                    totalDuration = mp.duration.toFloat().coerceAtLeast(1f)
-                    mp.isLooping = isLooping
-                    mp.start()
-                    isPlaying = true
-                }
-
-                mediaPlayer.setOnCompletionListener {
-                    if (!isLooping) {
-                        isPlaying = false
-                        currentPosition = totalDuration
-                    }
-                }
-
-                mediaPlayer.setOnErrorListener { _, _, _ ->
-                    isBuffering = false
-                    Toast.makeText(context, "Error playing audio file", Toast.LENGTH_SHORT).show()
-                    true
-                }
-
-                mediaPlayer.prepareAsync()
-            } else {
-                isBuffering = false
-                Toast.makeText(context, "Audio file not available", Toast.LENGTH_SHORT).show()
-            }
-        } catch (e: Exception) {
-            isBuffering = false
-            Toast.makeText(context, "Failed to load audio: ${e.message}", Toast.LENGTH_SHORT).show()
-        }
-    }
-
-    DisposableEffect(Unit) {
-        onDispose {
-            try {
-                if (mediaPlayer.isPlaying) mediaPlayer.stop()
-                mediaPlayer.release()
-            } catch (_: Exception) { }
-        }
-    }
-
-    // Update playback progress slider periodically
-    LaunchedEffect(isPlaying) {
-        while (isPlaying) {
-            try {
-                if (mediaPlayer.isPlaying) {
-                    currentPosition = mediaPlayer.currentPosition.toFloat()
-                }
-            } catch (_: Exception) { }
-            delay(250)
-        }
-    }
+    val speedOptions = listOf(0.5f, 1.0f, 1.25f, 1.5f, 2.0f)
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -252,7 +160,7 @@ fun ModernAudioPlayerSheet(
 
             // Track Title & File Info
             Text(
-                text = fileName,
+                text = AudioPlayerManager.activeTrackName ?: fileName,
                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
@@ -261,22 +169,55 @@ fun ModernAudioPlayerSheet(
             Spacer(modifier = Modifier.height(4.dp))
 
             Text(
-                text = if (isBuffering) "Buffering audio..." else "Playing MP3 Audio",
+                text = if (isBuffering) "Buffering audio..." else "Playing with background & speed controls",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.outline
             )
 
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Speed Selector Chips
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Speed",
+                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                    color = MaterialTheme.colorScheme.outline
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                speedOptions.forEach { spd ->
+                    val isSelected = currentSpeed == spd
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = if (isSelected) TelegramEmerald else MaterialTheme.colorScheme.surfaceContainerHigh,
+                        border = BorderStroke(1.dp, if (isSelected) TelegramEmerald else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
+                        modifier = Modifier
+                            .padding(horizontal = 4.dp)
+                            .clickable { AudioPlayerManager.setSpeed(spd) }
+                    ) {
+                        Text(
+                            text = "${spd}x",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurface
+                            ),
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
 
             // Live Seek Bar Slider
             Column(modifier = Modifier.fillMaxWidth()) {
                 Slider(
                     value = currentPosition.coerceIn(0f, totalDuration),
                     onValueChange = { newValue ->
-                        currentPosition = newValue
-                        try {
-                            mediaPlayer.seekTo(newValue.toInt())
-                        } catch (_: Exception) { }
+                        AudioPlayerManager.seekTo(newValue)
                     },
                     valueRange = 0f..totalDuration,
                     colors = SliderDefaults.colors(
@@ -313,12 +254,7 @@ fun ModernAudioPlayerSheet(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 // Loop Mode Button
-                IconButton(
-                    onClick = {
-                        isLooping = !isLooping
-                        try { mediaPlayer.isLooping = isLooping } catch (_: Exception) { }
-                    }
-                ) {
+                IconButton(onClick = { AudioPlayerManager.toggleLoop() }) {
                     Icon(
                         imageVector = Icons.Default.Repeat,
                         contentDescription = "Loop",
@@ -329,11 +265,8 @@ fun ModernAudioPlayerSheet(
                 // Rewind 10s Button
                 IconButton(
                     onClick = {
-                        try {
-                            val newPos = (mediaPlayer.currentPosition - 10000).coerceAtLeast(0)
-                            mediaPlayer.seekTo(newPos)
-                            currentPosition = newPos.toFloat()
-                        } catch (_: Exception) { }
+                        val newPos = (currentPosition - 10000).coerceAtLeast(0f)
+                        AudioPlayerManager.seekTo(newPos)
                     }
                 ) {
                     Icon(Icons.Default.Replay10, contentDescription = "Rewind 10s", modifier = Modifier.size(28.dp))
@@ -345,19 +278,7 @@ fun ModernAudioPlayerSheet(
                     color = TelegramBlue,
                     modifier = Modifier.size(56.dp)
                 ) {
-                    IconButton(
-                        onClick = {
-                            try {
-                                if (mediaPlayer.isPlaying) {
-                                    mediaPlayer.pause()
-                                    isPlaying = false
-                                } else {
-                                    mediaPlayer.start()
-                                    isPlaying = true
-                                }
-                            } catch (_: Exception) { }
-                        }
-                    ) {
+                    IconButton(onClick = { AudioPlayerManager.togglePlayPause() }) {
                         if (isBuffering) {
                             CircularProgressIndicator(color = Color.White, modifier = Modifier.size(24.dp))
                         } else {
@@ -374,26 +295,15 @@ fun ModernAudioPlayerSheet(
                 // Fast Forward 10s Button
                 IconButton(
                     onClick = {
-                        try {
-                            val newPos = (mediaPlayer.currentPosition + 10000).coerceAtMost(totalDuration.toInt())
-                            mediaPlayer.seekTo(newPos)
-                            currentPosition = newPos.toFloat()
-                        } catch (_: Exception) { }
+                        val newPos = (currentPosition + 10000).coerceAtMost(totalDuration)
+                        AudioPlayerManager.seekTo(newPos)
                     }
                 ) {
                     Icon(Icons.Default.Forward10, contentDescription = "Forward 10s", modifier = Modifier.size(28.dp))
                 }
 
                 // Mute / Unmute Button
-                IconButton(
-                    onClick = {
-                        isMuted = !isMuted
-                        try {
-                            if (isMuted) mediaPlayer.setVolume(0f, 0f)
-                            else mediaPlayer.setVolume(1f, 1f)
-                        } catch (_: Exception) { }
-                    }
-                ) {
+                IconButton(onClick = { AudioPlayerManager.toggleMute() }) {
                     Icon(
                         imageVector = if (isMuted) Icons.Default.VolumeOff else Icons.Default.VolumeUp,
                         contentDescription = "Mute",

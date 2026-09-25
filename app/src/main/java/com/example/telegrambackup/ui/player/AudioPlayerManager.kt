@@ -1,0 +1,230 @@
+package com.example.telegrambackup.ui.player
+
+import android.content.Context
+import android.media.MediaPlayer
+import android.media.PlaybackParams
+import android.net.Uri
+import android.os.Build
+import android.widget.Toast
+import androidx.compose.runtime.*
+import com.example.telegrambackup.data.AppDatabase
+import com.example.telegrambackup.utils.FileViewerHelper
+import com.example.telegrambackup.utils.TelegramMediaResolver
+import kotlinx.coroutines.*
+
+/**
+ * Global audio playback manager supporting background playback,
+ * speed adjustment, and floating mini-player pill integration.
+ */
+object AudioPlayerManager {
+    private var mediaPlayer: MediaPlayer? = null
+    private var scope = CoroutineScope(Dispatchers.Main + Job())
+    private var tickerJob: Job? = null
+
+    var activeTrackPath by mutableStateOf<String?>(null)
+        private set
+    var activeTrackName by mutableStateOf<String?>(null)
+        private set
+    var isPlaying by mutableStateOf(false)
+        private set
+    var isBuffering by mutableStateOf(false)
+        private set
+    var currentPositionMs by mutableFloatStateOf(0f)
+        private set
+    var totalDurationMs by mutableFloatStateOf(1f)
+        private set
+    var playbackSpeed by mutableFloatStateOf(1.0f)
+        private set
+    var isLooping by mutableStateOf(false)
+        private set
+    var isMuted by mutableStateOf(false)
+        private set
+    var isExpandedSheetOpen by mutableStateOf(false)
+
+    val hasActiveTrack: Boolean
+        get() = !activeTrackPath.isNullOrBlank()
+
+    fun playTrack(context: Context, filePathOrUrl: String, fileName: String) {
+        if (activeTrackPath == filePathOrUrl && mediaPlayer != null) {
+            if (!isPlaying) {
+                resume()
+            }
+            isExpandedSheetOpen = true
+            return
+        }
+
+        stop()
+        activeTrackPath = filePathOrUrl
+        activeTrackName = fileName
+        isBuffering = true
+        currentPositionMs = 0f
+        totalDurationMs = 1f
+
+        scope.launch(Dispatchers.IO) {
+            try {
+                var activeSource: String? = null
+                val localResolved = FileViewerHelper.findLocalFile(filePathOrUrl, fileName)
+                if (filePathOrUrl.startsWith("http://") || filePathOrUrl.startsWith("https://")) {
+                    activeSource = filePathOrUrl
+                } else if (localResolved != null && localResolved.exists() && localResolved.length() > 0) {
+                    activeSource = localResolved.absolutePath
+                } else {
+                    val db = AppDatabase.getDatabase(context)
+                    val fileRecord = db.uploadedFileDao().getFileByPath(filePathOrUrl)
+                        ?: db.uploadedFileDao().getFileByName(fileName)
+                        ?: db.uploadedFileDao().getFileByTelegramFileId(filePathOrUrl)
+                    val tgId = fileRecord?.telegramFileId ?: filePathOrUrl
+
+                    val directUrl = if (tgId.isNotBlank() && tgId != "DIR_MARKER") TelegramMediaResolver.resolveDirectUrl(context, tgId) else null
+                    if (directUrl != null) {
+                        activeSource = directUrl
+                    } else {
+                        val cached = if (fileRecord != null) {
+                            TelegramMediaResolver.fetchToTempCache(context, fileRecord)
+                        } else {
+                            TelegramMediaResolver.fetchToTempCache(context, tgId, fileName)
+                        }
+                        activeSource = cached?.absolutePath
+                    }
+                }
+
+                withContext(Dispatchers.Main) {
+                    if (activeSource != null) {
+                        val player = MediaPlayer()
+                        mediaPlayer = player
+
+                        if (activeSource.startsWith("http://") || activeSource.startsWith("https://")) {
+                            player.setDataSource(context, Uri.parse(activeSource))
+                        } else {
+                            player.setDataSource(activeSource)
+                        }
+
+                        player.setOnPreparedListener { mp ->
+                            isBuffering = false
+                            totalDurationMs = mp.duration.toFloat().coerceAtLeast(1f)
+                            mp.isLooping = isLooping
+                            applySpeed(playbackSpeed)
+                            mp.start()
+                            isPlaying = true
+                            startProgressTicker()
+                        }
+
+                        player.setOnCompletionListener {
+                            if (!isLooping) {
+                                isPlaying = false
+                                currentPositionMs = totalDurationMs
+                            }
+                        }
+
+                        player.setOnErrorListener { _, _, _ ->
+                            isBuffering = false
+                            isPlaying = false
+                            Toast.makeText(context, "Error playing audio", Toast.LENGTH_SHORT).show()
+                            true
+                        }
+
+                        player.prepareAsync()
+                    } else {
+                        isBuffering = false
+                        Toast.makeText(context, "Audio file not available", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    isBuffering = false
+                    Toast.makeText(context, "Failed to load audio: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
+
+    fun togglePlayPause() {
+        if (isPlaying) {
+            pause()
+        } else {
+            resume()
+        }
+    }
+
+    fun pause() {
+        try {
+            mediaPlayer?.pause()
+            isPlaying = false
+        } catch (_: Exception) { }
+    }
+
+    fun resume() {
+        try {
+            mediaPlayer?.start()
+            isPlaying = true
+            startProgressTicker()
+        } catch (_: Exception) { }
+    }
+
+    fun seekTo(positionMs: Float) {
+        try {
+            mediaPlayer?.seekTo(positionMs.toInt())
+            currentPositionMs = positionMs
+        } catch (_: Exception) { }
+    }
+
+    fun setSpeed(speed: Float) {
+        playbackSpeed = speed
+        applySpeed(speed)
+    }
+
+    private fun applySpeed(speed: Float) {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && mediaPlayer != null) {
+                val params = mediaPlayer?.playbackParams ?: PlaybackParams()
+                params.speed = speed
+                mediaPlayer?.playbackParams = params
+            }
+        } catch (_: Exception) { }
+    }
+
+    fun toggleLoop() {
+        isLooping = !isLooping
+        try {
+            mediaPlayer?.isLooping = isLooping
+        } catch (_: Exception) { }
+    }
+
+    fun toggleMute() {
+        isMuted = !isMuted
+        try {
+            if (isMuted) mediaPlayer?.setVolume(0f, 0f)
+            else mediaPlayer?.setVolume(1f, 1f)
+        } catch (_: Exception) { }
+    }
+
+    fun stop() {
+        tickerJob?.cancel()
+        tickerJob = null
+        try {
+            if (mediaPlayer?.isPlaying == true) {
+                mediaPlayer?.stop()
+            }
+            mediaPlayer?.release()
+        } catch (_: Exception) { }
+        mediaPlayer = null
+        activeTrackPath = null
+        activeTrackName = null
+        isPlaying = false
+        isBuffering = false
+        isExpandedSheetOpen = false
+    }
+
+    private fun startProgressTicker() {
+        tickerJob?.cancel()
+        tickerJob = scope.launch {
+            while (isActive && isPlaying) {
+                try {
+                    val pos = mediaPlayer?.currentPosition ?: 0
+                    currentPositionMs = pos.toFloat()
+                } catch (_: Exception) { }
+                delay(250)
+            }
+        }
+    }
+}

@@ -58,13 +58,61 @@ object DuplicateFileManager {
         }
     }
 
+    fun findBestIndexToKeep(files: List<UploadedFile>): Int {
+        if (files.isEmpty()) return 0
+        var bestIndex = 0
+        var bestScore = -100
+
+        files.forEachIndexed { index, file ->
+            var score = 0
+            val pathLower = file.path.replace("\\", "/").lowercase()
+            when {
+                pathLower.contains("/dcim/") || pathLower.contains("/camera/") -> score += 100
+                pathLower.contains("/pictures/") -> score += 60
+                pathLower.contains("/documents/") -> score += 50
+                pathLower.contains("/download/") || pathLower.contains("/downloads/") -> score += 30
+                pathLower.contains("/telegram") || pathLower.contains("/whatsapp") -> score += 10
+                else -> score += 20
+            }
+
+            // If timestamp exists, prefer earliest original creation
+            if (file.timestamp > 0) {
+                // Modest bonus for having timestamp
+                score += 5
+            }
+
+            if (score > bestScore) {
+                bestScore = score
+                bestIndex = index
+            }
+        }
+        return bestIndex
+    }
+
+    suspend fun cleanSelectedDuplicates(
+        context: Context,
+        clusters: List<DuplicateCluster>,
+        keepMap: Map<Int, Int>
+    ): Long = withContext(Dispatchers.IO) {
+        var reclaimedBytes = 0L
+        for ((idx, cluster) in clusters.withIndex()) {
+            val keepIdx = keepMap[idx] ?: findBestIndexToKeep(cluster.files)
+            val filesToDelete = cluster.files.filterIndexed { fIdx, _ -> fIdx != keepIdx }
+            reclaimedBytes += (filesToDelete.size * cluster.sizeBytes)
+            removeDuplicateCopies(context, cluster, keepIndex = keepIdx)
+        }
+        return@withContext reclaimedBytes
+    }
+
     suspend fun autoCleanAllDuplicates(context: Context): Long = withContext(Dispatchers.IO) {
         val clusters = findDuplicates(context)
         var reclaimedBytes = 0L
         for (cluster in clusters) {
+            val bestIdx = findBestIndexToKeep(cluster.files)
             reclaimedBytes += cluster.wastedBytes
-            removeDuplicateCopies(context, cluster, keepIndex = 0)
+            removeDuplicateCopies(context, cluster, keepIndex = bestIdx)
         }
         return@withContext reclaimedBytes
     }
 }
+
