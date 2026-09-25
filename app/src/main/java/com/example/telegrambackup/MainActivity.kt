@@ -15,6 +15,7 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -199,6 +200,7 @@ fun MainApp(
 
     var isSearchActive by remember { mutableStateOf(false) }
     var topSearchQuery by remember { mutableStateOf("") }
+    var showAiSearchDialog by remember { mutableStateOf(false) }
 
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
@@ -743,6 +745,38 @@ fun MainApp(
                             colors = drawerItemColors
                         )
 
+                        NavigationDrawerItem(
+                            icon = { Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = Color(0xFFF59E0B)) },
+                            label = {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text("AI Photo Search", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Surface(
+                                        shape = CircleShape,
+                                        color = TelegramBlue.copy(alpha = 0.15f)
+                                    ) {
+                                        Text(
+                                            "NEW",
+                                            style = MaterialTheme.typography.labelSmall.copy(
+                                                fontWeight = FontWeight.Bold,
+                                                color = TelegramBlue,
+                                                fontSize = 9.sp
+                                            ),
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                        )
+                                    }
+                                }
+                            },
+                            selected = false,
+                            onClick = {
+                                triggerHapticFeedback(context, haptic)
+                                scope.launch { drawerState.close() }
+                                showAiSearchDialog = true
+                            },
+                            shape = CircleShape,
+                            colors = drawerItemColors
+                        )
+
                         Spacer(modifier = Modifier.height(8.dp))
                         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f), modifier = Modifier.padding(horizontal = 12.dp))
                         Spacer(modifier = Modifier.height(4.dp))
@@ -858,6 +892,12 @@ fun MainApp(
                                             }
                                         }
                                     )
+                                    IconButton(onClick = {
+                                        triggerHapticFeedback(context, haptic)
+                                        showAiSearchDialog = true
+                                    }) {
+                                        Icon(Icons.Default.AutoAwesome, contentDescription = "AI Photo & Document Search", tint = Color(0xFFF59E0B), modifier = Modifier.size(19.dp))
+                                    }
                                     if (topSearchQuery.isNotEmpty()) {
                                         IconButton(onClick = { topSearchQuery = "" }) {
                                             Icon(Icons.Default.Close, contentDescription = "Clear", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
@@ -892,6 +932,41 @@ fun MainApp(
                                                 fontSize = 15.sp
                                             )
                                         )
+                                    }
+
+                                    // ✨ AI Photo & Document Search Quick Button on Main Screen
+                                    Surface(
+                                        shape = CircleShape,
+                                        color = TelegramBlue.copy(alpha = 0.12f),
+                                        border = BorderStroke(1.dp, TelegramBlue.copy(alpha = 0.35f)),
+                                        modifier = Modifier
+                                            .padding(end = 6.dp)
+                                            .clip(CircleShape)
+                                            .clickable {
+                                                triggerHapticFeedback(context, haptic)
+                                                showAiSearchDialog = true
+                                            }
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Icon(
+                                                Icons.Default.AutoAwesome,
+                                                contentDescription = "AI Photo & Document Search",
+                                                tint = Color(0xFFF59E0B),
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text(
+                                                "AI",
+                                                style = MaterialTheme.typography.labelSmall.copy(
+                                                    fontWeight = FontWeight.ExtraBold,
+                                                    color = MaterialTheme.colorScheme.primary,
+                                                    fontSize = 11.5.sp
+                                                )
+                                            )
+                                        }
                                     }
 
                                     com.example.telegrambackup.ui.common.SyncStatusPill(
@@ -1091,6 +1166,8 @@ fun MainApp(
                                         selectedTab = MainTab.TRASH
                                     } else if (catIndex == -2) {
                                         selectedTab = MainTab.VAULT_HEALTH
+                                    } else if (catIndex == -3) {
+                                        showAiSearchDialog = true
                                     } else {
                                         explorerInitialTab = 2
                                         targetCategoryTitle = when (catIndex) {
@@ -1184,6 +1261,17 @@ fun MainApp(
             onDismiss = {
                 prefs.lastSeenWhatsNewVersion = currentInstalledVersionName
                 showWhatsNewDialog = false
+            }
+        )
+    }
+
+    if (showAiSearchDialog) {
+        com.example.telegrambackup.ui.ai.AiPhotoSearchDialog(
+            initialQuery = topSearchQuery,
+            onDismiss = { showAiSearchDialog = false },
+            onOpenSettings = {
+                showAiSearchDialog = false
+                selectedTab = MainTab.SETTINGS
             }
         )
     }

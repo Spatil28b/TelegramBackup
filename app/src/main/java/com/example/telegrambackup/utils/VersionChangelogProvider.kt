@@ -28,6 +28,35 @@ object VersionChangelogProvider {
 
     private val releases = listOf(
         VersionRelease(
+            versionName = "2.4.3",
+            versionCode = 127,
+            releaseDate = "September 2026",
+            highlights = "AI Visual Photo & Document Search from Main Screen, Image-First Matching & Top 6 Essential Themes",
+            entries = listOf(
+                ChangelogEntry(
+                    Icons.Default.AutoAwesome,
+                    Color(0xFF8B5CF6),
+                    "AI Photo & Document Search",
+                    "Natural-language visual search for certificates, payment receipts, PAN cards, party photos, 10th marksheets & bills with image gallery results.",
+                    "NEW AI"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Search,
+                    TelegramBlue,
+                    "Main Screen 1-Tap Search Icon",
+                    "Dedicated glowing AI Search button directly on the main screen top search bar, Home dashboard card, and drawer for instant photo discovery.",
+                    "SHORTCUT"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Palette,
+                    TelegramEmerald,
+                    "Top 6 Clean Visual Themes",
+                    "Streamlined theme suite to the top 6 premium styles: System Default, Clean Light, Midnight Dark, Pure AMOLED Black, Emerald Forest & Sunset Amber.",
+                    "THEMES"
+                )
+            )
+        ),
+        VersionRelease(
             versionName = "2.4.2",
             versionCode = 126,
             releaseDate = "September 2026",

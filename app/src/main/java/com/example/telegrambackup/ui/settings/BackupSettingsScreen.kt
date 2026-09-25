@@ -271,7 +271,7 @@ fun BackupSettingsScreen(
     var showHiddenFiles by remember { mutableStateOf(prefs.showHiddenFiles) }
     var biometricLock by remember { mutableStateOf(prefs.isBiometricEnabled) }
     var enableDataCompression by remember { mutableStateOf(prefs.enableDataCompression) }
-    var selectedTheme by remember { mutableIntStateOf(prefs.appTheme) }
+    var selectedTheme by remember { mutableIntStateOf(AppThemeMode.fromId(prefs.appTheme).id) }
     var uploadSpeedLimit by remember { mutableStateOf("Unlimited") }
     var uploadThreads by remember { mutableIntStateOf(4) }
     val uniqueMasterKey = remember { prefs.encryptionKey }
@@ -2937,7 +2937,7 @@ fun BackupSettingsScreen(
                 ) {
                     SpotiSubpageHeader(
                         title = "Appearance & Theme",
-                        subtitle = "Select from 10 handcrafted visual color themes",
+                        subtitle = "Select from top 6 clean visual themes",
                         onBack = {
                             saveAllSettings(silent = true)
                             currentCategory = StreamlinedCategory.MAIN
@@ -2945,7 +2945,7 @@ fun BackupSettingsScreen(
                     )
 
                     Text(
-                        "CHOOSE YOUR THEME (14 PREMIUM STYLES)",
+                        "CHOOSE YOUR THEME (TOP 6 ESSENTIAL STYLES)",
                         style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, letterSpacing = 0.8.sp)
                     )
 

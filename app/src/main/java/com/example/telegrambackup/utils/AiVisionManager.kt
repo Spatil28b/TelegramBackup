@@ -195,9 +195,9 @@ object AiVisionManager {
 
     /**
      * Prepares memory-efficient downsampled JPEG base64 string from an image file.
-     * Keeps max dimension <= 1024px to prevent phone memory spikes or thermal load.
+     * Keeps max dimension <= maxDimension to prevent phone memory spikes or thermal load.
      */
-    private fun prepareOptimizedImageBase64(imageFile: File): String? {
+    fun prepareOptimizedImageBase64(imageFile: File, maxDimension: Int = 1024): String? {
         return try {
             val boundsOptions = BitmapFactory.Options().apply {
                 inJustDecodeBounds = true
@@ -209,7 +209,6 @@ object AiVisionManager {
             if (width <= 0 || height <= 0) return null
 
             var inSampleSize = 1
-            val maxDimension = 1024
             if (width > maxDimension || height > maxDimension) {
                 val halfWidth = width / 2
                 val halfHeight = height / 2
@@ -368,5 +367,181 @@ object AiVisionManager {
         }
 
         Result.failure(lastError ?: Exception("Failed to query AI Vision across all configured keys."))
+    }
+
+    data class BatchImageCandidate(
+        val id: String,
+        val imageFile: File,
+        val fileName: String
+    )
+
+    data class BatchMatchResult(
+        val candidateId: String,
+        val matched: Boolean,
+        val reason: String,
+        val tags: List<String>
+    )
+
+    /**
+     * Evaluates a batch of up to 4 images against a user search query (e.g. "bonafide certificate", "payment receipt", "pan card", "party photos").
+     * Returns match decisions and reasons for each candidate.
+     */
+    suspend fun evaluateBatchForSearch(
+        context: Context,
+        candidates: List<BatchImageCandidate>,
+        searchQuery: String
+    ): Result<List<BatchMatchResult>> = withContext(Dispatchers.IO) {
+        if (candidates.isEmpty()) return@withContext Result.success(emptyList())
+
+        val prefs = AppPrefs(context)
+        val keyList = prefs.getGeminiApiKeyList()
+        if (keyList.isEmpty()) {
+            return@withContext Result.failure(IllegalStateException("No Gemini API keys configured."))
+        }
+
+        // Build base64 for each candidate with low memory footprint (max 512px)
+        val validImages = mutableListOf<Pair<BatchImageCandidate, String>>()
+        for (cand in candidates) {
+            val b64 = prepareOptimizedImageBase64(cand.imageFile, maxDimension = 512)
+            if (b64 != null) {
+                validImages.add(Pair(cand, b64))
+            }
+        }
+
+        if (validImages.isEmpty()) {
+            return@withContext Result.success(emptyList())
+        }
+
+        val startIndex = currentKeyIndex.get() % keyList.size
+        var lastError: Exception? = null
+
+        for (i in 0 until keyList.size) {
+            val keyIndex = (startIndex + i) % keyList.size
+            val apiKey = keyList[keyIndex]
+
+            try {
+                var modelName = modelCache[apiKey] ?: prefs.activeAiModel.ifBlank { "gemini-2.0-flash" }
+                modelName = modelName.removePrefix("models/")
+                val endpoint = "https://generativelanguage.googleapis.com/v1beta/models/$modelName:generateContent?key=$apiKey"
+
+                val prompt = """
+                    You are an intelligent photo and document search assistant.
+                    The user is searching for: "$searchQuery"
+                    Examine the ${validImages.size} attached image(s) carefully.
+                    Determine which images visually or textually match the search query (e.g., bonafide certificate, payment receipt, pan card, party photos, marksheet, etc.).
+                    Return ONLY a JSON array with one object per matching image in this exact format:
+                    [
+                      {"id": "candidate_id", "matched": true, "reason": "Brief 4-8 word explanation of match", "tags": ["tag1", "tag2"]}
+                    ]
+                    If no images match the query, return []. Do NOT include markdown formatting or backticks.
+                """.trimIndent()
+
+                val partsArray = JSONArray()
+                partsArray.put(JSONObject().apply { put("text", prompt) })
+
+                for ((cand, b64) in validImages) {
+                    partsArray.put(JSONObject().apply { put("text", "Image ID: ${cand.id} (File: ${cand.fileName})") })
+                    partsArray.put(JSONObject().apply {
+                        put("inline_data", JSONObject().apply {
+                            put("mime_type", "image/jpeg")
+                            put("data", b64)
+                        })
+                    })
+                }
+
+                val requestJson = JSONObject().apply {
+                    val contents = JSONArray().apply {
+                        val contentObj = JSONObject().apply {
+                            put("parts", partsArray)
+                        }
+                        put(contentObj)
+                    }
+                    put("contents", contents)
+
+                    put("generationConfig", JSONObject().apply {
+                        put("temperature", 0.1)
+                        put("maxOutputTokens", 1024)
+                    })
+                }
+
+                val mediaType = "application/json; charset=utf-8".toMediaType()
+                val requestBody = requestJson.toString().toRequestBody(mediaType)
+                val request = Request.Builder().url(endpoint).post(requestBody).build()
+
+                var response = HttpClientProvider.client.newCall(request).execute()
+                var responseText = response.body?.string() ?: ""
+
+                // Auto-healing for model discovery if needed
+                if (response.code == 404 || (!response.isSuccessful && (responseText.contains("not found", ignoreCase = true) || responseText.contains("not supported", ignoreCase = true)))) {
+                    val discovery = fetchAvailableModels(apiKey)
+                    val liveModels = discovery.getOrNull()
+                    if (!liveModels.isNullOrEmpty()) {
+                        val resolvedModel = selectBestModel(liveModels, null)
+                        modelCache[apiKey] = resolvedModel
+                        prefs.activeAiModel = resolvedModel
+                        val retryEndpoint = "https://generativelanguage.googleapis.com/v1beta/models/$resolvedModel:generateContent?key=$apiKey"
+                        val retryReq = Request.Builder().url(retryEndpoint).post(requestBody).build()
+                        response = HttpClientProvider.client.newCall(retryReq).execute()
+                        responseText = response.body?.string() ?: ""
+                    }
+                }
+
+                if (response.code == 429 || response.code == 403) {
+                    lastError = Exception("API Key #${keyIndex + 1} reached quota/rate limit (${response.code}).")
+                    continue
+                }
+
+                if (!response.isSuccessful) {
+                    val parsedMsg = try {
+                        JSONObject(responseText).optJSONObject("error")?.optString("message") ?: "HTTP ${response.code}"
+                    } catch (_: Exception) {
+                        "HTTP ${response.code}: ${response.message}"
+                    }
+                    lastError = Exception("AI Error: $parsedMsg")
+                    continue
+                }
+
+                val respJson = JSONObject(responseText)
+                val candidatesArr = respJson.optJSONArray("candidates")
+                val firstCand = candidatesArr?.optJSONObject(0)
+                val parts = firstCand?.optJSONObject("content")?.optJSONArray("parts")
+                val rawReply = parts?.optJSONObject(0)?.optString("text")?.trim().orEmpty()
+
+                val cleanJson = rawReply
+                    .removePrefix("```json")
+                    .removePrefix("```")
+                    .removeSuffix("```")
+                    .trim()
+
+                val resultsList = mutableListOf<BatchMatchResult>()
+                try {
+                    val jsonArray = JSONArray(cleanJson)
+                    for (j in 0 until jsonArray.length()) {
+                        val item = jsonArray.optJSONObject(j) ?: continue
+                        val id = item.optString("id")
+                        val matched = item.optBoolean("matched", false)
+                        val reason = item.optString("reason", "Visual match")
+                        val tagsArr = item.optJSONArray("tags") ?: JSONArray()
+                        val tags = mutableListOf<String>()
+                        for (k in 0 until tagsArr.length()) {
+                            tags.add(tagsArr.optString(k))
+                        }
+                        if (matched && id.isNotBlank()) {
+                            resultsList.add(BatchMatchResult(id, true, reason, tags))
+                            // Persist to local AI search tag cache
+                            AiSearchTagCache.putTagEntry(context, id, reason, tags)
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to parse AI batch match JSON: $cleanJson", e)
+                }
+
+                return@withContext Result.success(resultsList)
+            } catch (e: Exception) {
+                lastError = e
+            }
+        }
+
+        Result.failure(lastError ?: Exception("AI evaluation failed across all keys."))
     }
 }
