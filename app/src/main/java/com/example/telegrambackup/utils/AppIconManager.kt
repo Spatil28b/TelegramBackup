@@ -15,7 +15,7 @@ enum class AppIcon(
 ) {
     GREEN(
         id = "green",
-        title = "Emerald Forest (Default)",
+        title = "Emerald Forest",
         subtitle = "Signature glowing emerald icon with dark crystal background",
         aliasClassName = "com.example.telegrambackup.MainActivityGreen",
         previewDrawableRes = R.drawable.app_icon_green

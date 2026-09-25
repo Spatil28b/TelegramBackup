@@ -61,6 +61,9 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.FastOutLinearInEasing
+import androidx.compose.animation.core.LinearOutSlowInEasing
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import com.example.telegrambackup.ui.common.KomiBottomBar
 import com.example.telegrambackup.ui.common.KomiNavItemData
@@ -1009,8 +1012,8 @@ fun MainApp(
                                 }
                             }
                         }
-                    } else if ((selectedTab == MainTab.FILES && targetCategoryTitle != null) || selectedTab == MainTab.DRIVE) {
-                        // Do NOT render duplicate TopAppBar: BackupExplorerScreen & DriveExplorerScreen render their own dedicated, sleek M3 headers
+                    } else if ((selectedTab == MainTab.FILES && targetCategoryTitle != null) || selectedTab == MainTab.DRIVE || selectedTab == MainTab.EXCEPTIONS) {
+                        // Do NOT render duplicate TopAppBar: BackupExplorerScreen, DriveExplorerScreen & BackupExceptionsScreen render their own dedicated, sleek M3 headers
                     } else {
                         TopAppBar(
                             title = {
@@ -1144,15 +1147,20 @@ fun MainApp(
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(top = paddingValues.calculateTopPadding())
+                        .nestedScroll(scrollNavBarConnection)
+                        .pointerInput(Unit) {
+                            detectTapGestures {
+                                // Tapping on empty screen margins or background toggles/hides the bottom nav bar
+                                isNavBarVisibleState.value = !isNavBarVisibleState.value
+                            }
+                        }
                 ) {
                     AnimatedContent(
                         targetState = selectedTab,
                         transitionSpec = {
-                            (fadeIn(animationSpec = tween(220, easing = FastOutSlowInEasing)) +
-                             scaleIn(initialScale = 0.96f, animationSpec = tween(220, easing = FastOutSlowInEasing))).togetherWith(
-                                fadeOut(animationSpec = tween(160, easing = FastOutLinearInEasing)) +
-                                scaleOut(targetScale = 1.02f, animationSpec = tween(160, easing = FastOutLinearInEasing))
-                            ).using(SizeTransform(clip = false))
+                            fadeIn(animationSpec = tween(140, easing = LinearOutSlowInEasing)).togetherWith(
+                                fadeOut(animationSpec = tween(100, easing = FastOutLinearInEasing))
+                            )
                         },
                         label = "MainTabAnimatedContent",
                         modifier = Modifier.fillMaxSize()

@@ -8,27 +8,34 @@ import kotlin.math.abs
 
 /**
  * Smart auto-hide NestedScrollConnection for the bottom navigation bar.
- * Detects vertical scroll deltas:
- * - Scrolling DOWN (user reading/scrolling list down): hides the bottom bar to maximize screen estate
- * - Scrolling UP (user wants controls): shows the bottom bar smoothly
+ * Rules:
+ * - If screen is NOT scrollable (consumed.y == 0), the bar will NEVER auto-hide on touch/drag.
+ * - Only hides when the user actively scrolls DOWN on scrollable content past [thresholdDp].
+ * - Shows smoothly when the user scrolls UP on scrollable content.
  */
 @Composable
 fun rememberSmartScrollNavBarConnection(
-    thresholdDp: Float = 14f,
+    thresholdDp: Float = 16f,
     initialVisible: Boolean = true
 ): Pair<MutableState<Boolean>, NestedScrollConnection> {
     val isVisible = remember { mutableStateOf(initialVisible) }
 
     val connection = remember {
         object : NestedScrollConnection {
-            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
-                val dy = available.y
+            override fun onPostScroll(
+                consumed: Offset,
+                available: Offset,
+                source: NestedScrollSource
+            ): Offset {
+                // If content is not scrollable or at boundary without consuming, consumed.y is 0.
+                // We NEVER hide the nav bar unless scroll delta was actually consumed by scrollable content!
+                val dy = consumed.y
                 if (abs(dy) > thresholdDp) {
                     if (dy < 0 && isVisible.value) {
-                        // Scrolling DOWN -> Hide bar
+                        // Scrolling DOWN through real content -> Hide bar
                         isVisible.value = false
                     } else if (dy > 0 && !isVisible.value) {
-                        // Scrolling UP -> Reveal bar
+                        // Scrolling UP through real content -> Reveal bar
                         isVisible.value = true
                     }
                 }

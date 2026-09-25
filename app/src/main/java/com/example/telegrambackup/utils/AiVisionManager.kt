@@ -88,7 +88,10 @@ object AiVisionManager {
                     }
                 }
                 if (canGenerate && cleanName.isNotBlank()) {
-                    supported.add(cleanName)
+                    // Exclude deprecated / restricted preview models that fail for new users
+                    if (!cleanName.contains("2.5-flash", ignoreCase = true) && !cleanName.contains("1.5-flash-8b", ignoreCase = true)) {
+                        supported.add(cleanName)
+                    }
                 }
             }
 
@@ -103,23 +106,48 @@ object AiVisionManager {
     }
 
     /**
+     * Checks if an HTTP failure indicates the model is invalid, deprecated, or restricted.
+     */
+    private fun isModelError(code: Int, responseText: String): Boolean {
+        if (code == 404) return true
+        if (code == 400 && (
+            responseText.contains("no longer available", ignoreCase = true) ||
+            responseText.contains("not found", ignoreCase = true) ||
+            responseText.contains("not supported", ignoreCase = true) ||
+            responseText.contains("deprecated", ignoreCase = true) ||
+            responseText.contains("invalid model", ignoreCase = true) ||
+            responseText.contains("models/", ignoreCase = true)
+        )) return true
+        if (responseText.contains("no longer available to new users", ignoreCase = true)) return true
+        return false
+    }
+
+    /**
      * Selects the most optimal active model from available models or based on user preference.
      */
     fun selectBestModel(availableModels: List<String>, preferredModel: String? = null): String {
         val preferred = preferredModel?.removePrefix("models/")?.trim()
-        if (!preferred.isNullOrBlank() && preferred != "auto" && !preferred.contains("1.5") && availableModels.contains(preferred)) {
+        if (!preferred.isNullOrBlank() && 
+            preferred != "auto" && 
+            !preferred.contains("1.5") && 
+            !preferred.contains("2.5") && 
+            availableModels.contains(preferred)) {
             return preferred
         }
 
-        // Priority heuristics for fast multimodal vision:
-        return availableModels.firstOrNull { it.contains("2.5-flash", ignoreCase = true) }
-            ?: availableModels.firstOrNull { it.contains("2.0-flash", ignoreCase = true) }
-            ?: availableModels.firstOrNull { it.contains("flash", ignoreCase = true) && !it.contains("1.5") }
-            ?: availableModels.firstOrNull { it.contains("flash", ignoreCase = true) }
-            ?: availableModels.firstOrNull { it.contains("2.5-pro", ignoreCase = true) }
-            ?: availableModels.firstOrNull { it.contains("2.0-pro", ignoreCase = true) }
-            ?: availableModels.firstOrNull { it.contains("pro", ignoreCase = true) }
-            ?: availableModels.firstOrNull()
+        val filtered = availableModels.filter {
+            !it.contains("2.5-flash", ignoreCase = true) && !it.contains("1.5-flash-8b", ignoreCase = true)
+        }
+
+        // Priority heuristics: Stable modern Gemini 2.0 / 3.0 Multimodal Vision
+        return filtered.firstOrNull { it.equals("gemini-2.0-flash", ignoreCase = true) }
+            ?: filtered.firstOrNull { it.contains("2.0-flash", ignoreCase = true) && !it.contains("lite", ignoreCase = true) }
+            ?: filtered.firstOrNull { it.contains("2.0-flash-lite", ignoreCase = true) }
+            ?: filtered.firstOrNull { it.contains("3.0-flash", ignoreCase = true) || it.contains("3-flash", ignoreCase = true) }
+            ?: filtered.firstOrNull { it.contains("flash", ignoreCase = true) && !it.contains("1.5") && !it.contains("2.5") }
+            ?: filtered.firstOrNull { it.contains("2.0-pro", ignoreCase = true) }
+            ?: filtered.firstOrNull { it.contains("pro", ignoreCase = true) && !it.contains("1.5") }
+            ?: filtered.firstOrNull()
             ?: "gemini-2.0-flash"
     }
 
@@ -197,7 +225,7 @@ object AiVisionManager {
      * Prepares memory-efficient downsampled JPEG base64 string from an image file.
      * Keeps max dimension <= maxDimension to prevent phone memory spikes or thermal load.
      */
-    fun prepareOptimizedImageBase64(imageFile: File, maxDimension: Int = 1024): String? {
+    fun prepareOptimizedImageBase64(imageFile: File, maxDimension: Int = 1024, quality: Int = 85): String? {
         return try {
             val boundsOptions = BitmapFactory.Options().apply {
                 inJustDecodeBounds = true
@@ -224,7 +252,7 @@ object AiVisionManager {
 
             val bitmap = BitmapFactory.decodeFile(imageFile.absolutePath, decodeOptions) ?: return null
             val outputStream = ByteArrayOutputStream()
-            bitmap.compress(Bitmap.CompressFormat.JPEG, 85, outputStream)
+            bitmap.compress(Bitmap.CompressFormat.JPEG, quality.coerceIn(40, 100), outputStream)
             bitmap.recycle() // Immediately free native memory buffer
 
             val bytes = outputStream.toByteArray()
@@ -315,13 +343,13 @@ object AiVisionManager {
                 var response = HttpClientProvider.client.newCall(request).execute()
                 var responseText = response.body?.string() ?: ""
 
-                // Auto-healing: If model not found (404) or unsupported, dynamically discover working model
-                if (response.code == 404 || (!response.isSuccessful && (responseText.contains("not found", ignoreCase = true) || responseText.contains("not supported", ignoreCase = true)))) {
-                    Log.w(TAG, "Model '$modelName' failed with ${response.code}. Auto-discovering supported models for key #${keyIndex + 1}...")
+                // Auto-healing: If model fails with model error (404, 400 with deprecation, etc.), dynamically switch to a working model
+                if (isModelError(response.code, responseText)) {
+                    Log.w(TAG, "Model '$modelName' failed with ${response.code}: $responseText. Auto-discovering supported models for key #${keyIndex + 1}...")
                     val discovery = fetchAvailableModels(apiKey)
                     val liveModels = discovery.getOrNull()
                     if (!liveModels.isNullOrEmpty()) {
-                        val resolvedModel = selectBestModel(liveModels, null)
+                        val resolvedModel = selectBestModel(liveModels.filter { it != modelName }, null)
                         modelCache[apiKey] = resolvedModel
                         prefs.activeAiModel = resolvedModel
                         Log.i(TAG, "Auto-switched model to active model: $resolvedModel")
@@ -399,10 +427,10 @@ object AiVisionManager {
             return@withContext Result.failure(IllegalStateException("No Gemini API keys configured."))
         }
 
-        // Build base64 for each candidate with low memory footprint (max 512px)
+        // Build base64 for each candidate with low memory footprint & fast upload (max 384px, quality 75)
         val validImages = mutableListOf<Pair<BatchImageCandidate, String>>()
         for (cand in candidates) {
-            val b64 = prepareOptimizedImageBase64(cand.imageFile, maxDimension = 512)
+            val b64 = prepareOptimizedImageBase64(cand.imageFile, maxDimension = 384, quality = 75)
             if (b64 != null) {
                 validImages.add(Pair(cand, b64))
             }
@@ -425,15 +453,25 @@ object AiVisionManager {
                 val endpoint = "https://generativelanguage.googleapis.com/v1beta/models/$modelName:generateContent?key=$apiKey"
 
                 val prompt = """
-                    You are an intelligent photo and document search assistant.
+                    You are a high-precision AI document and photo classifier.
                     The user is searching for: "$searchQuery"
-                    Examine the ${validImages.size} attached image(s) carefully.
-                    Determine which images visually or textually match the search query (e.g., bonafide certificate, payment receipt, pan card, party photos, marksheet, etc.).
-                    Return ONLY a JSON array with one object per matching image in this exact format:
+
+                    Attached are ${validImages.size} image(s). Examine each image's text, visual elements, stamps, and layout.
+
+                    STRICT ACCURACY RULES (AVOID FALSE POSITIVES):
+                    1. "bonafide certificate": MUST show an official academic/institutional certificate or college/school letterhead certifying student enrollment/bonafide status, study certificate, or official seal/stamp. Do NOT match random handwritten notes, book pages, or generic forms.
+                    2. "payment receipt" / "10k receipt" / "transaction": MUST show financial transaction or payment details (UPI, GPay, PhonePe, Paytm, Bank Transfer, UTR/Ref #, currency ₹/Rs/$, or bill breakdown). Do NOT match regular text messages, chat screenshots, or memes.
+                    3. "pan card": MUST be an Indian Income Tax Department Permanent Account Number (PAN) card showing Indian emblem, 10-digit alphanumeric PAN, photo, or father's name. Do NOT match Aadhaar, driving license, or office ID.
+                    4. "marksheet" / "result": MUST show subjects, marks, grades, roll number, or examination board (CBSE, ICSE, State Board, University).
+                    5. "party photos" / "celebration": MUST show an actual party, birthday cake, celebration event, party decorations, or group celebrating. Do NOT match ordinary solo selfies, nature, food plates, or mundane indoor shots.
+                    6. "electricity bill" / "utility bill": MUST show electric utility provider (BESCOM, MSEB, TNEB, etc.), meter reading, consumer ID, or power bill layout.
+                    7. Other queries: ONLY match if the image directly and clearly portrays "$searchQuery". If uncertain or only vaguely related, mark matched: false.
+
+                    Return ONLY a JSON array with one object per matching image with confidence >= 0.75:
                     [
-                      {"id": "candidate_id", "matched": true, "reason": "Brief 4-8 word explanation of match", "tags": ["tag1", "tag2"]}
+                      {"id": "candidate_id", "matched": true, "reason": "Specific 4-8 word reason", "tags": ["tag1", "tag2"], "confidence": 0.95}
                     ]
-                    If no images match the query, return []. Do NOT include markdown formatting or backticks.
+                    If no images match with high confidence, return []. Do NOT include markdown code blocks or backticks.
                 """.trimIndent()
 
                 val partsArray = JSONArray()
@@ -471,14 +509,16 @@ object AiVisionManager {
                 var response = HttpClientProvider.client.newCall(request).execute()
                 var responseText = response.body?.string() ?: ""
 
-                // Auto-healing for model discovery if needed
-                if (response.code == 404 || (!response.isSuccessful && (responseText.contains("not found", ignoreCase = true) || responseText.contains("not supported", ignoreCase = true)))) {
+                // Auto-healing: If model fails with model error (404, 400 with deprecation, etc.), dynamically switch to a working model
+                if (isModelError(response.code, responseText)) {
+                    Log.w(TAG, "Batch evaluation model '$modelName' failed (${response.code}: $responseText). Auto-discovering supported models...")
                     val discovery = fetchAvailableModels(apiKey)
                     val liveModels = discovery.getOrNull()
                     if (!liveModels.isNullOrEmpty()) {
-                        val resolvedModel = selectBestModel(liveModels, null)
+                        val resolvedModel = selectBestModel(liveModels.filter { it != modelName }, null)
                         modelCache[apiKey] = resolvedModel
                         prefs.activeAiModel = resolvedModel
+                        Log.i(TAG, "Auto-switched batch model to: $resolvedModel")
                         val retryEndpoint = "https://generativelanguage.googleapis.com/v1beta/models/$resolvedModel:generateContent?key=$apiKey"
                         val retryReq = Request.Builder().url(retryEndpoint).post(requestBody).build()
                         response = HttpClientProvider.client.newCall(retryReq).execute()
@@ -520,13 +560,14 @@ object AiVisionManager {
                         val item = jsonArray.optJSONObject(j) ?: continue
                         val id = item.optString("id")
                         val matched = item.optBoolean("matched", false)
+                        val confidence = item.optDouble("confidence", 1.0)
                         val reason = item.optString("reason", "Visual match")
                         val tagsArr = item.optJSONArray("tags") ?: JSONArray()
                         val tags = mutableListOf<String>()
                         for (k in 0 until tagsArr.length()) {
                             tags.add(tagsArr.optString(k))
                         }
-                        if (matched && id.isNotBlank()) {
+                        if (matched && confidence >= 0.70 && id.isNotBlank()) {
                             resultsList.add(BatchMatchResult(id, true, reason, tags))
                             // Persist to local AI search tag cache
                             AiSearchTagCache.putTagEntry(context, id, reason, tags)

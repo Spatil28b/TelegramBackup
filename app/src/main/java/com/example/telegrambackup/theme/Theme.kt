@@ -8,139 +8,139 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 
-// 0 & 2: Midnight Dark (Files by Google Dark Style)
+// 0 & 2: Midnight Dark (Linear/Spotify/Google Files Midnight Slate Style)
 private val DarkColorScheme = darkColorScheme(
-    primary = TelegramBlueLight,
-    onPrimary = Color.Black,
-    primaryContainer = Color(0xFF004A77),
-    onPrimaryContainer = Color(0xFFC2E7FF),
-    secondary = TelegramCyan,
-    onSecondary = Color.Black,
-    secondaryContainer = Color(0xFF004A77),
-    onSecondaryContainer = Color(0xFFC2E7FF),
-    tertiary = TelegramEmerald,
-    onTertiary = Color.Black,
-    background = Color(0xFF111318),
-    onBackground = Color(0xFFE2E2E9),
-    surface = Color(0xFF191C20),
-    onSurface = Color(0xFFE2E2E9),
-    surfaceVariant = Color(0xFF2B2F37),
-    onSurfaceVariant = Color(0xFFC4C7C5),
-    surfaceContainerLowest = Color(0xFF0C0E12),
-    surfaceContainerLow = Color(0xFF1D2026),
-    surfaceContainer = Color(0xFF22252C),
-    surfaceContainerHigh = Color(0xFF2B2F37),
-    surfaceContainerHighest = Color(0xFF343942),
-    outline = Color(0xFF8E9192),
-    outlineVariant = Color(0xFF44474F)
+    primary = Color(0xFF38BDF8), // Sky 400 - Crisp, high contrast
+    onPrimary = Color(0xFF003554),
+    primaryContainer = Color(0xFF0C4A6E),
+    onPrimaryContainer = Color(0xFFBAE6FD),
+    secondary = Color(0xFF2DD4BF), // Teal 400
+    onSecondary = Color(0xFF003831),
+    secondaryContainer = Color(0xFF134E4A),
+    onSecondaryContainer = Color(0xFF99F6E4),
+    tertiary = Color(0xFFA78BFA), // Lavender
+    onTertiary = Color(0xFF2E1065),
+    background = Color(0xFF0B0F19), // Deep slate obsidian navy
+    onBackground = Color(0xFFF1F5F9),
+    surface = Color(0xFF111827), // Slate 900
+    onSurface = Color(0xFFF8FAFC),
+    surfaceVariant = Color(0xFF1E293B),
+    onSurfaceVariant = Color(0xFF94A3B8),
+    surfaceContainerLowest = Color(0xFF070A12),
+    surfaceContainerLow = Color(0xFF151D2E),
+    surfaceContainer = Color(0xFF1E293B), // Slate 800
+    surfaceContainerHigh = Color(0xFF27354D),
+    surfaceContainerHighest = Color(0xFF334155),
+    outline = Color(0xFF475569),
+    outlineVariant = Color(0xFF1E293B)
 )
 
-// 1: Clean Light (Files by Google Light Style)
+// 1: Clean Light (Apple/Google Files Clean Aesthetic)
 private val LightColorScheme = lightColorScheme(
-    primary = TelegramBlue,
+    primary = Color(0xFF0284C7), // Vibrant electric sky azure
     onPrimary = Color.White,
-    primaryContainer = Color(0xFFD3E3FD),
-    onPrimaryContainer = Color(0xFF041E49),
-    secondary = TelegramCyan,
+    primaryContainer = Color(0xFFE0F2FE),
+    onPrimaryContainer = Color(0xFF0369A1),
+    secondary = Color(0xFF0EA5E9),
     onSecondary = Color.White,
-    secondaryContainer = Color(0xFFD3E3FD),
-    onSecondaryContainer = Color(0xFF041E49),
-    tertiary = TelegramEmerald,
+    secondaryContainer = Color(0xFFE0F2FE),
+    onSecondaryContainer = Color(0xFF0284C7),
+    tertiary = Color(0xFF10B981),
     onTertiary = Color.White,
-    background = Color(0xFFF8F9FA),
-    onBackground = Color(0xFF1F1F1F),
+    background = Color(0xFFF8FAFC), // Soft modern slate white
+    onBackground = Color(0xFF0F172A),
     surface = Color(0xFFFFFFFF),
-    onSurface = Color(0xFF1F1F1F),
-    surfaceVariant = Color(0xFFE1E3E1),
-    onSurfaceVariant = Color(0xFF444746),
+    onSurface = Color(0xFF0F172A),
+    surfaceVariant = Color(0xFFF1F5F9),
+    onSurfaceVariant = Color(0xFF64748B),
     surfaceContainerLowest = Color(0xFFFFFFFF),
-    surfaceContainerLow = Color(0xFFF1F4F9),
-    surfaceContainer = Color(0xFFE9EEF6),
-    surfaceContainerHigh = Color(0xFFE1E8F2),
-    surfaceContainerHighest = Color(0xFFD8E1EE),
-    outline = Color(0xFF747775),
-    outlineVariant = Color(0xFFC4C7C5)
+    surfaceContainerLow = Color(0xFFF8FAFC),
+    surfaceContainer = Color(0xFFF1F5F9),
+    surfaceContainerHigh = Color(0xFFE2E8F0),
+    surfaceContainerHighest = Color(0xFFCBD5E1),
+    outline = Color(0xFF94A3B8),
+    outlineVariant = Color(0xFFE2E8F0)
 )
 
-// 3: Pure AMOLED Black
+// 3: Pure AMOLED Black (True 0-Watt OLED with Neon Cyan Accent)
 private val AmoledColorScheme = darkColorScheme(
-    primary = AmoledPrimary,
+    primary = Color(0xFF00F0FF), // Electric Cyber Cyan
     onPrimary = Color.Black,
-    primaryContainer = Color(0xFF1E293B),
-    onPrimaryContainer = AmoledPrimary,
-    secondary = AmoledSecondary,
+    primaryContainer = Color(0xFF003840),
+    onPrimaryContainer = Color(0xFF80FAFF),
+    secondary = Color(0xFF38BDF8),
     onSecondary = Color.Black,
-    secondaryContainer = Color(0xFF1E293B),
-    onSecondaryContainer = AmoledPrimary,
-    tertiary = TelegramEmerald,
-    background = Color.Black,
-    onBackground = Color.White,
-    surface = Color(0xFF0A0A0A),
-    onSurface = Color.White,
-    surfaceVariant = Color(0xFF18181B),
-    onSurfaceVariant = Color(0xFFA1A1AA),
-    surfaceContainerLowest = Color.Black,
-    surfaceContainerLow = Color(0xFF121212),
-    surfaceContainer = Color(0xFF1A1A1A),
-    surfaceContainerHigh = Color(0xFF242424),
-    surfaceContainerHighest = Color(0xFF2E2E2E),
-    outline = Color(0xFF71717A),
-    outlineVariant = Color(0xFF3F3F46)
-)
-
-// 4: Emerald Forest
-private val EmeraldColorScheme = darkColorScheme(
-    primary = EmeraldPrimary,
-    onPrimary = Color(0xFF02170F),
-    primaryContainer = Color(0xFF083827),
-    onPrimaryContainer = EmeraldSecondary,
-    secondary = EmeraldSecondary,
-    onSecondary = Color(0xFF02170F),
-    secondaryContainer = Color(0xFF083827),
-    onSecondaryContainer = EmeraldSecondary,
-    tertiary = EmeraldTertiary,
-    onTertiary = Color.White,
-    background = EmeraldBackground,
-    onBackground = EmeraldTextPrimary,
-    surface = EmeraldSurface,
-    onSurface = EmeraldTextPrimary,
-    surfaceVariant = EmeraldSurfaceVariant,
-    onSurfaceVariant = EmeraldTextSecondary,
-    surfaceContainerLowest = Color(0xFF02140D),
-    surfaceContainerLow = Color(0xFF072118),
-    surfaceContainer = EmeraldSurface,
-    surfaceContainerHigh = EmeraldSurfaceVariant,
-    surfaceContainerHighest = Color(0xFF174C3A),
-    outline = EmeraldOutline,
-    outlineVariant = Color(0xFF1E5641)
-)
-
-
-// 6: Sunset Amber & Gold
-private val SunsetAmberColorScheme = darkColorScheme(
-    primary = SunsetPrimary,
-    onPrimary = Color(0xFF261602),
-    primaryContainer = Color(0xFF482704),
-    onPrimaryContainer = SunsetSecondary,
-    secondary = SunsetSecondary,
-    onSecondary = Color(0xFF261602),
-    secondaryContainer = Color(0xFF482704),
-    onSecondaryContainer = SunsetSecondary,
-    tertiary = SunsetTertiary,
+    secondaryContainer = Color(0xFF0C4A6E),
+    onSecondaryContainer = Color(0xFFBAE6FD),
+    tertiary = Color(0xFF10B981),
     onTertiary = Color.Black,
-    background = SunsetBackground,
-    onBackground = SunsetTextPrimary,
-    surface = SunsetSurface,
-    onSurface = SunsetTextPrimary,
-    surfaceVariant = SunsetSurfaceVariant,
-    onSurfaceVariant = SunsetTextSecondary,
-    surfaceContainerLowest = Color(0xFF0E0804),
-    surfaceContainerLow = Color(0xFF191007),
-    surfaceContainer = SunsetSurface,
-    surfaceContainerHigh = SunsetSurfaceVariant,
-    surfaceContainerHighest = Color(0xFF452D18),
-    outline = SunsetOutline,
-    outlineVariant = Color(0xFF5D3E21)
+    background = Color(0xFF000000), // True pitch black
+    onBackground = Color(0xFFFFFFFF),
+    surface = Color(0xFF000000),
+    onSurface = Color(0xFFFFFFFF),
+    surfaceVariant = Color(0xFF0F0F12),
+    onSurfaceVariant = Color(0xFFA1A1AA),
+    surfaceContainerLowest = Color(0xFF000000),
+    surfaceContainerLow = Color(0xFF09090B),
+    surfaceContainer = Color(0xFF121215), // Deep zinc card
+    surfaceContainerHigh = Color(0xFF18181B),
+    surfaceContainerHighest = Color(0xFF27272A),
+    outline = Color(0xFF3F3F46),
+    outlineVariant = Color(0xFF27272A)
+)
+
+// 4: Emerald Forest (Lush Nordic Pine & Jade Mint)
+private val EmeraldColorScheme = darkColorScheme(
+    primary = Color(0xFF10B981), // Emerald 500
+    onPrimary = Color(0xFF02170F),
+    primaryContainer = Color(0xFF064E3B),
+    onPrimaryContainer = Color(0xFF6EE7B7),
+    secondary = Color(0xFF34D399), // Mint 400
+    onSecondary = Color(0xFF02170F),
+    secondaryContainer = Color(0xFF065F46),
+    onSecondaryContainer = Color(0xFFA7F3D0),
+    tertiary = Color(0xFF6EE7B7),
+    onTertiary = Color(0xFF02170F),
+    background = Color(0xFF03140D), // Deep botanical black-green
+    onBackground = Color(0xFFF0FDF4),
+    surface = Color(0xFF062116),
+    onSurface = Color(0xFFF0FDF4),
+    surfaceVariant = Color(0xFF0A2B1D),
+    onSurfaceVariant = Color(0xFFA7F3D0),
+    surfaceContainerLowest = Color(0xFF020E09),
+    surfaceContainerLow = Color(0xFF0A2B1D),
+    surfaceContainer = Color(0xFF0F3A27),
+    surfaceContainerHigh = Color(0xFF164C34),
+    surfaceContainerHighest = Color(0xFF1E5E41),
+    outline = Color(0xFF236B4E),
+    outlineVariant = Color(0xFF123F2C)
+)
+
+// 5: Sunset Amber (Obsidian Roast Espresso & Golden Amber Copper)
+private val SunsetAmberColorScheme = darkColorScheme(
+    primary = Color(0xFFF59E0B), // Luminous Amber 500
+    onPrimary = Color(0xFF261602),
+    primaryContainer = Color(0xFF78350F),
+    onPrimaryContainer = Color(0xFFFDE68A),
+    secondary = Color(0xFFFB923C), // Sunset Orange 400
+    onSecondary = Color(0xFF261602),
+    secondaryContainer = Color(0xFF7C2D12),
+    onSecondaryContainer = Color(0xFFFED7AA),
+    tertiary = Color(0xFFFBBF24),
+    onTertiary = Color.Black,
+    background = Color(0xFF100A05), // Dark roast espresso
+    onBackground = Color(0xFFFFFBEB),
+    surface = Color(0xFF1A1108),
+    onSurface = Color(0xFFFFFBEB),
+    surfaceVariant = Color(0xFF24170C),
+    onSurfaceVariant = Color(0xFFFDE68A),
+    surfaceContainerLowest = Color(0xFF0B0603),
+    surfaceContainerLow = Color(0xFF24170C),
+    surfaceContainer = Color(0xFF301F10),
+    surfaceContainerHigh = Color(0xFF3E2916),
+    surfaceContainerHighest = Color(0xFF4E341C),
+    outline = Color(0xFF784D23),
+    outlineVariant = Color(0xFF3D2612)
 )
 
 enum class AppThemeMode(
@@ -152,12 +152,12 @@ enum class AppThemeMode(
     val backgroundColor: Color,
     val surfaceColor: Color
 ) {
-    SYSTEM(0, "System Default", "Follows device dark or light mode", TelegramBlue, TelegramCyan, DarkBackground, DarkSurface),
-    LIGHT(1, "Clean Light", "Crisp Google Files light aesthetic", TelegramBlue, TelegramCyan, Color(0xFFF8F9FA), Color.White),
-    DARK(2, "Midnight Dark", "Slate navy with Google Files dark styling", TelegramBlueLight, TelegramCyan, Color(0xFF111318), Color(0xFF191C20)),
-    AMOLED(3, "Pure AMOLED Black", "100% pitch black for maximum OLED battery saving", AmoledPrimary, AmoledSecondary, Color.Black, Color(0xFF0A0A0A)),
-    EMERALD(4, "Emerald Forest", "Deep jade slate with lush mint & emerald", EmeraldPrimary, EmeraldSecondary, EmeraldBackground, EmeraldSurface),
-    SUNSET(5, "Sunset Amber", "Obsidian with warm golden amber & copper", SunsetPrimary, SunsetSecondary, SunsetBackground, SunsetSurface);
+    SYSTEM(0, "System Default", "Follows device dark or light mode dynamically", Color(0xFF38BDF8), Color(0xFF2DD4BF), Color(0xFF0B0F19), Color(0xFF111827)),
+    LIGHT(1, "Clean Light", "Crisp Google Files light aesthetic with soft slate surfaces", Color(0xFF0284C7), Color(0xFF0EA5E9), Color(0xFFF8FAFC), Color(0xFFFFFFFF)),
+    DARK(2, "Midnight Dark", "Slate navy with modern Spotify/Discord midnight styling", Color(0xFF38BDF8), Color(0xFF2DD4BF), Color(0xFF0B0F19), Color(0xFF111827)),
+    AMOLED(3, "Pure AMOLED Black", "100% pitch black with electric cyber accents for OLED", Color(0xFF00F0FF), Color(0xFF38BDF8), Color(0xFF000000), Color(0xFF121215)),
+    EMERALD(4, "Emerald Forest", "Deep jade slate with lush mint & botanical emerald", Color(0xFF10B981), Color(0xFF34D399), Color(0xFF03140D), Color(0xFF0F3A27)),
+    SUNSET(5, "Sunset Amber", "Obsidian espresso with warm golden amber & copper", Color(0xFFF59E0B), Color(0xFFFB923C), Color(0xFF100A05), Color(0xFF301F10));
 
     companion object {
         fun fromId(id: Int): AppThemeMode = entries.firstOrNull { it.id == id } ?: SYSTEM

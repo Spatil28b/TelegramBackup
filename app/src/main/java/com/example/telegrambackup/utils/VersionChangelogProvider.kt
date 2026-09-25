@@ -28,6 +28,78 @@ object VersionChangelogProvider {
 
     private val releases = listOf(
         VersionRelease(
+            versionName = "2.4.5",
+            versionCode = 129,
+            releaseDate = "September 2026",
+            highlights = "On-Device Google ML Kit OCR, Gemini 2.0/3.0 Auto-Healing, Buttery Smooth Tab Switching, Smart Nav Bar & Modern Theme Shades",
+            entries = listOf(
+                ChangelogEntry(
+                    Icons.Default.DocumentScanner,
+                    Color(0xFF10B981),
+                    "On-Device Google ML Kit OCR",
+                    "Integrated local high-speed Google ML Kit text recognition (10-20ms per photo) to find bonafide certificates, PAN cards, UPI payment receipts (₹10k), and bills with 100% precision.",
+                    "NEW OCR"
+                ),
+                ChangelogEntry(
+                    Icons.Default.AutoAwesome,
+                    Color(0xFFF59E0B),
+                    "Gemini 2.0 / 3.0 Vision & Deprecation Fix",
+                    "Resolved Gemini 2.5 Flash deprecation error with intelligent auto-healing failover to Gemini 2.0 Flash and Gemini 3.0 Flash for seamless multimodal analysis.",
+                    "AI ENGINE"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Animation,
+                    TelegramBlue,
+                    "Buttery Smooth Tab Transitions & Smart Nav Bar",
+                    "Eliminated tab switching lag with lightweight snappy crossfades; bottom nav bar never hides on non-scrollable screens and smoothly toggles on screen tap.",
+                    "SMOOTH UX"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Palette,
+                    Color(0xFF8B5CF6),
+                    "Modern Theme Shades & Cohesive M3 Palettes",
+                    "Upgraded all 6 themes with rich multi-tier surface containers, luminous borders, and dynamic theme-matched bottom navigation highlights.",
+                    "THEME"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Rule,
+                    Color(0xFFEF4444),
+                    "Backup Exceptions Redesign",
+                    "Overhauled Backup Exceptions screen with full Material 3 theme adaptability, clear breadcrumb navigation, and modern status badges.",
+                    "UI OVERHAUL"
+                )
+            )
+        ),
+        VersionRelease(
+            versionName = "2.4.4",
+            versionCode = 128,
+            releaseDate = "September 2026",
+            highlights = "Single-Line Main Settings, Top-Right Badges across Icons & Themes, Ultra-Fast High-Accuracy AI Vision Search",
+            entries = listOf(
+                ChangelogEntry(
+                    Icons.Default.Palette,
+                    Color(0xFFF59E0B),
+                    "Refined Single-Line Badges & Top-Right Placement",
+                    "Fixed App Icon 'Default' tag wrapping vertically; aligned clean, single-line tags ('Default', 'Active', 'OLED') at the top right of cards for all 6 themes and launcher icons.",
+                    "UI FIX"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Tune,
+                    TelegramBlue,
+                    "Single-Line Main Settings Hierarchy",
+                    "Redesigned main settings items like Quick Controller and Cache & Storage to fit cleanly in a single line with rich descriptive subtitles preserved below.",
+                    "CLEAN UI"
+                ),
+                ChangelogEntry(
+                    Icons.Default.AutoAwesome,
+                    Color(0xFF8B5CF6),
+                    "High-Accuracy & 7x Faster AI Vision Search",
+                    "Optimized Gemini Vision search with strict document and photo classification rules, downsampled 384px payloads, and concurrent batch processing for rapid, pinpoint results.",
+                    "AI VISION"
+                )
+            )
+        ),
+        VersionRelease(
             versionName = "2.4.3",
             versionCode = 127,
             releaseDate = "September 2026",

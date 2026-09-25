@@ -5,7 +5,10 @@ import android.util.Log
 import com.example.telegrambackup.data.AppDatabase
 import com.example.telegrambackup.data.UploadedFile
 import kotlinx.coroutines.*
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import java.io.File
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * =====================================================================================
@@ -184,103 +187,211 @@ object AiPhotoSearchManager {
                 onProgress(instantMatches.size, imageCandidates.size, "Found ${instantMatches.size} instant matches")
             }
 
-            // Step 3: Deep Gemini Vision Multimodal Inspection for uncached photos
+            val isDocumentQuery = cleanQuery.contains("bonafide") ||
+                    cleanQuery.contains("cert") ||
+                    cleanQuery.contains("receipt") ||
+                    cleanQuery.contains("payment") ||
+                    cleanQuery.contains("pan") ||
+                    cleanQuery.contains("marksheet") ||
+                    cleanQuery.contains("bill") ||
+                    cleanQuery.contains("invoice") ||
+                    cleanQuery.contains("aadhaar") ||
+                    cleanQuery.contains("doc")
+
+            val isEventQuery = cleanQuery.contains("party") ||
+                    cleanQuery.contains("birthday") ||
+                    cleanQuery.contains("bday") ||
+                    cleanQuery.contains("celebrat") ||
+                    cleanQuery.contains("event") ||
+                    cleanQuery.contains("trip") ||
+                    cleanQuery.contains("travel") ||
+                    cleanQuery.contains("food")
+
+            data class EvaluatableCandidate(
+                val file: UploadedFile,
+                val imageFile: File,
+                val score: Int
+            )
+
+            val scannablePool = mutableListOf<EvaluatableCandidate>()
+            for (file in imageCandidates) {
+                val key = file.telegramFileId.ifBlank { file.path }
+                if (matchedKeys.contains(key)) continue
+
+                val localFile = File(file.path)
+                val targetImageFile: File? = if (localFile.exists() && localFile.length() > 5000) {
+                    localFile
+                } else {
+                    val thumbKey = ThumbnailManager.getThumbnailKey(file.path, file.telegramFileId, file.fileName)
+                    val thumb = ThumbnailManager.getDiskThumbnail(context, thumbKey)
+                    if (thumb != null && thumb.exists() && thumb.length() > 2000) thumb else null
+                }
+
+                if (targetImageFile != null) {
+                    val pathLower = file.path.lowercase()
+                    val nameLower = file.fileName.lowercase()
+                    var score = 0
+
+                    if (isDocumentQuery) {
+                        if (pathLower.contains("document") || nameLower.contains("doc") ||
+                            pathLower.contains("scan") || pathLower.contains("camscanner") ||
+                            pathLower.contains("screenshot") || pathLower.contains("download") ||
+                            pathLower.contains("receipt") || pathLower.contains("bill") ||
+                            nameLower.endsWith(".pdf")
+                        ) {
+                            score += 100
+                        }
+                    } else if (isEventQuery) {
+                        if (pathLower.contains("dcim") || pathLower.contains("camera") ||
+                            pathLower.contains("pictures") || pathLower.contains("party") ||
+                            pathLower.contains("bday") || nameLower.contains("img")
+                        ) {
+                            score += 100
+                        }
+                    }
+
+                    scannablePool.add(EvaluatableCandidate(file, targetImageFile, score))
+                }
+            }
+
+            // Step 2.5: Fast On-Device Google ML Kit OCR Scan for documents, certificates, bills & receipts
+            if (isDocumentQuery || scannablePool.isNotEmpty()) {
+                val ocrCandidates = scannablePool
+                    .sortedWith(compareByDescending<EvaluatableCandidate> { it.score }.thenByDescending { it.file.timestamp })
+                    .take(45)
+
+                var ocrChecked = 0
+                for (cand in ocrCandidates) {
+                    if (!isActive) break
+                    val key = cand.file.telegramFileId.ifBlank { cand.file.path }
+                    if (matchedKeys.contains(key)) continue
+
+                    try {
+                        val text = OnDeviceOcrHelper.extractText(cand.imageFile)
+                        if (text.isNotBlank()) {
+                            val (isMatch, reason) = OnDeviceOcrHelper.evaluateOcrMatch(cleanQuery, text)
+                            if (isMatch) {
+                                matchedKeys.add(key)
+                                AiSearchTagCache.putTagEntry(context, key, reason, listOf(cleanQuery, reason))
+                                val resultItem = AiSearchResultItem(
+                                    file = cand.file,
+                                    matchReason = reason,
+                                    isAiVerified = true,
+                                    badge = "⚡ On-Device OCR Match"
+                                )
+                                withContext(Dispatchers.Main) {
+                                    onAiMatchFound(resultItem)
+                                }
+                            }
+                        }
+                    } catch (e: Exception) {
+                        Log.w(TAG, "OCR scan error on ${cand.file.fileName}", e)
+                    }
+
+                    ocrChecked++
+                    if (ocrChecked % 3 == 0) {
+                        withContext(Dispatchers.Main) {
+                            onProgress(ocrChecked, ocrCandidates.size, "Scanning on-device with Google OCR... ($ocrChecked/${ocrCandidates.size})")
+                        }
+                    }
+                }
+            }
+
+            // Step 3: Deep Gemini Vision Multimodal Inspection for remaining uncached photos
             val prefs = AppPrefs(context)
             val hasAiKey = prefs.hasValidGeminiKey()
 
             if (!hasAiKey) {
                 withContext(Dispatchers.Main) {
-                    onProgress(imageCandidates.size, imageCandidates.size, "Done (Instant mode). Add Gemini API Key for deep image scan.")
-                    onComplete(instantMatches.size)
+                    onProgress(imageCandidates.size, imageCandidates.size, "Scan completed with On-Device OCR.")
+                    onComplete(matchedKeys.size)
                 }
                 return@launch
             }
 
-            // Filter remaining candidates that don't have descriptive names (e.g. IMG_..., PXL_..., WhatsApp...)
-            val uncachedPhotos = imageCandidates.filter { file ->
-                val key = file.telegramFileId.ifBlank { file.path }
-                !matchedKeys.contains(key)
-            }.take(32) // Scan up to 32 recent photos per run to prevent quota exhaustion
+            // Filter out items already matched by OCR
+            val remainingCandidates = scannablePool
+                .filter { cand ->
+                    val key = cand.file.telegramFileId.ifBlank { cand.file.path }
+                    !matchedKeys.contains(key)
+                }
+                .sortedWith(compareByDescending<EvaluatableCandidate> { it.score }.thenByDescending { it.file.timestamp })
+                .take(24) // Evaluate remaining photos with Gemini Vision
 
-            if (uncachedPhotos.isEmpty()) {
+            if (remainingCandidates.isEmpty()) {
                 withContext(Dispatchers.Main) {
-                    onComplete(instantMatches.size)
+                    onComplete(matchedKeys.size)
                 }
                 return@launch
             }
 
-            var scannedCount = 0
+            val prioritizedCandidates = remainingCandidates
+
+            val scannedCounter = AtomicInteger(0)
             val batchSize = 4
-            val chunks = uncachedPhotos.chunked(batchSize)
+            val chunks = prioritizedCandidates.chunked(batchSize)
+            val semaphore = Semaphore(2) // Run 2 batches in parallel for high speed
 
-            for (chunk in chunks) {
-                if (!isActive) break
+            coroutineScope {
+                chunks.map { chunk ->
+                    async {
+                        if (!isActive) return@async
+                        semaphore.withPermit {
+                            if (!isActive) return@withPermit
 
-                val candidatesToEval = mutableListOf<AiVisionManager.BatchImageCandidate>()
-                for (file in chunk) {
-                    // Resolve image file (from local path or cached thumbnail)
-                    val localFile = File(file.path)
-                    val targetImageFile: File? = if (localFile.exists() && localFile.length() > 0) {
-                        localFile
-                    } else {
-                        // Check if thumbnail exists
-                        val thumbKey = ThumbnailManager.getThumbnailKey(file.path, file.telegramFileId, file.fileName)
-                        ThumbnailManager.getDiskThumbnail(context, thumbKey)
-                    }
+                            val candidatesToEval = chunk.map { c ->
+                                val key = c.file.telegramFileId.ifBlank { c.file.path }
+                                AiVisionManager.BatchImageCandidate(
+                                    id = key,
+                                    imageFile = c.imageFile,
+                                    fileName = c.file.fileName
+                                )
+                            }
 
-                    if (targetImageFile != null && targetImageFile.exists()) {
-                        val key = file.telegramFileId.ifBlank { file.path }
-                        candidatesToEval.add(
-                            AiVisionManager.BatchImageCandidate(
-                                id = key,
-                                imageFile = targetImageFile,
-                                fileName = file.fileName
+                            val currentScanned = scannedCounter.get()
+                            withContext(Dispatchers.Main) {
+                                onProgress(currentScanned, prioritizedCandidates.size, "Scanning photos with AI Vision... ($currentScanned/${prioritizedCandidates.size})")
+                            }
+
+                            val evalResult = AiVisionManager.evaluateBatchForSearch(
+                                context = context,
+                                candidates = candidatesToEval,
+                                searchQuery = cleanQuery
                             )
-                        )
-                    }
-                }
 
-                if (candidatesToEval.isNotEmpty()) {
-                    withContext(Dispatchers.Main) {
-                        onProgress(scannedCount, uncachedPhotos.size, "Scanning photos with AI Vision... (${scannedCount}/${uncachedPhotos.size})")
-                    }
-
-                    val evalResult = AiVisionManager.evaluateBatchForSearch(
-                        context = context,
-                        candidates = candidatesToEval,
-                        searchQuery = cleanQuery
-                    )
-
-                    evalResult.onSuccess { matches ->
-                        for (match in matches) {
-                            if (match.matched && !matchedKeys.contains(match.candidateId)) {
-                                matchedKeys.add(match.candidateId)
-                                val matchedFile = chunk.find { (it.telegramFileId.ifBlank { it.path }) == match.candidateId }
-                                if (matchedFile != null) {
-                                    val resultItem = AiSearchResultItem(
-                                        file = matchedFile,
-                                        matchReason = match.reason,
-                                        isAiVerified = true,
-                                        badge = "✨ AI Vision Match"
-                                    )
-                                    withContext(Dispatchers.Main) {
-                                        onAiMatchFound(resultItem)
+                            evalResult.onSuccess { matches ->
+                                for (match in matches) {
+                                    if (match.matched && !matchedKeys.contains(match.candidateId)) {
+                                        matchedKeys.add(match.candidateId)
+                                        val matchedCand = chunk.find { (it.file.telegramFileId.ifBlank { it.file.path }) == match.candidateId }
+                                        if (matchedCand != null) {
+                                            val resultItem = AiSearchResultItem(
+                                                file = matchedCand.file,
+                                                matchReason = match.reason,
+                                                isAiVerified = true,
+                                                badge = "✨ AI Vision Match"
+                                            )
+                                            withContext(Dispatchers.Main) {
+                                                onAiMatchFound(resultItem)
+                                            }
+                                        }
                                     }
                                 }
+                            }.onFailure { err ->
+                                Log.w(TAG, "Batch evaluation failed: ${err.message}")
+                            }
+
+                            val updated = scannedCounter.addAndGet(chunk.size)
+                            withContext(Dispatchers.Main) {
+                                onProgress(updated, prioritizedCandidates.size, "Scanning photos with AI Vision... ($updated/${prioritizedCandidates.size})")
                             }
                         }
-                    }.onFailure { err ->
-                        Log.w(TAG, "Batch evaluation failed: ${err.message}")
                     }
-                }
-
-                scannedCount += chunk.size
-                // Short cooperative delay between batches to respect rate limits
-                delay(300)
+                }.awaitAll()
             }
 
             withContext(Dispatchers.Main) {
-                onProgress(uncachedPhotos.size, uncachedPhotos.size, "Search completed")
+                onProgress(prioritizedCandidates.size, prioritizedCandidates.size, "Search completed")
                 onComplete(matchedKeys.size)
             }
         }

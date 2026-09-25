@@ -18,6 +18,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.telegrambackup.theme.TelegramBlue
@@ -130,6 +131,8 @@ fun SpotiSettingsItem(
                         fontWeight = FontWeight.Bold,
                         fontSize = 15.sp
                     ),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                     color = MaterialTheme.colorScheme.onSurface
                 )
                 if (subtitle.isNotEmpty()) {
@@ -140,7 +143,9 @@ fun SpotiSettingsItem(
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
                             fontSize = 12.sp,
                             lineHeight = 16.sp
-                        )
+                        ),
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
             }
@@ -158,6 +163,8 @@ fun SpotiSettingsItem(
                             color = valueColor,
                             fontSize = 11.5.sp
                         ),
+                        maxLines = 1,
+                        softWrap = false,
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.5.dp)
                     )
                 }
@@ -239,6 +246,8 @@ fun SpotiSettingsSwitchItem(
                         fontWeight = FontWeight.Bold,
                         fontSize = 15.sp
                     ),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                     color = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.outline
                 )
                 if (subtitle.isNotEmpty()) {
@@ -249,7 +258,9 @@ fun SpotiSettingsSwitchItem(
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
                             fontSize = 12.sp,
                             lineHeight = 16.sp
-                        )
+                        ),
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
             }

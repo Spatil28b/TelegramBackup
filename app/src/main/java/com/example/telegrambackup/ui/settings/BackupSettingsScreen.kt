@@ -48,6 +48,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -1723,7 +1724,7 @@ fun BackupSettingsScreen(
                             if (matchSearch("fleet", "multi", "multi-bot", "bot", "channel", "routing", "speed", "pool", "turbo", "load balancer")) {
                                 SpotiSettingsItem(
                                     icon = Icons.Default.Speed,
-                                    title = "Bot Fleet & Channel Routing",
+                                    title = "Bot Fleet & Routing",
                                     subtitle = "Multi-bot pool (300% faster) & category channels",
                                     value = "Manage Fleet",
                                     valueColor = TelegramBlue,
@@ -1793,7 +1794,7 @@ fun BackupSettingsScreen(
                             if (matchSearch("diagnostics", "health", "test", "ping", "verify", "server", "bot")) {
                                 SpotiSettingsItem(
                                     icon = Icons.Default.HealthAndSafety,
-                                    title = "System Health & Diagnostics",
+                                    title = "System Diagnostics",
                                     subtitle = "Server ping & bot verification test",
                                     value = "Run Test",
                                     valueColor = Color(0xFF14B8A6),
@@ -1870,7 +1871,7 @@ fun BackupSettingsScreen(
                                 SpotiSettingsItem(
                                     icon = Icons.Default.Palette,
                                     title = "Appearance & Themes",
-                                    subtitle = "14 premium styles, AMOLED black & app icons",
+                                    subtitle = "6 clean styles, AMOLED black & app icons",
                                     value = "${themeLabel} • ${if (prefs.appIcon == "blue") "Blue Icon" else "Green Icon"}",
                                     iconTint = Color(0xFFF59E0B)
                                 ) {
@@ -1902,7 +1903,7 @@ fun BackupSettingsScreen(
                                 var persistentNotifActive by remember { mutableStateOf(prefs.persistentNotificationEnabled) }
                                 SpotiSettingsItem(
                                     icon = Icons.Default.NotificationsActive,
-                                    title = "Quick Controller & Notifications",
+                                    title = "Quick Controller",
                                     subtitle = "Status bar 1-tap Start/Stop & separate channels",
                                     value = if (persistentNotifActive) "Enabled" else "Disabled",
                                     valueColor = if (persistentNotifActive) TelegramEmerald else Color.Gray,
@@ -1949,7 +1950,7 @@ fun BackupSettingsScreen(
                             if (matchSearch("cache", "storage", "clean", "size", "clear", "optimize", "memory", "budget")) {
                                 SpotiSettingsItem(
                                     icon = Icons.Default.CleaningServices,
-                                    title = "Cache & Storage Optimization",
+                                    title = "Cache & Storage",
                                     subtitle = "Auto-pruning budget & instant cleaner",
                                     value = "${AppCacheManager.formatBytes(cacheStats.totalBytes)} / ${maxCacheBudgetMB}MB",
                                     valueColor = if (cacheStats.usagePercentage > 0.85f) Color(0xFFEF4444) else TelegramEmerald,
@@ -1976,7 +1977,7 @@ fun BackupSettingsScreen(
                                 }
                                 SpotiSettingsItem(
                                     icon = Icons.Default.CleaningServices,
-                                    title = "Telegram Channel Cleaner",
+                                    title = "Channel Cleaner",
                                     subtitle = "Directly sweep & purge orphaned files from Telegram channel",
                                     value = "",
                                     iconTint = TelegramBlue,
@@ -1990,7 +1991,7 @@ fun BackupSettingsScreen(
                             if (matchSearch("data", "reset", "wipe", "delete", "trash", "auto-clean", "danger", "maintenance")) {
                                 SpotiSettingsItem(
                                     icon = Icons.Default.DeleteForever,
-                                    title = "Data Management & Reset",
+                                    title = "Data Reset & Purge",
                                     subtitle = "Trash auto-clean, selective wipe & account reset",
                                     value = "",
                                     iconTint = Color(0xFFEF4444),
@@ -2967,16 +2968,88 @@ fun BackupSettingsScreen(
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
-                                        Text(
-                                            themeMode.title,
-                                            style = MaterialTheme.typography.bodyLarge.copy(
-                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                                color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                text = themeMode.title,
+                                                style = MaterialTheme.typography.bodyLarge.copy(
+                                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                                    color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                                                ),
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                                modifier = Modifier.weight(1f, fill = false)
                                             )
-                                        )
+                                            Row(
+                                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                modifier = Modifier.padding(start = 6.dp)
+                                            ) {
+                                                if (themeMode == AppThemeMode.SYSTEM) {
+                                                    Surface(
+                                                        shape = RoundedCornerShape(6.dp),
+                                                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+                                                    ) {
+                                                        Text(
+                                                            text = "Default",
+                                                            style = MaterialTheme.typography.labelSmall.copy(
+                                                                color = MaterialTheme.colorScheme.primary,
+                                                                fontWeight = FontWeight.Bold,
+                                                                fontSize = 10.5.sp
+                                                            ),
+                                                            maxLines = 1,
+                                                            softWrap = false,
+                                                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.5.dp)
+                                                        )
+                                                    }
+                                                }
+                                                if (themeMode == AppThemeMode.AMOLED) {
+                                                    Surface(
+                                                        shape = RoundedCornerShape(6.dp),
+                                                        color = Color(0xFF6366F1).copy(alpha = 0.15f)
+                                                    ) {
+                                                        Text(
+                                                            text = "OLED",
+                                                            style = MaterialTheme.typography.labelSmall.copy(
+                                                                color = Color(0xFF818CF8),
+                                                                fontWeight = FontWeight.Bold,
+                                                                fontSize = 10.5.sp
+                                                            ),
+                                                            maxLines = 1,
+                                                            softWrap = false,
+                                                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.5.dp)
+                                                        )
+                                                    }
+                                                }
+                                                if (isSelected) {
+                                                    Surface(
+                                                        shape = RoundedCornerShape(6.dp),
+                                                        color = TelegramEmerald.copy(alpha = 0.15f)
+                                                    ) {
+                                                        Text(
+                                                            text = "Active",
+                                                            style = MaterialTheme.typography.labelSmall.copy(
+                                                                color = TelegramEmerald,
+                                                                fontWeight = FontWeight.Bold,
+                                                                fontSize = 10.5.sp
+                                                            ),
+                                                            maxLines = 1,
+                                                            softWrap = false,
+                                                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.5.dp)
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        Spacer(modifier = Modifier.height(2.dp))
                                         Text(
-                                            themeMode.description,
-                                            style = MaterialTheme.typography.bodySmall.copy(color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                            text = themeMode.description,
+                                            style = MaterialTheme.typography.bodySmall.copy(color = MaterialTheme.colorScheme.onSurfaceVariant),
+                                            maxLines = 2,
+                                            overflow = TextOverflow.Ellipsis
                                         )
                                         Spacer(modifier = Modifier.height(6.dp))
                                         // Color Preview Palette Dots
@@ -3060,33 +3133,70 @@ fun BackupSettingsScreen(
                                             contentScale = ContentScale.Crop
                                         )
                                         Column(modifier = Modifier.weight(1f)) {
-                                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
                                                 Text(
-                                                    iconItem.title,
+                                                    text = iconItem.title,
                                                     style = MaterialTheme.typography.titleMedium.copy(
                                                         fontWeight = FontWeight.Bold,
                                                         color = if (isIconSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
-                                                    )
+                                                    ),
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis,
+                                                    modifier = Modifier.weight(1f, fill = false)
                                                 )
-                                                if (iconItem == com.example.telegrambackup.utils.AppIcon.GREEN) {
-                                                    Surface(
-                                                        shape = CircleShape,
-                                                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
-                                                    ) {
-                                                        Text(
-                                                            "Default",
-                                                            style = MaterialTheme.typography.labelSmall.copy(
-                                                                color = MaterialTheme.colorScheme.primary,
-                                                                fontWeight = FontWeight.Bold
-                                                            ),
-                                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
-                                                        )
+                                                Row(
+                                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    modifier = Modifier.padding(start = 6.dp)
+                                                ) {
+                                                    if (iconItem == com.example.telegrambackup.utils.AppIcon.GREEN) {
+                                                        Surface(
+                                                            shape = RoundedCornerShape(6.dp),
+                                                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+                                                        ) {
+                                                            Text(
+                                                                text = "Default",
+                                                                style = MaterialTheme.typography.labelSmall.copy(
+                                                                    color = MaterialTheme.colorScheme.primary,
+                                                                    fontWeight = FontWeight.Bold,
+                                                                    fontSize = 10.5.sp
+                                                                ),
+                                                                maxLines = 1,
+                                                                softWrap = false,
+                                                                modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.5.dp)
+                                                            )
+                                                        }
+                                                    }
+                                                    if (isIconSelected) {
+                                                        Surface(
+                                                            shape = RoundedCornerShape(6.dp),
+                                                            color = TelegramEmerald.copy(alpha = 0.15f)
+                                                        ) {
+                                                            Text(
+                                                                text = "Active",
+                                                                style = MaterialTheme.typography.labelSmall.copy(
+                                                                    color = TelegramEmerald,
+                                                                    fontWeight = FontWeight.Bold,
+                                                                    fontSize = 10.5.sp
+                                                                ),
+                                                                maxLines = 1,
+                                                                softWrap = false,
+                                                                modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.5.dp)
+                                                            )
+                                                        }
                                                     }
                                                 }
                                             }
+                                            Spacer(modifier = Modifier.height(2.dp))
                                             Text(
-                                                iconItem.subtitle,
-                                                style = MaterialTheme.typography.bodySmall.copy(color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                                text = iconItem.subtitle,
+                                                style = MaterialTheme.typography.bodySmall.copy(color = MaterialTheme.colorScheme.onSurfaceVariant),
+                                                maxLines = 2,
+                                                overflow = TextOverflow.Ellipsis
                                             )
                                         }
                                         RadioButton(
@@ -3761,8 +3871,9 @@ fun BackupSettingsScreen(
                         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                             listOf(
                                 "auto" to ("Auto-Detect Best Model (Recommended)" to "Automatically discovers & connects to the active Gemini vision model supported by your key"),
-                                "gemini-2.0-flash" to ("Gemini 2.0 Flash" to "Fastest responses (1-2s), latest Google Gemini 2.0 vision engine"),
-                                "gemini-2.5-flash" to ("Gemini 2.5 Flash" to "Next-generation multimodal reasoning and document parsing"),
+                                "gemini-2.0-flash" to ("Gemini 2.0 Flash (Recommended)" to "Fastest responses (1-2s), latest stable Google Gemini 2.0 vision engine"),
+                                "gemini-2.0-flash-lite" to ("Gemini 2.0 Flash Lite" to "High efficiency, lower latency multimodal analysis"),
+                                "gemini-3.0-flash" to ("Gemini 3.0 Flash" to "Next-generation multimodal reasoning and document parsing"),
                                 "gemini-2.0-pro-exp-02-05" to ("Gemini 2.0 Pro" to "High-complexity visual reasoning, complex tables & multi-page receipts")
                             ).forEach { (modelId, info) ->
                                 val (title, subtitle) = info

@@ -118,14 +118,14 @@ fun <T> KomiBottomBar(
                 )
 
                 val containerColor by animateColorAsState(
-                    targetValue = if (isSelected) TelegramBlue.copy(alpha = 0.14f) else Color.Transparent,
-                    animationSpec = tween(durationMillis = 200),
+                    targetValue = if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.16f) else Color.Transparent,
+                    animationSpec = tween(durationMillis = 180),
                     label = "containerColor"
                 )
 
                 val contentColor by animateColorAsState(
-                    targetValue = if (isSelected) TelegramBlue else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
-                    animationSpec = tween(durationMillis = 200),
+                    targetValue = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
+                    animationSpec = tween(durationMillis = 180),
                     label = "contentColor"
                 )
 
@@ -166,7 +166,7 @@ fun <T> KomiBottomBar(
                                         .size(7.dp)
                                         .offset(x = 2.dp, y = (-2).dp)
                                         .clip(CircleShape)
-                                        .background(TelegramBlue)
+                                        .background(MaterialTheme.colorScheme.primary)
                                 )
                             }
                         }

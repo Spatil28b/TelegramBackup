@@ -12,8 +12,8 @@ android {
         applicationId = "com.example.telegrambackup"
         minSdk = 24
         targetSdk = 36
-        versionCode = 127
-        versionName = "2.4.3"
+        versionCode = 129
+        versionName = "2.4.5"
     }
 
     signingConfigs {
@@ -117,4 +117,8 @@ dependencies {
 
   // Offline QR Code Generation
   implementation("com.google.zxing:core:3.5.3")
+
+  // On-Device Google ML Kit OCR (Ultra-Fast Text Recognition)
+  implementation("com.google.mlkit:text-recognition:16.0.1")
 }
+
