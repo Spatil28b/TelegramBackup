@@ -531,15 +531,13 @@ fun AppUpdaterDialog(
                                 .build()
 
                             val candidateUrls = mutableListOf<String>()
+                            // Prioritize server proxy endpoint which provides pre-signed CDN redirect without auth issues
                             if (versionInfo.downloadUrl.isNotBlank()) {
                                 candidateUrls.add(versionInfo.downloadUrl)
                             }
                             candidateUrls.add("https://telegram-backup-backend.vercel.app/api/app/download-latest")
-                            candidateUrls.add("https://github.com/sid-codes28/telegram_backup_backend/releases/download/v${versionInfo.versionName}/TelegramBackup-v${versionInfo.versionName}.apk")
-                            candidateUrls.add("https://github.com/sid-codes28/telegram_backup_backend/releases/download/v${versionInfo.versionName}/TelegramBackup-latest.apk")
-                            candidateUrls.add("https://github.com/sid-codes28/telegram_backup_backend/raw/main/Releases/TelegramBackup-latest.apk")
 
-                            // Query GitHub Releases API for direct browser download and asset URLs
+                            // Query GitHub Releases API for direct asset download URLs
                             try {
                                 val ghApiReq = Request.Builder()
                                     .url("https://api.github.com/repos/sid-codes28/telegram_backup_backend/releases/latest")
@@ -559,17 +557,23 @@ fun AppUpdaterDialog(
                                             val aUrl = asset?.optString("url", "") ?: ""
                                             val bUrl = asset?.optString("browser_download_url", "") ?: ""
                                             if (aName.endsWith(".apk", ignoreCase = true)) {
-                                                if (bUrl.isNotBlank() && !candidateUrls.contains(bUrl)) {
-                                                    candidateUrls.add(0, bUrl)
-                                                }
+                                                // aUrl is authenticated API endpoint: api.github.com/repos/.../releases/assets/...
                                                 if (aUrl.isNotBlank() && !candidateUrls.contains(aUrl)) {
                                                     candidateUrls.add(aUrl)
+                                                }
+                                                // bUrl is fallback only for public repos
+                                                if (bUrl.isNotBlank() && !candidateUrls.contains(bUrl)) {
+                                                    candidateUrls.add(bUrl)
                                                 }
                                             }
                                         }
                                     }
                                 }
                             } catch (_: Exception) {}
+
+                            candidateUrls.add("https://github.com/sid-codes28/telegram_backup_backend/releases/download/v${versionInfo.versionName}/TelegramBackup-v${versionInfo.versionName}.apk")
+                            candidateUrls.add("https://github.com/sid-codes28/telegram_backup_backend/releases/download/v${versionInfo.versionName}/TelegramBackup-latest.apk")
+                            candidateUrls.add("https://github.com/sid-codes28/telegram_backup_backend/raw/main/Releases/TelegramBackup-latest.apk")
 
                             val distinctUrls = candidateUrls.distinct()
                             var downloadSuccess = false
