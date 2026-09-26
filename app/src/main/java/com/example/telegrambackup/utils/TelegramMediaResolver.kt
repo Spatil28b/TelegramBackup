@@ -12,6 +12,7 @@ import com.example.telegrambackup.network.BotFleetManager
 import com.example.telegrambackup.network.HttpClientProvider
 import com.example.telegrambackup.network.ServerApi
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
@@ -77,6 +78,8 @@ object TelegramMediaResolver {
             return@withContext null
         }
 
+        val cacheKey = if (preferredBotToken.isNotBlank()) "$preferredBotToken:$telegramFileId" else telegramFileId
+        urlCache.get(cacheKey)?.let { return@withContext it }
         urlCache.get(telegramFileId)?.let { return@withContext it }
 
         val candidateTokens = mutableListOf<String>()
@@ -102,6 +105,7 @@ object TelegramMediaResolver {
                     val filePath = json.optJSONObject("result")?.optString("file_path")
                     if (!filePath.isNullOrBlank()) {
                         val directUrl = TelegramApiConfig.getFileUrl(context, botToken, filePath)
+                        urlCache.put("$botToken:$telegramFileId", directUrl)
                         urlCache.put(telegramFileId, directUrl)
                         return@withContext directUrl
                     }
@@ -544,30 +548,35 @@ object TelegramMediaResolver {
             val totalEstimatedSize = if (file.size > 0L) file.size else chunkCount.toLong() * FileChunker.CHUNK_SIZE
             val botCount = maxOf(candidateTokens.size, 1)
             val userThreads = AppPrefs(context).uploadThreads
-            val concurrency = maxOf(6, minOf(20, maxOf(userThreads, botCount * 4)))
-            val semaphore = Semaphore(concurrency)
+            // Bounded download concurrency (between 4 and 12) to maximize speed without resource starvation
+            val concurrency = maxOf(4, minOf(12, maxOf(userThreads, botCount * 2)))
+
+            val chunkChannel = Channel<Triple<Int, String, String>>(Channel.UNLIMITED)
+            chunks.forEach { chunkChannel.trySend(it) }
+            chunkChannel.close()
 
             var downloadFailed = false
             coroutineScope {
-                val jobs = chunks.map { (chunkIdx, chunkFileId, chunkBotToken) ->
+                val workers = (1..concurrency).map {
                     launch {
-                        semaphore.withPermit {
-                            if (downloadFailed) return@withPermit
+                        for ((chunkIdx, chunkFileId, chunkBotToken) in chunkChannel) {
+                            if (downloadFailed) break
                             val partFile = File(parentDir, "${targetFile.name}.part%03d.tmp".format(chunkIdx))
                             if (partFile.exists() && partFile.length() > 0) {
                                 synchronized(partFiles) { partFiles.add(Pair(chunkIdx, partFile)) }
                                 downloadedBytes.addAndGet(partFile.length())
-                                return@withPermit
+                                continue
                             }
 
-                            // Retry each chunk up to 3 times with exponential backoff
+                            // Retry each chunk up to 4 times with exponential backoff
                             var chunkOk = false
-                            for (attempt in 1..3) {
+                            for (attempt in 1..4) {
                                 if (downloadFailed) break
                                 val directUrl = resolveDirectUrl(context, chunkFileId, chunkBotToken)
                                 if (directUrl == null) {
-                                    if (attempt == 3) { downloadFailed = true; break }
-                                    kotlinx.coroutines.delay(attempt * 2000L)
+                                    if (attempt == 4) { downloadFailed = true; break }
+                                    val backoffMs = minOf(1000L * (1L shl (attempt - 1)), 5000L)
+                                    kotlinx.coroutines.delay(backoffMs)
                                     continue
                                 }
 
@@ -582,9 +591,10 @@ object TelegramMediaResolver {
                                     break
                                 } else {
                                     if (partFile.exists()) partFile.delete()
-                                    if (attempt < 3) {
-                                        Log.w(TAG, "Chunk $chunkIdx download attempt $attempt failed, retrying in ${attempt * 2}s")
-                                        kotlinx.coroutines.delay(attempt * 2000L)
+                                    if (attempt < 4) {
+                                        val backoffMs = minOf(1000L * (1L shl (attempt - 1)), 5000L)
+                                        Log.w(TAG, "Chunk $chunkIdx download attempt $attempt failed, retrying in ${backoffMs}ms")
+                                        kotlinx.coroutines.delay(backoffMs)
                                     }
                                 }
                             }
@@ -592,7 +602,7 @@ object TelegramMediaResolver {
                         }
                     }
                 }
-                jobs.joinAll()
+                workers.joinAll()
             }
 
             if (downloadFailed || partFiles.size < chunkCount || (targetTotalChunks > 1 && partFiles.size < targetTotalChunks)) {

@@ -14,6 +14,7 @@ import com.example.telegrambackup.network.HttpClientProvider
 import com.example.telegrambackup.network.ProgressCountingRequestBody
 import com.example.telegrambackup.network.ServerApi
 import kotlinx.coroutines.*
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
@@ -314,17 +315,19 @@ object DriveUploadManager {
         }
 
         val allBotsCount = db.telegramBotDao().getActiveBots().size.coerceAtLeast(1)
-        val chunkConcurrency = minOf(driveBotPool.size, maxOf(prefs.uploadThreads, allBotsCount)).coerceIn(1, 16)
-        val chunkSemaphore = Semaphore(chunkConcurrency)
+        val chunkConcurrency = minOf(driveBotPool.size, maxOf(prefs.uploadThreads, allBotsCount)).coerceIn(1, 12)
         BackupProgressTracker.updateBotUtilization(working = minOf(chunkConcurrency, driveBotPool.size), total = allBotsCount)
 
-        // Upload chunks in parallel across dedicated Drive Bot Pool
-        coroutineScope {
-            val chunkJobs = (1..totalChunks).map { chunkIdx ->
-                launch(Dispatchers.IO) {
-                    if (uploadedChunksMap.containsKey(chunkIdx)) return@launch
+        val pendingChunkIndices = (1..totalChunks).filter { !uploadedChunksMap.containsKey(it) }
+        val chunkChannel = Channel<Int>(Channel.UNLIMITED)
+        pendingChunkIndices.forEach { chunkChannel.trySend(it) }
+        chunkChannel.close()
 
-                    chunkSemaphore.withPermit {
+        // Upload chunks in parallel via bounded worker pool across dedicated Drive Bot Pool
+        coroutineScope {
+            val workers = (1..chunkConcurrency).map {
+                launch(Dispatchers.IO) {
+                    for (chunkIdx in chunkChannel) {
                         val botIndex = (driveGlobalBotIndex.getAndIncrement() and 0x7FFFFFFF) % driveBotPool.size
                         val assignedBot = driveBotPool.getOrNull(botIndex)
                         val botTokenToUse = if (!assignedBot?.botToken.isNullOrBlank()) assignedBot!!.botToken else defaultBotToken
@@ -384,7 +387,7 @@ object DriveUploadManager {
                     }
                 }
             }
-            chunkJobs.joinAll()
+            workers.joinAll()
         }
 
         BackupProgressTracker.removeActiveUpload(targetPath)
