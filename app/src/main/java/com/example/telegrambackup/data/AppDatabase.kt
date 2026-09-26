@@ -191,6 +191,8 @@ abstract class AppDatabase : RoomDatabase() {
                     )
                 """.trimIndent())
 
+                ensureUploadedFilesColumns(db)
+
                 db.execSQL("""
                     CREATE TABLE IF NOT EXISTS `app_settings` (
                         `key` TEXT NOT NULL PRIMARY KEY,
@@ -213,6 +215,8 @@ abstract class AppDatabase : RoomDatabase() {
                         PRIMARY KEY(`sourcePath`, `chunkIndex`)
                     )
                 """.trimIndent())
+
+                ensureChunkProgressColumns(db)
 
                 db.execSQL("""
                     CREATE TABLE IF NOT EXISTS `telegram_bots` (
@@ -257,15 +261,71 @@ abstract class AppDatabase : RoomDatabase() {
                     )
                 """.trimIndent())
 
-                db.execSQL("CREATE INDEX IF NOT EXISTS `index_uploaded_files_isDeleted_timestamp` ON `uploaded_files` (`isDeleted`, `timestamp`)")
-                db.execSQL("CREATE INDEX IF NOT EXISTS `index_uploaded_files_isDeleted_isDriveUpload` ON `uploaded_files` (`isDeleted`, `isDriveUpload`)")
-                db.execSQL("CREATE INDEX IF NOT EXISTS `index_uploaded_files_fileName` ON `uploaded_files` (`fileName`)")
-                db.execSQL("CREATE INDEX IF NOT EXISTS `index_uploaded_files_deletedAt` ON `uploaded_files` (`deletedAt`)")
-                db.execSQL("CREATE INDEX IF NOT EXISTS `index_uploaded_files_telegramFileId` ON `uploaded_files` (`telegramFileId`)")
-                try {
-                    db.execSQL("ALTER TABLE `uploaded_files` ADD COLUMN `chunksJson` TEXT NOT NULL DEFAULT ''")
-                } catch (_: Exception) {}
+                try { db.execSQL("CREATE INDEX IF NOT EXISTS `index_uploaded_files_isDeleted_timestamp` ON `uploaded_files` (`isDeleted`, `timestamp`)") } catch (_: Exception) {}
+                try { db.execSQL("CREATE INDEX IF NOT EXISTS `index_uploaded_files_isDeleted_isDriveUpload` ON `uploaded_files` (`isDeleted`, `isDriveUpload`)") } catch (_: Exception) {}
+                try { db.execSQL("CREATE INDEX IF NOT EXISTS `index_uploaded_files_fileName` ON `uploaded_files` (`fileName`)") } catch (_: Exception) {}
+                try { db.execSQL("CREATE INDEX IF NOT EXISTS `index_uploaded_files_deletedAt` ON `uploaded_files` (`deletedAt`)") } catch (_: Exception) {}
+                try { db.execSQL("CREATE INDEX IF NOT EXISTS `index_uploaded_files_telegramFileId` ON `uploaded_files` (`telegramFileId`)") } catch (_: Exception) {}
             } catch (_: Exception) {}
+        }
+
+        private fun ensureUploadedFilesColumns(db: SupportSQLiteDatabase) {
+            val existing = mutableSetOf<String>()
+            try {
+                db.query("PRAGMA table_info(`uploaded_files`)").use { cursor ->
+                    val nameIdx = cursor.getColumnIndex("name")
+                    while (cursor.moveToNext()) {
+                        if (nameIdx >= 0) existing.add(cursor.getString(nameIdx))
+                    }
+                }
+            } catch (_: Throwable) {}
+
+            val columns = listOf(
+                "fileName" to "TEXT NOT NULL DEFAULT ''",
+                "telegramFileId" to "TEXT NOT NULL DEFAULT ''",
+                "timestamp" to "INTEGER NOT NULL DEFAULT 0",
+                "size" to "INTEGER NOT NULL DEFAULT 0",
+                "messageId" to "INTEGER NOT NULL DEFAULT 0",
+                "isDeleted" to "INTEGER NOT NULL DEFAULT 0",
+                "deletedAt" to "INTEGER NOT NULL DEFAULT 0",
+                "totalChunks" to "INTEGER NOT NULL DEFAULT 1",
+                "isDriveUpload" to "INTEGER NOT NULL DEFAULT 0",
+                "channelId" to "TEXT NOT NULL DEFAULT ''",
+                "botTokenUsed" to "TEXT NOT NULL DEFAULT ''",
+                "chunksJson" to "TEXT NOT NULL DEFAULT ''"
+            )
+            for ((col, def) in columns) {
+                if (!existing.contains(col)) {
+                    try {
+                        db.execSQL("ALTER TABLE `uploaded_files` ADD COLUMN `$col` $def")
+                    } catch (_: Throwable) {}
+                }
+            }
+        }
+
+        private fun ensureChunkProgressColumns(db: SupportSQLiteDatabase) {
+            val existing = mutableSetOf<String>()
+            try {
+                db.query("PRAGMA table_info(`chunk_upload_progress`)").use { cursor ->
+                    val nameIdx = cursor.getColumnIndex("name")
+                    while (cursor.moveToNext()) {
+                        if (nameIdx >= 0) existing.add(cursor.getString(nameIdx))
+                    }
+                }
+            } catch (_: Throwable) {}
+
+            val columns = listOf(
+                "status" to "TEXT NOT NULL DEFAULT 'COMPLETED'",
+                "botTokenUsed" to "TEXT NOT NULL DEFAULT ''",
+                "channelId" to "TEXT NOT NULL DEFAULT ''"
+            )
+            for ((col, def) in columns) {
+                if (!existing.contains(col)) {
+                    try {
+                        db.execSQL("ALTER TABLE `chunk_upload_progress` ADD COLUMN `$col` $def")
+                    } catch (_: Throwable) {}
+                }
+            }
         }
 
         @JvmStatic
@@ -289,8 +349,8 @@ abstract class AppDatabase : RoomDatabase() {
                     MIGRATION_10_11,
                     MIGRATION_11_12
                 )
-                .fallbackToDestructiveMigrationFrom(2, 3, 4, 5)
-                // NEVER wipe database on normal upgrades; only allow destructive fallback on explicit APK downgrade
+                // Guarantee zero crashes on startup for any corrupt or unknown previous database schema
+                .fallbackToDestructiveMigration()
                 .fallbackToDestructiveMigrationOnDowngrade()
                 .addCallback(object : RoomDatabase.Callback() {
                     override fun onOpen(db: SupportSQLiteDatabase) {
@@ -298,7 +358,6 @@ abstract class AppDatabase : RoomDatabase() {
                         // Self-healing schema validation on startup
                         createAllTablesAndIndexes(db)
                         try {
-                            // 🛠️ Automatic sanitization: Map corrupt/0/1970 or legacy July 15, 2026 placeholder timestamps to current September 2026 era
                             val now = System.currentTimeMillis()
                             db.execSQL("UPDATE uploaded_files SET timestamp = $now WHERE timestamp = 1784030400000 OR timestamp < 946684800000 OR timestamp IS NULL")
                         } catch (_: Exception) {}

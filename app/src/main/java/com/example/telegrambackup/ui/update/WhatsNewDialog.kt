@@ -43,21 +43,63 @@ fun WhatsNewDialog(
     rawReleaseNotes: String = "",
     onDismiss: () -> Unit
 ) {
-    val allReleases = remember { VersionChangelogProvider.getAllReleases() }
+    val allReleases = remember {
+        try {
+            VersionChangelogProvider.getAllReleases().ifEmpty {
+                listOf(
+                    VersionRelease(
+                        versionName = versionName,
+                        versionCode = 135,
+                        releaseDate = "Current Release",
+                        highlights = "Stability & Performance Update",
+                        entries = emptyList()
+                    )
+                )
+            }
+        } catch (_: Throwable) {
+            listOf(
+                VersionRelease(
+                    versionName = versionName,
+                    versionCode = 135,
+                    releaseDate = "Current Release",
+                    highlights = "Stability & Performance Update",
+                    entries = emptyList()
+                )
+            )
+        }
+    }
     var selectedReleaseIndex by remember { mutableIntStateOf(0) }
 
     val activeRelease = remember(selectedReleaseIndex, allReleases, rawReleaseNotes) {
-        if (selectedReleaseIndex == 0 && rawReleaseNotes.isNotBlank() && rawReleaseNotes.contains("-")) {
-            val parsedEntries = VersionChangelogProvider.parseRawReleaseNotes(rawReleaseNotes, versionName)
-            VersionRelease(
+        try {
+            if (selectedReleaseIndex == 0 && rawReleaseNotes.isNotBlank() && rawReleaseNotes.contains("-")) {
+                val parsedEntries = VersionChangelogProvider.parseRawReleaseNotes(rawReleaseNotes, versionName)
+                VersionRelease(
+                    versionName = versionName,
+                    versionCode = 135,
+                    releaseDate = "Current Release",
+                    highlights = "Latest Updates & Optimizations",
+                    entries = parsedEntries
+                )
+            } else {
+                allReleases.getOrElse(selectedReleaseIndex) {
+                    allReleases.firstOrNull() ?: VersionRelease(
+                        versionName = versionName,
+                        versionCode = 135,
+                        releaseDate = "Current Release",
+                        highlights = "Stability & Performance Update",
+                        entries = emptyList()
+                    )
+                }
+            }
+        } catch (_: Throwable) {
+            allReleases.firstOrNull() ?: VersionRelease(
                 versionName = versionName,
-                versionCode = 105,
+                versionCode = 135,
                 releaseDate = "Current Release",
-                highlights = "Latest Updates & Optimizations",
-                entries = parsedEntries
+                highlights = "Stability & Performance Update",
+                entries = emptyList()
             )
-        } else {
-            allReleases.getOrElse(selectedReleaseIndex) { allReleases.first() }
         }
     }
 

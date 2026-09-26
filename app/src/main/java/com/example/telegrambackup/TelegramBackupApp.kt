@@ -14,5 +14,10 @@ class TelegramBackupApp : Application() {
         try {
             AppNotificationHelper.initNotificationChannels(this)
         } catch (_: Throwable) {}
+
+        // 3. Ensure launcher icon state is consistent after app update
+        try {
+            com.example.telegrambackup.utils.AppIconManager.syncLauncherState(this)
+        } catch (_: Throwable) {}
     }
 }

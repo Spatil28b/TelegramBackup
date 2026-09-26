@@ -7,6 +7,8 @@ import android.content.Intent
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import com.example.telegrambackup.MainActivity
 import java.io.File
@@ -20,25 +22,30 @@ import java.util.concurrent.CancellationException
 
 /**
  * =====================================================================================
- * TSPACE GLOBAL APP CRASH SHIELD & RESILIENCE ENGINE
+ * TSPACE GLOBAL APP CRASH SHIELD & RESILIENCE ENGINE (V2 - BLACK SCREEN IMMUNE)
  * =====================================================================================
- * Intercepts all uncaught thread exceptions across the entire Android process:
- * 1. Suppresses benign platform exceptions (BadTokenException, DeadObjectException,
- *    CancellationException, transient notification SecurityException).
- * 2. Persists detailed diagnostic crash dumps to external storage (/sdcard/Documents/TelegramBackup/crash_logs.txt)
- *    and internal storage for zero-loss diagnostics.
- * 3. Gracefully restarts the application or recovers state instead of leaving the user
- *    with a frozen black screen or annoying system crash loop.
+ * 1. Looper-Level Main Thread Shield: Catches benign OEM and layout exceptions inside
+ *    the message loop so the Looper never dies and the UI never freezes on a black screen.
+ * 2. Background Thread Isolation: Uncaught exceptions in background coroutines, WorkManager,
+ *    or OkHttp are logged and absorbed without restarting the activity or killing the UI.
+ * 3. Infinite Restart Loop Protection: Detects crash loops (< 10s between crashes). If a
+ *    crash loop occurs, suppresses restarts so Android never gets trapped in a black screen.
+ * 4. Diagnostics: Persists crash dumps to internal filesDir and Documents for inspection.
  * =====================================================================================
  */
 object AppCrashShield {
     private const val TAG = "AppCrashShield"
     private const val MAX_CRASH_LOG_BYTES = 512 * 1024L // 512 KB log cap
+    private const val LOOP_THRESHOLD_MS = 10000L
 
     private var originalHandler: Thread.UncaughtExceptionHandler? = null
     private var isInstalled = false
     private var appContextRef: WeakReference<Context>? = null
     private var currentActivityRef: WeakReference<Activity>? = null
+
+    private var lastRestartTimestamp = 0L
+    private var consecutiveRestartCount = 0
+    private var activityCreationTimeMs = 0L
 
     fun install(application: Application) {
         if (isInstalled) return
@@ -48,6 +55,7 @@ object AppCrashShield {
         application.registerActivityLifecycleCallbacks(object : Application.ActivityLifecycleCallbacks {
             override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {
                 currentActivityRef = WeakReference(activity)
+                activityCreationTimeMs = System.currentTimeMillis()
             }
             override fun onActivityStarted(activity: Activity) {
                 currentActivityRef = WeakReference(activity)
@@ -65,50 +73,113 @@ object AppCrashShield {
             }
         })
 
-        originalHandler = Thread.getDefaultUncaughtExceptionHandler()
+        // 1. Install Main Looper Protection (keeps UI alive through benign crashes)
+        try {
+            Handler(Looper.getMainLooper()).post {
+                while (true) {
+                    try {
+                        Looper.loop()
+                    } catch (t: Throwable) {
+                        handleMainLooperException(t)
+                    }
+                }
+            }
+        } catch (e: Throwable) {
+            Log.w(TAG, "Failed installing looper protector: ${e.message}")
+        }
 
+        // 2. Global Uncaught Exception Handler
+        originalHandler = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
             handleUncaughtException(thread, throwable)
         }
 
-        Log.i(TAG, "🛡️ AppCrashShield installed successfully")
+        Log.i(TAG, "🛡️ AppCrashShield v2 installed with anti-restart loop protection")
+    }
+
+    private fun handleMainLooperException(throwable: Throwable) {
+        val rootCause = getRootCause(throwable)
+
+        if (isBenignException(throwable, rootCause)) {
+            Log.w(TAG, "Main looper caught benign exception: ${throwable.message}")
+            return
+        }
+
+        val context = appContextRef?.get()
+        if (context != null) {
+            writeCrashLog(context, Looper.getMainLooper().thread, throwable)
+        }
+
+        Log.e(TAG, "Main looper FATAL exception", throwable)
+
+        // Attempt graceful activity recovery with loop protection
+        attemptSafeActivityRecovery()
     }
 
     private fun handleUncaughtException(thread: Thread, throwable: Throwable) {
         val rootCause = getRootCause(throwable)
 
-        // 1. Check for benign / transient platform glitches that should NOT kill the app
+        // 1. Check for benign / transient platform glitches
         if (isBenignException(throwable, rootCause)) {
             Log.w(TAG, "Shielded app from benign exception in thread [${thread.name}]: ${throwable.message}")
             return
         }
 
-        // 2. Dump full diagnostic log
+        // 2. Dump diagnostic log
         val context = appContextRef?.get()
         if (context != null) {
             writeCrashLog(context, thread, throwable)
         }
 
-        Log.e(TAG, "FATAL CRASH intercepted on thread [${thread.name}]", throwable)
+        Log.e(TAG, "Uncaught exception on thread [${thread.name}]", throwable)
 
-        // 3. Attempt graceful recovery if on UI thread
+        // 3. BACKGROUND THREADS: Do NOT kill or restart MainActivity!
+        val isMainThread = thread === Looper.getMainLooper().thread
+        if (!isMainThread) {
+            Log.w(TAG, "Absorbed background thread crash [${thread.name}] to protect UI state.")
+            return
+        }
+
+        // 4. MAIN THREAD FATAL: Attempt safe recovery with anti-loop guard
+        attemptSafeActivityRecovery()
+
+        // 5. Delegate to original handler if recovery was suppressed
+        originalHandler?.uncaughtException(thread, throwable)
+    }
+
+    private fun attemptSafeActivityRecovery() {
+        val now = System.currentTimeMillis()
+        if (now - lastRestartTimestamp < LOOP_THRESHOLD_MS) {
+            consecutiveRestartCount++
+        } else {
+            consecutiveRestartCount = 1
+        }
+        lastRestartTimestamp = now
+
+        // Prevent infinite restart loops (which cause black screens)
+        if (consecutiveRestartCount > 1) {
+            Log.e(TAG, "Crash loop detected ($consecutiveRestartCount crashes). Suppressing restart to prevent black screen.")
+            return
+        }
+
+        // If the crash happened within 2.5 seconds of startup, restarting will just crash again
+        if (now - activityCreationTimeMs < 2500L) {
+            Log.e(TAG, "Startup crash detected (< 2.5s). Suppressing restart to avoid black screen.")
+            return
+        }
+
         val currentActivity = currentActivityRef?.get()
         if (currentActivity != null && !currentActivity.isFinishing && !currentActivity.isDestroyed) {
             try {
                 val intent = Intent(currentActivity, MainActivity::class.java).apply {
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
                 }
                 currentActivity.finish()
                 currentActivity.startActivity(intent)
-                android.os.Process.killProcess(android.os.Process.myPid())
-                return
             } catch (t: Throwable) {
                 Log.e(TAG, "Failed graceful restart", t)
             }
         }
-
-        // 4. Delegate to original system handler as last resort
-        originalHandler?.uncaughtException(thread, throwable)
     }
 
     private fun isBenignException(throwable: Throwable, rootCause: Throwable): Boolean {
@@ -118,7 +189,6 @@ object AppCrashShield {
         }
 
         val msg = (throwable.message ?: "") + " " + (rootCause.message ?: "")
-        val stack = StringWriter().also { throwable.printStackTrace(PrintWriter(it)) }.toString()
 
         // WindowManager BadTokenException (activity finished while popup/dialog was pending)
         if (throwable is android.view.WindowManager.BadTokenException || rootCause is android.view.WindowManager.BadTokenException) {
@@ -154,6 +224,15 @@ object AppCrashShield {
             return true
         }
 
+        // OutOfMemoryError in media/bitmap/canvas rendering - invoke GC and prevent fatal process termination
+        if (throwable is OutOfMemoryError || rootCause is OutOfMemoryError) {
+            Log.w(TAG, "Absorbed OutOfMemoryError in media/bitmap pipeline. Triggering garbage collection.")
+            try {
+                System.gc()
+            } catch (_: Throwable) {}
+            return true
+        }
+
         return false
     }
 
@@ -173,7 +252,7 @@ object AppCrashShield {
             val stackTrace = sw.toString()
 
             val timestamp = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US).format(Date())
-            val appVersion = AppPrefs(context).appVersionStr
+            val appVersion = try { AppPrefs(context).appVersionStr } catch (_: Throwable) { "unknown" }
 
             val report = buildString {
                 appendLine("================================================================================")

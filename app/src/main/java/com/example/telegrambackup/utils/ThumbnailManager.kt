@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.pdf.PdfRenderer
 import android.media.MediaMetadataRetriever
+import android.os.Build
 import android.os.ParcelFileDescriptor
 import android.util.Log
 import android.util.LruCache
@@ -169,7 +170,21 @@ object ThumbnailManager {
         val retriever = MediaMetadataRetriever()
         return try {
             retriever.setDataSource(sourceFile.absolutePath)
-            retriever.getFrameAtTime(1_000_000, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+                retriever.getScaledFrameAtTime(
+                    1_000_000,
+                    MediaMetadataRetriever.OPTION_CLOSEST_SYNC,
+                    TARGET_THUMBNAIL_SIZE,
+                    TARGET_THUMBNAIL_SIZE
+                )
+            } else {
+                val full = retriever.getFrameAtTime(1_000_000, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                if (full != null) {
+                    val scaled = Bitmap.createScaledBitmap(full, TARGET_THUMBNAIL_SIZE, TARGET_THUMBNAIL_SIZE, true)
+                    if (scaled !== full) full.recycle()
+                    scaled
+                } else null
+            }
         } catch (_: Throwable) {
             null
         } finally {

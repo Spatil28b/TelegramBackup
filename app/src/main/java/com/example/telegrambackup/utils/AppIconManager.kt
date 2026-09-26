@@ -78,4 +78,41 @@ object AppIconManager {
             false
         }
     }
+
+    /**
+     * Guarantees that at least one valid launcher activity-alias is enabled.
+     * Prevents the app from disappearing from launcher or failing to launch after an update
+     * if the user had previously selected an alternate icon.
+     */
+    fun syncLauncherState(context: Context) {
+        try {
+            val pm = context.packageManager
+            val pkg = context.packageName
+            val currentIcon = getCurrentIcon(context)
+            val activeComponent = ComponentName(pkg, currentIcon.aliasClassName)
+            val otherIcon = if (currentIcon == AppIcon.GREEN) AppIcon.BLUE else AppIcon.GREEN
+            val inactiveComponent = ComponentName(pkg, otherIcon.aliasClassName)
+
+            val activeState = pm.getComponentEnabledSetting(activeComponent)
+            if (activeState != PackageManager.COMPONENT_ENABLED_STATE_ENABLED) {
+                pm.setComponentEnabledSetting(
+                    activeComponent,
+                    PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
+                    PackageManager.DONT_KILL_APP
+                )
+                Log.d(TAG, "Restored active launcher component: ${currentIcon.aliasClassName}")
+            }
+
+            val inactiveState = pm.getComponentEnabledSetting(inactiveComponent)
+            if (inactiveState != PackageManager.COMPONENT_ENABLED_STATE_DISABLED) {
+                pm.setComponentEnabledSetting(
+                    inactiveComponent,
+                    PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
+                    PackageManager.DONT_KILL_APP
+                )
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to sync launcher component state", e)
+        }
+    }
 }

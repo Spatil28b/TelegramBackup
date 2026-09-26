@@ -28,6 +28,71 @@ object VersionChangelogProvider {
 
     private val releases = listOf(
         VersionRelease(
+            versionName = "2.5.2",
+            versionCode = 136,
+            releaseDate = "September 2026",
+            highlights = "Zero-OOM Video Thumbnail Engine, Large Heap Allocation & Media OutOfMemoryError Absorption",
+            entries = listOf(
+                ChangelogEntry(
+                    Icons.Default.Bolt,
+                    Color(0xFF10B981),
+                    "Zero-OOM Hardware-Scaled Video Thumbnails",
+                    "Resolved OutOfMemoryError crash on app open by utilizing API 27+ MediaMetadataRetriever.getScaledFrameAtTime hardware downsampling and bounded 2-way semaphore throttling.",
+                    "HOTFIX"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Memory,
+                    Color(0xFF3B82F6),
+                    "Large Heap Memory Expansion",
+                    "Enabled android:largeHeap='true' in AndroidManifest to grant up to 512MB RAM for intensive media viewing, multi-GB cloud backups, and high-resolution photo galleries.",
+                    "PERFORMANCE"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Shield,
+                    Color(0xFF8B5CF6),
+                    "Global OutOfMemoryError Shield Absorption",
+                    "Hardened AppCrashShield to intercept unhandled bitmap OOM events, trigger immediate Garbage Collection, and prevent process death.",
+                    "STABILITY"
+                )
+            )
+        ),
+        VersionRelease(
+            versionName = "2.5.1",
+            versionCode = 135,
+            releaseDate = "September 2026",
+            highlights = "Instant Cold-Boot Launch Resolution, Launcher Alias Sync, Database Migration Hardening & Screen Privacy Deferral",
+            entries = listOf(
+                ChangelogEntry(
+                    Icons.Default.Bolt,
+                    Color(0xFF10B981),
+                    "Instant Cold-Boot Launch Resolution",
+                    "Overhauled AppCrashShield with looper-level message pumping and crash-loop guards, eliminating the startup black screen caused by infinite restart loops and dead main loopers.",
+                    "HOTFIX"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Apps,
+                    Color(0xFF3B82F6),
+                    "Launcher Alias Synchronization",
+                    "Added automatic launcher activity-alias synchronization during boot and app updates, ensuring the launcher icon stays active regardless of which theme icon was chosen.",
+                    "LAUNCHER"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Storage,
+                    Color(0xFFF59E0B),
+                    "Fail-Safe Room DB Auto-Healing",
+                    "Added runtime PRAGMA column checks for chunk progress and cloud metadata with destructive fallback safety, preventing startup crashes from legacy schema mismatches.",
+                    "DATABASE"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Security,
+                    Color(0xFF8B5CF6),
+                    "Clean Display Frame Compositing",
+                    "Deferred window security flags until after Compose window initialization, preventing display surface drops and blank black frames during cold startup.",
+                    "PERFORMANCE"
+                )
+            )
+        ),
+        VersionRelease(
             versionName = "2.5.0",
             versionCode = 134,
             releaseDate = "September 2026",

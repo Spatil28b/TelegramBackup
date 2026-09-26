@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import android.graphics.pdf.PdfRenderer
 import android.media.MediaMetadataRetriever
 import android.net.Uri
+import android.os.Build
 import android.os.Environment
 import android.os.ParcelFileDescriptor
 import android.util.LruCache
@@ -41,7 +42,7 @@ import java.io.File
 /**
  * Universal LRU thumbnail cache for video frames & PDF previews
  */
-private val thumbnailMemoryCache = object : LruCache<String, Bitmap>(60 * 1024 * 1024) {
+private val thumbnailMemoryCache = object : LruCache<String, Bitmap>(16 * 1024 * 1024) {
     override fun sizeOf(key: String, value: Bitmap): Int {
         return value.byteCount
     }
@@ -227,19 +228,40 @@ fun FileThumbnailView(
 
         // 2. VIDEO THUMBNAIL PREVIEW
         isVideo -> {
-            var videoBitmap by remember(filePath, telegramFileId) { mutableStateOf<Bitmap?>(thumbnailMemoryCache.get(if (localFileExists) filePath else "vid_$telegramFileId")) }
+            var videoBitmap by remember(filePath, telegramFileId) {
+                mutableStateOf<Bitmap?>(thumbnailMemoryCache.get(if (localFileExists) filePath else "vid_$telegramFileId"))
+            }
 
-            LaunchedEffect(filePath, telegramFileId, localFileExists) {
-                if (videoBitmap == null) {
+            LaunchedEffect(filePath, telegramFileId, localFileExists, diskThumbFile) {
+                if (diskThumbFile == null && videoBitmap == null) {
                     withContext(Dispatchers.IO) {
                         try {
                             val activeFile = if (localFileExists) localFile else TelegramMediaResolver.fetchToTempCache(context, telegramFileId, fileName)
-                            if (activeFile != null && activeFile.exists()) {
+                            if (activeFile != null && activeFile.exists() && activeFile.length() > 0) {
+                                // 1. First try persistent 256x256 WebP via ThumbnailManager (handles semaphore + hardware scaling)
+                                val generated = ThumbnailManager.getOrCreateThumbnail(context, activeFile, thumbKey)
+                                if (generated != null && generated.exists()) {
+                                    withContext(Dispatchers.Main) {
+                                        diskThumbFile = generated
+                                    }
+                                    return@withContext
+                                }
+
+                                // 2. Fallback to direct scaled frame extraction safely
                                 val retriever = MediaMetadataRetriever()
-                                retriever.setDataSource(activeFile.absolutePath)
-                                val frame = retriever.getFrameAtTime(1_000_000, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
-                                    ?: retriever.frameAtTime
-                                retriever.release()
+                                val frame: Bitmap? = try {
+                                    retriever.setDataSource(activeFile.absolutePath)
+                                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+                                        retriever.getScaledFrameAtTime(1_000_000, MediaMetadataRetriever.OPTION_CLOSEST_SYNC, 256, 256)
+                                    } else {
+                                        retriever.getFrameAtTime(1_000_000, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                                    }
+                                } catch (_: Throwable) {
+                                    null
+                                } finally {
+                                    try { retriever.release() } catch (_: Throwable) {}
+                                }
+
                                 if (frame != null) {
                                     thumbnailMemoryCache.put(if (localFileExists) filePath else "vid_$telegramFileId", frame)
                                     withContext(Dispatchers.Main) {
@@ -247,24 +269,45 @@ fun FileThumbnailView(
                                     }
                                 }
                             }
-                        } catch (_: Exception) {}
+                        } catch (_: Throwable) {}
                     }
                 }
             }
 
-            if (videoBitmap != null) {
+            val videoImageModel: Any? = when {
+                diskThumbFile != null -> diskThumbFile
+                videoBitmap != null -> videoBitmap
+                else -> null
+            }
+
+            if (videoImageModel != null) {
                 Box(
                     modifier = modifier
                         .fillMaxSize()
                         .clip(shape),
                     contentAlignment = Alignment.Center
                 ) {
-                    Image(
-                        bitmap = videoBitmap!!.asImageBitmap(),
-                        contentDescription = fileName,
-                        contentScale = contentScale,
-                        modifier = Modifier.fillMaxSize()
-                    )
+                    if (videoImageModel is Bitmap) {
+                        Image(
+                            bitmap = videoImageModel.asImageBitmap(),
+                            contentDescription = fileName,
+                            contentScale = contentScale,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    } else {
+                        AsyncImage(
+                            model = ImageRequest.Builder(context)
+                                .data(videoImageModel)
+                                .size(256, 256)
+                                .scale(Scale.FILL)
+                                .precision(Precision.INEXACT)
+                                .crossfade(true)
+                                .build(),
+                            contentDescription = fileName,
+                            contentScale = contentScale,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
                     // Play Badge Overlay
                     Box(
                         modifier = Modifier
@@ -315,7 +358,7 @@ fun FileThumbnailView(
                                     val renderer = PdfRenderer(pfd)
                                     if (renderer.pageCount > 0) {
                                         val page = renderer.openPage(0)
-                                        val bmp = Bitmap.createBitmap(page.width.coerceAtMost(512), page.height.coerceAtMost(512), Bitmap.Config.ARGB_8888)
+                                        val bmp = Bitmap.createBitmap(page.width.coerceAtMost(256), page.height.coerceAtMost(256), Bitmap.Config.RGB_565)
                                         bmp.eraseColor(android.graphics.Color.WHITE)
                                         page.render(bmp, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
                                         page.close()
@@ -333,7 +376,7 @@ fun FileThumbnailView(
                                     if (workingFile.exists()) workingFile.delete()
                                 }
                             }
-                        } catch (_: Exception) {}
+                        } catch (_: Throwable) {}
                     }
                 }
             }

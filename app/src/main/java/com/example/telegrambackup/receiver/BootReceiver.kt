@@ -35,6 +35,11 @@ class BootReceiver : BroadcastReceiver() {
         if (action == Intent.ACTION_BOOT_COMPLETED || action == Intent.ACTION_MY_PACKAGE_REPLACED || action == "android.intent.action.QUICKBOOT_POWERON") {
             Log.d(TAG, "Device reboot / package updated received ($action). Rescheduling Smart Backup Engine...")
 
+            // Ensure launcher alias is active and valid upon update or boot
+            try {
+                com.example.telegrambackup.utils.AppIconManager.syncLauncherState(context)
+            } catch (_: Throwable) {}
+
             val prefs = AppPrefs(context)
             if (prefs.autoBackupEnabled && !prefs.stopAllBackups) {
                 try {

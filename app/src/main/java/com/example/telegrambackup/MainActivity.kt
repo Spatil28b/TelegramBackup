@@ -143,10 +143,6 @@ class MainActivity : FragmentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val prefsInit = AppPrefs(this)
-        if (prefsInit.screenPrivacyEnabled) {
-            updateScreenPrivacy(true)
-        }
 
         setContent {
             val context = LocalContext.current
