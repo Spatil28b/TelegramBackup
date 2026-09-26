@@ -28,6 +28,42 @@ object VersionChangelogProvider {
 
     private val releases = listOf(
         VersionRelease(
+            versionName = "2.5.3",
+            versionCode = 137,
+            releaseDate = "September 2026",
+            highlights = "Mandatory JWT Security, Hardened Secrets & OTP, 32MB Chunk Streaming Cache & Database Resilience",
+            entries = listOf(
+                ChangelogEntry(
+                    Icons.Default.Security,
+                    Color(0xFF8B5CF6),
+                    "Mandatory JWT Authentication",
+                    "All private endpoints (credentials, cloud file indexing, deletion, purge, account deletion, user settings) now enforce cryptographically signed Bearer JWT authentication, preventing unauthorized access.",
+                    "SECURITY"
+                ),
+                ChangelogEntry(
+                    Icons.Default.VpnKey,
+                    Color(0xFF3B82F6),
+                    "Hardened Master Secrets & Atomic OTP",
+                    "Upgraded master secrets to 256-bit cryptographically verified keys with single-use atomic consumption and brute-force rate limits.",
+                    "SECURITY"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Memory,
+                    Color(0xFF10B981),
+                    "32MB Byte-Metered Streaming Cache",
+                    "Backend chunk buffer cache is now strictly byte-metered to 32MB with LRU eviction, eliminating serverless RAM exhaustion and OOM crashes during heavy multi-part downloads.",
+                    "PERFORMANCE"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Storage,
+                    Color(0xFFF59E0B),
+                    "Cloud Index & Database Resilience",
+                    "Protected cloud file sync with HTTP 503 retryable status on database lapses to prevent accidental empty-vault wipes, and added compound cursor delta sync.",
+                    "RELIABILITY"
+                )
+            )
+        ),
+        VersionRelease(
             versionName = "2.5.2",
             versionCode = 136,
             releaseDate = "September 2026",

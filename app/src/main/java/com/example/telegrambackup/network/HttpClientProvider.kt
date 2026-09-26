@@ -13,6 +13,23 @@ object HttpClientProvider {
             .writeTimeout(45, TimeUnit.SECONDS)
             .pingInterval(15, TimeUnit.SECONDS)
             .retryOnConnectionFailure(true)
+            .addInterceptor { chain ->
+                val request = chain.request()
+                val url = request.url.toString()
+                val token = ServerApi.activeAuthToken
+                val isExternal = url.contains("telegram.org") ||
+                                 url.contains("googleapis.com") ||
+                                 url.contains("github.com") ||
+                                 url.contains("raw.githubusercontent.com")
+                if (!isExternal && token.isNotBlank() && request.header("Authorization") == null) {
+                    val authRequest = request.newBuilder()
+                        .header("Authorization", "Bearer $token")
+                        .build()
+                    chain.proceed(authRequest)
+                } else {
+                    chain.proceed(request)
+                }
+            }
             .build()
     }
 

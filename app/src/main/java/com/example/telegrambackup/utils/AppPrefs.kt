@@ -28,6 +28,10 @@ class AppPrefs(private val context: Context) {
             prefs.edit().putString("server_url", sanitized).apply()
         }
 
+    var authToken: String
+        get() = authPrefs.getString("auth_token", "") ?: ""
+        set(value) = authPrefs.edit().putString("auth_token", value).apply()
+
     var encryptionEnabled: Boolean
         get() = prefs.getBoolean("encryption_enabled", true)
         set(value) = prefs.edit().putBoolean("encryption_enabled", value).apply()

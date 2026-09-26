@@ -32,6 +32,11 @@ import org.json.JSONObject
  * =====================================================================================
  */
 class ServerApi {
+    companion object {
+        @Volatile
+        var activeAuthToken: String = ""
+    }
+
     private val client = HttpClientProvider.client
 
     /**
@@ -244,6 +249,10 @@ class ServerApi {
             val jsonRes = JSONObject(body)
 
             if (response.isSuccessful && jsonRes.optBoolean("success")) {
+                val token = jsonRes.optString("token", "")
+                if (token.isNotEmpty()) {
+                    activeAuthToken = token
+                }
                 val message = jsonRes.optString("message", "Registered successfully!")
                 return@withContext Result.success(message)
             } else {
@@ -352,6 +361,10 @@ class ServerApi {
             val jsonRes = JSONObject(body)
 
             if (response.isSuccessful && jsonRes.optBoolean("success")) {
+                val token = jsonRes.optString("token", "")
+                if (token.isNotEmpty()) {
+                    activeAuthToken = token
+                }
                 return@withContext Result.success(jsonRes)
             } else {
                 val err = jsonRes.optString("message", "Login failed.")

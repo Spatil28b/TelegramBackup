@@ -29,6 +29,13 @@ class AuthRepository(private val context: Context) {
     )
     val session: StateFlow<UserSession> = _session
 
+    init {
+        val savedToken = appPrefs.authToken
+        if (savedToken.isNotBlank() && ServerApi.activeAuthToken.isBlank()) {
+            ServerApi.activeAuthToken = savedToken
+        }
+    }
+
     fun refreshSession() {
         val email = prefs.getString("user_email", "") ?: ""
         val loggedIn = prefs.getBoolean("is_logged_in", false) || (email.isNotBlank() && appPrefs.botToken.isNotBlank())
@@ -43,8 +50,13 @@ class AuthRepository(private val context: Context) {
         val trimmedEmail = email.trim().lowercase()
         val result = serverApi.verifyOtpRegister(appPrefs.serverUrl, trimmedEmail, code, password)
         result.onSuccess {
+            val token = ServerApi.activeAuthToken
+            if (token.isNotBlank()) {
+                appPrefs.authToken = token
+            }
             prefs.edit()
                 .putString("user_email", trimmedEmail)
+                .putString("user_password", password)
                 .putBoolean("is_logged_in", true)
                 .apply()
             appPrefs.userEmail = trimmedEmail
@@ -99,6 +111,11 @@ class AuthRepository(private val context: Context) {
         val result = serverApi.login(appPrefs.serverUrl, trimmedEmail, password)
         if (result.isSuccess) {
             val json = result.getOrNull()
+            val token = json?.optString("token", "") ?: ""
+            if (token.isNotBlank()) {
+                appPrefs.authToken = token
+                ServerApi.activeAuthToken = token
+            }
             val userObj = json?.optJSONObject("user")
             val serverBotToken = userObj?.optString("botToken", "") ?: json?.optString("botToken", "") ?: ""
             val serverChatId = userObj?.optString("chatId", "") ?: json?.optString("chatId", "") ?: ""
@@ -106,6 +123,7 @@ class AuthRepository(private val context: Context) {
             // 1. Establish session & save email immediately
             prefs.edit()
                 .putString("user_email", trimmedEmail)
+                .putString("user_password", password)
                 .putBoolean("is_logged_in", true)
                 .apply()
             appPrefs.userEmail = trimmedEmail
@@ -173,9 +191,12 @@ class AuthRepository(private val context: Context) {
         prefs.edit()
             .putBoolean("is_logged_in", false)
             .remove("user_email")
+            .remove("user_password")
             .apply()
 
         // Clear cached credentials & wipe local Room cache to prevent cross-account pollution
+        appPrefs.authToken = ""
+        ServerApi.activeAuthToken = ""
         appPrefs.botToken = ""
         appPrefs.chatId = ""
         appPrefs.credentialsVerified = false
@@ -187,6 +208,31 @@ class AuthRepository(private val context: Context) {
         }
 
         _session.value = UserSession(email = "", isLoggedIn = false)
+    }
+
+    suspend fun ensureAuthenticated(): Boolean {
+        if (ServerApi.activeAuthToken.isNotBlank()) return true
+        val savedToken = appPrefs.authToken
+        if (savedToken.isNotBlank()) {
+            ServerApi.activeAuthToken = savedToken
+            return true
+        }
+        val email = prefs.getString("user_email", "") ?: ""
+        val pass = prefs.getString("user_password", "") ?: ""
+        if (email.isNotBlank() && pass.isNotBlank()) {
+            try {
+                val loginRes = serverApi.login(appPrefs.serverUrl, email, pass)
+                if (loginRes.isSuccess) {
+                    val token = loginRes.getOrNull()?.optString("token", "") ?: ""
+                    if (token.isNotBlank()) {
+                        appPrefs.authToken = token
+                        ServerApi.activeAuthToken = token
+                        return true
+                    }
+                }
+            } catch (_: Exception) {}
+        }
+        return false
     }
 
     private fun decodeSecret(encoded: String): String {
