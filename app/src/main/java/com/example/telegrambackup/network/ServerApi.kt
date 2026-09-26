@@ -54,8 +54,6 @@ class ServerApi {
      */
     suspend fun getLatestAppVersion(serverUrl: String): com.example.telegrambackup.ui.update.AppVersionInfo = withContext(Dispatchers.IO) {
         val candidates = mutableListOf<com.example.telegrambackup.ui.update.AppVersionInfo>()
-        val ghToken = "REDACTED_GITHUB_PERSONAL_ACCESS_TOKEN_01"
-
         // 1. Try Backend Vercel Endpoint
         try {
             val url = cleanUrl(serverUrl, "/api/app/latest-version")
@@ -85,7 +83,6 @@ class ServerApi {
             val ghRawUrl = "https://raw.githubusercontent.com/sid-codes28/telegram_backup_backend/main/app-version.json"
             val request = Request.Builder()
                 .url(ghRawUrl)
-                .header("Authorization", "Bearer $ghToken")
                 .header("Accept", "application/vnd.github.v3.raw")
                 .cacheControl(okhttp3.CacheControl.FORCE_NETWORK)
                 .build()
@@ -115,7 +112,6 @@ class ServerApi {
             val ghReleasesUrl = "https://api.github.com/repos/sid-codes28/telegram_backup_backend/releases/latest"
             val request = Request.Builder()
                 .url(ghReleasesUrl)
-                .header("Authorization", "Bearer $ghToken")
                 .header("Accept", "application/vnd.github.v3+json")
                 .cacheControl(okhttp3.CacheControl.FORCE_NETWORK)
                 .build()

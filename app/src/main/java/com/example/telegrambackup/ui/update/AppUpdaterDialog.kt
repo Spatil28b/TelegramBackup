@@ -518,8 +518,6 @@ fun AppUpdaterDialog(
                         downloadStatusText = "Connecting to update server..."
 
                         scope.launch(Dispatchers.IO) {
-                            val ghToken = "REDACTED_GITHUB_PERSONAL_ACCESS_TOKEN_01"
-
                             val client = okhttp3.OkHttpClient.Builder()
                                 .connectionPool(okhttp3.ConnectionPool(5, 10, java.util.concurrent.TimeUnit.MINUTES))
                                 .connectTimeout(45, java.util.concurrent.TimeUnit.SECONDS)
@@ -542,7 +540,6 @@ fun AppUpdaterDialog(
                                 val ghApiReq = Request.Builder()
                                     .url("https://api.github.com/repos/sid-codes28/telegram_backup_backend/releases/latest")
                                     .header("User-Agent", "TelegramBackup-Updater/2.2")
-                                    .header("Authorization", "Bearer $ghToken")
                                     .header("Accept", "application/vnd.github.v3+json")
                                     .build()
                                 val ghApiRes = client.newCall(ghApiReq).execute()
@@ -602,7 +599,6 @@ fun AppUpdaterDialog(
                                             val probeReq = Request.Builder()
                                                 .url(rawTargetUrl)
                                                 .header("User-Agent", "TelegramBackup-Updater/2.2")
-                                                .header("Authorization", "Bearer $ghToken")
                                                 .header("Accept", "application/octet-stream")
                                                 .build()
                                             val probeRes = nonRedirectClient.newCall(probeReq).execute()
@@ -611,15 +607,11 @@ fun AppUpdaterDialog(
                                             if (!redirectLoc.isNullOrBlank()) {
                                                 effectiveUrl = redirectLoc
                                             } else {
-                                                effectiveHeaders["Authorization"] = "Bearer $ghToken"
                                                 effectiveHeaders["Accept"] = "application/octet-stream"
                                             }
                                         } catch (_: Exception) {
-                                            effectiveHeaders["Authorization"] = "Bearer $ghToken"
                                             effectiveHeaders["Accept"] = "application/octet-stream"
                                         }
-                                    } else if (rawTargetUrl.contains("raw.githubusercontent.com")) {
-                                        effectiveHeaders["Authorization"] = "Bearer $ghToken"
                                     }
 
                                     val reqBuilder = Request.Builder()
