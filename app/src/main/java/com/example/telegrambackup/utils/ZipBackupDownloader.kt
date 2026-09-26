@@ -136,56 +136,58 @@ object ZipBackupDownloader {
             progress = 0.02f
         )
 
+        var zipOutputStream: ZipOutputStream? = null
+        var successCount = 0
         try {
-            val zipOutputStream = ZipOutputStream(BufferedOutputStream(FileOutputStream(tempZipFile), 256 * 1024))
+            zipOutputStream = ZipOutputStream(BufferedOutputStream(FileOutputStream(tempZipFile), 256 * 1024))
             zipOutputStream.setLevel(Deflater.BEST_SPEED)
             val buffer = ByteArray(128 * 1024)
             val addedEntryNames = mutableSetOf<String>()
-            var successCount = 0
 
-            coroutineScope {
-                val prefetchMap = mutableMapOf<Int, Deferred<File?>>()
-                fun queuePrefetch(index: Int) {
-                    if (index !in validFiles.indices) return
-                    val item = validFiles[index]
-                    val local = FileViewerHelper.findLocalFile(item.path, item.fileName)
-                        ?: if (item.path.isNotBlank() && File(item.path).exists()) File(item.path) else null
-                    if (local != null && local.length() > 0) return
+            try {
+                coroutineScope {
+                    val prefetchMap = mutableMapOf<Int, Deferred<File?>>()
+                    fun queuePrefetch(index: Int) {
+                        if (index !in validFiles.indices) return
+                        val item = validFiles[index]
+                        val local = FileViewerHelper.findLocalFile(item.path, item.fileName)
+                            ?: if (item.path.isNotBlank() && File(item.path).exists()) File(item.path) else null
+                        if (local != null && local.length() > 0) return
 
-                    if (item.telegramFileId.isNotBlank() || item.chunksJson.isNotBlank() || item.totalChunks > 0) {
-                        synchronized(prefetchMap) {
-                            if (!prefetchMap.containsKey(index)) {
-                                prefetchMap[index] = async(Dispatchers.IO) {
-                                    try {
-                                        TelegramMediaResolver.fetchToTempCache(context, item)
-                                    } catch (e: Exception) {
-                                        Log.w(TAG, "Prefetch failed for ${item.fileName}: ${e.message}")
-                                        null
+                        if (item.telegramFileId.isNotBlank() || item.chunksJson.isNotBlank() || item.totalChunks > 0) {
+                            synchronized(prefetchMap) {
+                                if (!prefetchMap.containsKey(index)) {
+                                    prefetchMap[index] = async(Dispatchers.IO) {
+                                        try {
+                                            TelegramMediaResolver.fetchToTempCache(context, item)
+                                        } catch (e: Exception) {
+                                            Log.w(TAG, "Prefetch failed for ${item.fileName}: ${e.message}")
+                                            null
+                                        }
                                     }
                                 }
                             }
                         }
                     }
-                }
 
-                for ((idx, item) in validFiles.withIndex()) {
-                    val currentFileIdx = idx + 1
-                    val fileProg = (idx.toFloat() / validFiles.size.toFloat()).coerceIn(0.05f, 0.98f)
+                    for ((idx, item) in validFiles.withIndex()) {
+                        val currentFileIdx = idx + 1
+                        val fileProg = (idx.toFloat() / validFiles.size.toFloat()).coerceIn(0.05f, 0.98f)
 
-                    _activeProgressState.value = ZipProgressInfo(
-                        archiveTitle = archiveTitle,
-                        current = currentFileIdx,
-                        total = validFiles.size,
-                        currentFileName = item.fileName,
-                        progress = fileProg
-                    )
-                    onProgress?.invoke(currentFileIdx, validFiles.size, item.fileName, fileProg)
+                        _activeProgressState.value = ZipProgressInfo(
+                            archiveTitle = archiveTitle,
+                            current = currentFileIdx,
+                            total = validFiles.size,
+                            currentFileName = item.fileName,
+                            progress = fileProg
+                        )
+                        onProgress?.invoke(currentFileIdx, validFiles.size, item.fileName, fileProg)
 
-                    try {
-                        notifBuilder.setContentText("Processing ($currentFileIdx/${validFiles.size}): ${item.fileName}")
-                        notifBuilder.setProgress(validFiles.size, currentFileIdx, false)
-                        notificationManager.notify(notificationId, notifBuilder.build())
-                    } catch (_: Exception) {}
+                        try {
+                            notifBuilder.setContentText("Processing ($currentFileIdx/${validFiles.size}): ${item.fileName}")
+                            notifBuilder.setProgress(validFiles.size, currentFileIdx, false)
+                            AppNotificationHelper.safeNotify(context, notificationId, notifBuilder.build())
+                        } catch (_: Throwable) {}
 
                     // Overlap network I/O: prefetch next 2 cloud files concurrently
                     queuePrefetch(idx + 1)
@@ -260,8 +262,11 @@ object ZipBackupDownloader {
                     }
                 }
             }
-
-            zipOutputStream.close()
+        } finally {
+            try {
+                zipOutputStream?.close()
+            } catch (_: Throwable) {}
+        }
 
             if (successCount > 0 && tempZipFile.exists() && tempZipFile.length() > 0) {
                 if (activeZipFile.exists()) activeZipFile.delete()
@@ -276,7 +281,7 @@ object ZipBackupDownloader {
                         arrayOf("application/zip"),
                         null
                     )
-                } catch (_: Exception) {}
+                } catch (_: Throwable) {}
 
                 // Create Open Intent
                 val openIntent = createOpenArchiveIntent(context, finalFile)
@@ -297,11 +302,13 @@ object ZipBackupDownloader {
                         .setContentIntent(pendingIntent)
                         .setAutoCancel(true)
 
-                    notificationManager.notify(notificationId, notifBuilder.build())
-                } catch (_: Exception) {}
+                    AppNotificationHelper.safeNotify(context, notificationId, notifBuilder.build())
+                } catch (_: Throwable) {}
 
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(context, "✅ Saved $successCount files to Downloads/${finalFile.name}!", Toast.LENGTH_LONG).show()
+                    try {
+                        Toast.makeText(context.applicationContext, "✅ Saved $successCount files to Downloads/${finalFile.name}!", Toast.LENGTH_LONG).show()
+                    } catch (_: Throwable) {}
                 }
 
                 _activeProgressState.value = ZipProgressInfo(
@@ -316,9 +323,11 @@ object ZipBackupDownloader {
                 return@withContext finalFile
             } else {
                 if (tempZipFile.exists()) tempZipFile.delete()
-                try { notificationManager.cancel(notificationId) } catch (_: Exception) {}
+                AppNotificationHelper.safeCancel(context, notificationId)
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(context, "❌ No files could be retrieved for ZIP archive.", Toast.LENGTH_LONG).show()
+                    try {
+                        Toast.makeText(context.applicationContext, "❌ No files could be retrieved for ZIP archive.", Toast.LENGTH_LONG).show()
+                    } catch (_: Throwable) {}
                 }
                 _activeProgressState.value = ZipProgressInfo(
                     archiveTitle = archiveTitle,
@@ -331,12 +340,17 @@ object ZipBackupDownloader {
                 )
                 return@withContext null
             }
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             Log.e(TAG, "Failed creating ZIP archive", e)
+            try {
+                zipOutputStream?.close()
+            } catch (_: Throwable) {}
             if (tempZipFile.exists()) tempZipFile.delete()
-            try { notificationManager.cancel(notificationId) } catch (_: Exception) {}
+            AppNotificationHelper.safeCancel(context, notificationId)
             withContext(Dispatchers.Main) {
-                Toast.makeText(context, "❌ Error creating ZIP: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+                try {
+                    Toast.makeText(context.applicationContext, "❌ Error creating ZIP: ${e.localizedMessage ?: "Unknown error"}", Toast.LENGTH_LONG).show()
+                } catch (_: Throwable) {}
             }
             _activeProgressState.value = ZipProgressInfo(
                 archiveTitle = archiveTitle,

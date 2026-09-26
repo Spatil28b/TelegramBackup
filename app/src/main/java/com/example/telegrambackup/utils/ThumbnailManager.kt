@@ -107,8 +107,8 @@ object ThumbnailManager {
                     }
                     else -> null
                 }
-            } catch (e: Exception) {
-                Log.w(TAG, "Error generating thumbnail for ${sourceFile.name}: ${e.message}")
+            } catch (t: Throwable) {
+                Log.w(TAG, "Error generating thumbnail for ${sourceFile.name}: ${t.message}")
                 null
             }
 
@@ -124,8 +124,8 @@ object ThumbnailManager {
                     }
                     putInMemory(key, bitmap)
                     return@withPermit targetFile
-                } catch (e: Exception) {
-                    Log.e(TAG, "Failed to save thumbnail WebP to disk", e)
+                } catch (t: Throwable) {
+                    Log.e(TAG, "Failed to save thumbnail WebP to disk", t)
                 } finally {
                     // Do not recycle bitmap if retained in memoryCache
                 }
@@ -135,30 +135,34 @@ object ThumbnailManager {
     }
 
     private fun generateImageThumbnail(sourceFile: File): Bitmap? {
-        val boundsOptions = BitmapFactory.Options().apply {
-            inJustDecodeBounds = true
-        }
-        BitmapFactory.decodeFile(sourceFile.absolutePath, boundsOptions)
-
-        val w = boundsOptions.outWidth
-        val h = boundsOptions.outHeight
-        if (w <= 0 || h <= 0) return null
-
-        var inSampleSize = 1
-        if (w > TARGET_THUMBNAIL_SIZE || h > TARGET_THUMBNAIL_SIZE) {
-            val halfW = w / 2
-            val halfH = h / 2
-            while ((halfW / inSampleSize) >= TARGET_THUMBNAIL_SIZE && (halfH / inSampleSize) >= TARGET_THUMBNAIL_SIZE) {
-                inSampleSize *= 2
+        return try {
+            val boundsOptions = BitmapFactory.Options().apply {
+                inJustDecodeBounds = true
             }
-        }
+            BitmapFactory.decodeFile(sourceFile.absolutePath, boundsOptions)
 
-        val decodeOptions = BitmapFactory.Options().apply {
-            this.inSampleSize = inSampleSize
-            inPreferredConfig = Bitmap.Config.RGB_565 // 50% RAM savings
-        }
+            val w = boundsOptions.outWidth
+            val h = boundsOptions.outHeight
+            if (w <= 0 || h <= 0) return null
 
-        return BitmapFactory.decodeFile(sourceFile.absolutePath, decodeOptions)
+            var inSampleSize = 1
+            if (w > TARGET_THUMBNAIL_SIZE || h > TARGET_THUMBNAIL_SIZE) {
+                val halfW = w / 2
+                val halfH = h / 2
+                while ((halfW / inSampleSize) >= TARGET_THUMBNAIL_SIZE && (halfH / inSampleSize) >= TARGET_THUMBNAIL_SIZE) {
+                    inSampleSize *= 2
+                }
+            }
+
+            val decodeOptions = BitmapFactory.Options().apply {
+                this.inSampleSize = inSampleSize
+                inPreferredConfig = Bitmap.Config.RGB_565 // 50% RAM savings
+            }
+
+            BitmapFactory.decodeFile(sourceFile.absolutePath, decodeOptions)
+        } catch (_: Throwable) {
+            null
+        }
     }
 
     private fun generateVideoThumbnail(sourceFile: File): Bitmap? {
@@ -166,29 +170,32 @@ object ThumbnailManager {
         return try {
             retriever.setDataSource(sourceFile.absolutePath)
             retriever.getFrameAtTime(1_000_000, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
-        } catch (_: Exception) {
+        } catch (_: Throwable) {
             null
         } finally {
-            try { retriever.release() } catch (_: Exception) {}
+            try { retriever.release() } catch (_: Throwable) {}
         }
     }
 
     private fun generatePdfThumbnail(context: Context, sourceFile: File): Bitmap? {
         return try {
-            val pfd = ParcelFileDescriptor.open(sourceFile, ParcelFileDescriptor.MODE_READ_ONLY)
-            val renderer = PdfRenderer(pfd)
-            val page = renderer.openPage(0)
-
-            val width = TARGET_THUMBNAIL_SIZE
-            val height = (page.height.toFloat() / page.width.toFloat() * width).toInt().coerceAtLeast(1)
-            val bmp = Bitmap.createBitmap(width, height, Bitmap.Config.RGB_565)
-
-            page.render(bmp, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
-            page.close()
-            renderer.close()
-            pfd.close()
-            bmp
-        } catch (_: Exception) {
+            ParcelFileDescriptor.open(sourceFile, ParcelFileDescriptor.MODE_READ_ONLY)?.use { pfd ->
+                PdfRenderer(pfd).use { renderer ->
+                    if (renderer.pageCount > 0) {
+                        val page = renderer.openPage(0)
+                        try {
+                            val width = TARGET_THUMBNAIL_SIZE
+                            val height = (page.height.toFloat() / page.width.toFloat() * width).toInt().coerceAtLeast(1)
+                            val bmp = Bitmap.createBitmap(width, height, Bitmap.Config.RGB_565)
+                            page.render(bmp, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                            bmp
+                        } finally {
+                            try { page.close() } catch (_: Throwable) {}
+                        }
+                    } else null
+                }
+            }
+        } catch (_: Throwable) {
             null
         }
     }

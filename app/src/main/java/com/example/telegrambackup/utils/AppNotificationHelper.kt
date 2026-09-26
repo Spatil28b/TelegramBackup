@@ -70,61 +70,92 @@ object AppNotificationHelper {
         }
     }
 
+    fun safeNotify(context: Context, id: Int, notification: android.app.Notification) {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                if (androidx.core.content.ContextCompat.checkSelfPermission(
+                        context,
+                        android.Manifest.permission.POST_NOTIFICATIONS
+                    ) != android.content.pm.PackageManager.PERMISSION_GRANTED
+                ) {
+                    return
+                }
+            }
+            val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager ?: return
+            manager.notify(id, notification)
+        } catch (t: Throwable) {
+            android.util.Log.w("AppNotificationHelper", "Failed posting notification $id: ${t.message}")
+        }
+    }
+
+    fun safeCancel(context: Context, id: Int) {
+        try {
+            val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager ?: return
+            manager.cancel(id)
+        } catch (t: Throwable) {
+            android.util.Log.w("AppNotificationHelper", "Failed cancelling notification $id: ${t.message}")
+        }
+    }
+
     fun initNotificationChannels(context: Context) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager ?: return
 
-            // 1. Persistent Controller (Low importance = silent, non-intrusive)
-            val controllerChannel = NotificationChannel(
-                CHANNEL_ID_CONTROLLER,
-                "Backup Quick Controller",
-                NotificationManager.IMPORTANCE_LOW
-            ).apply {
-                description = "Persistent status bar quick controls to Start, Stop, or open Cloud Drive"
-                setShowBadge(false)
-                enableLights(false)
-                enableVibration(false)
+                // 1. Persistent Controller (Low importance = silent, non-intrusive)
+                val controllerChannel = NotificationChannel(
+                    CHANNEL_ID_CONTROLLER,
+                    "Backup Quick Controller",
+                    NotificationManager.IMPORTANCE_LOW
+                ).apply {
+                    description = "Persistent status bar quick controls to Start, Stop, or open Cloud Drive"
+                    setShowBadge(false)
+                    enableLights(false)
+                    enableVibration(false)
+                }
+
+                // 2. Live Upload Progress (Low importance = silent updates)
+                val uploadsChannel = NotificationChannel(
+                    CHANNEL_ID_UPLOADS,
+                    "Live Upload Progress",
+                    NotificationManager.IMPORTANCE_LOW
+                ).apply {
+                    description = "Live upload progress meters and transfer speeds"
+                    setShowBadge(false)
+                    enableLights(false)
+                    enableVibration(false)
+                }
+
+                // 3. File Downloads (Low importance = silent transfer)
+                val downloadsChannel = NotificationChannel(
+                    CHANNEL_ID_DOWNLOADS,
+                    "File & Folder Downloads",
+                    NotificationManager.IMPORTANCE_LOW
+                ).apply {
+                    description = "Live download progress and download completed notifications"
+                    setShowBadge(true)
+                    enableLights(false)
+                    enableVibration(false)
+                }
+
+                // 4. System Alerts & Summaries (Default importance = visible toast alert)
+                val alertsChannel = NotificationChannel(
+                    CHANNEL_ID_ALERTS,
+                    "System Alerts & Completion Reports",
+                    NotificationManager.IMPORTANCE_DEFAULT
+                ).apply {
+                    description = "Backup session completion summaries, storage warnings, and alerts"
+                    setShowBadge(true)
+                    enableLights(true)
+                }
+
+                manager.createNotificationChannel(controllerChannel)
+                manager.createNotificationChannel(uploadsChannel)
+                manager.createNotificationChannel(downloadsChannel)
+                manager.createNotificationChannel(alertsChannel)
             }
-
-            // 2. Live Upload Progress (Low importance = silent updates)
-            val uploadsChannel = NotificationChannel(
-                CHANNEL_ID_UPLOADS,
-                "Live Upload Progress",
-                NotificationManager.IMPORTANCE_LOW
-            ).apply {
-                description = "Live upload progress meters and transfer speeds"
-                setShowBadge(false)
-                enableLights(false)
-                enableVibration(false)
-            }
-
-            // 3. File Downloads (Low importance = silent transfer)
-            val downloadsChannel = NotificationChannel(
-                CHANNEL_ID_DOWNLOADS,
-                "File & Folder Downloads",
-                NotificationManager.IMPORTANCE_LOW
-            ).apply {
-                description = "Live download progress and download completed notifications"
-                setShowBadge(true)
-                enableLights(false)
-                enableVibration(false)
-            }
-
-            // 4. System Alerts & Summaries (Default importance = visible toast alert)
-            val alertsChannel = NotificationChannel(
-                CHANNEL_ID_ALERTS,
-                "System Alerts & Completion Reports",
-                NotificationManager.IMPORTANCE_DEFAULT
-            ).apply {
-                description = "Backup session completion summaries, storage warnings, and alerts"
-                setShowBadge(true)
-                enableLights(true)
-            }
-
-            manager.createNotificationChannel(controllerChannel)
-            manager.createNotificationChannel(uploadsChannel)
-            manager.createNotificationChannel(downloadsChannel)
-            manager.createNotificationChannel(alertsChannel)
+        } catch (t: Throwable) {
+            android.util.Log.e("AppNotificationHelper", "Error initializing notification channels", t)
         }
     }
 
@@ -204,12 +235,11 @@ object AppNotificationHelper {
             builder.addAction(R.drawable.ic_folder, "Open Vault", openDrivePendingIntent)
         }
 
-        manager.notify(NOTIFICATION_ID_CONTROLLER, builder.build())
+        safeNotify(context, NOTIFICATION_ID_CONTROLLER, builder.build())
     }
 
     fun cancelPersistentControlNotification(context: Context) {
-        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        manager.cancel(NOTIFICATION_ID_CONTROLLER)
+        safeCancel(context, NOTIFICATION_ID_CONTROLLER)
     }
 
     // =========================================================================
@@ -224,7 +254,6 @@ object AppNotificationHelper {
         speedStr: String
     ) {
         initNotificationChannels(context)
-        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
         val openAppPendingIntent = createNavPendingIntent(context, "PROGRESS", 200)
         val openDrivePendingIntent = createNavPendingIntent(context, "DRIVE", 202)
@@ -261,12 +290,11 @@ object AppNotificationHelper {
             .setOnlyAlertOnce(true)
             .build()
 
-        manager.notify(NOTIFICATION_ID_BACKUP_ACTIVE, notification)
+        safeNotify(context, NOTIFICATION_ID_BACKUP_ACTIVE, notification)
     }
 
     fun cancelBackupNotification(context: Context) {
-        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        manager.cancel(NOTIFICATION_ID_BACKUP_ACTIVE)
+        safeCancel(context, NOTIFICATION_ID_BACKUP_ACTIVE)
     }
 
     // =========================================================================
@@ -279,7 +307,6 @@ object AppNotificationHelper {
         speedStr: String
     ) {
         initNotificationChannels(context)
-        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         val openAppPendingIntent = createNavPendingIntent(context, "DRIVE", 300)
 
         val cleanName = if (fileName.length > 26) fileName.take(14) + "…" + fileName.takeLast(10) else fileName
@@ -307,7 +334,7 @@ object AppNotificationHelper {
             .setOnlyAlertOnce(true)
             .build()
 
-        manager.notify(NOTIFICATION_ID_DOWNLOAD_ACTIVE, notification)
+        safeNotify(context, NOTIFICATION_ID_DOWNLOAD_ACTIVE, notification)
     }
 
     fun showDownloadFinishedNotification(
@@ -316,8 +343,7 @@ object AppNotificationHelper {
         filePath: String
     ) {
         initNotificationChannels(context)
-        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        manager.cancel(NOTIFICATION_ID_DOWNLOAD_ACTIVE)
+        safeCancel(context, NOTIFICATION_ID_DOWNLOAD_ACTIVE)
 
         val file = File(filePath)
         val viewIntent = if (file.exists()) {
@@ -392,12 +418,11 @@ object AppNotificationHelper {
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .build()
 
-        manager.notify(NOTIFICATION_ID_DOWNLOAD_COMPLETED, notification)
+        safeNotify(context, NOTIFICATION_ID_DOWNLOAD_COMPLETED, notification)
     }
 
     fun cancelDownloadNotification(context: Context) {
-        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        manager.cancel(NOTIFICATION_ID_DOWNLOAD_ACTIVE)
+        safeCancel(context, NOTIFICATION_ID_DOWNLOAD_ACTIVE)
     }
 
     // =========================================================================
@@ -409,8 +434,7 @@ object AppNotificationHelper {
         summary: String = "✓ Synced"
     ) {
         initNotificationChannels(context)
-        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        manager.cancel(NOTIFICATION_ID_BACKUP_ACTIVE)
+        safeCancel(context, NOTIFICATION_ID_BACKUP_ACTIVE)
 
         val openDrivePendingIntent = createNavPendingIntent(context, "DRIVE", 400)
         val openCleanPendingIntent = createNavPendingIntent(context, "HOME", 402)
@@ -432,13 +456,12 @@ object AppNotificationHelper {
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .build()
 
-        manager.notify(NOTIFICATION_ID_BACKUP_COMPLETED, notification)
+        safeNotify(context, NOTIFICATION_ID_BACKUP_COMPLETED, notification)
     }
 
     fun showBackupPausedNotification(context: Context) {
         initNotificationChannels(context)
-        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        manager.cancel(NOTIFICATION_ID_BACKUP_ACTIVE)
+        safeCancel(context, NOTIFICATION_ID_BACKUP_ACTIVE)
 
         val openAppPendingIntent = createNavPendingIntent(context, "PROGRESS", 410)
         val openDrivePendingIntent = createNavPendingIntent(context, "DRIVE", 412)
@@ -459,12 +482,11 @@ object AppNotificationHelper {
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .build()
 
-        manager.notify(NOTIFICATION_ID_BACKUP_PAUSED, notification)
+        safeNotify(context, NOTIFICATION_ID_BACKUP_PAUSED, notification)
     }
 
     fun showSystemAlertNotification(context: Context, title: String, message: String) {
         initNotificationChannels(context)
-        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         val openAppPendingIntent = createNavPendingIntent(context, "SETTINGS", 420)
 
         val notification = NotificationCompat.Builder(context, CHANNEL_ID_ALERTS)
@@ -479,6 +501,6 @@ object AppNotificationHelper {
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .build()
 
-        manager.notify(NOTIFICATION_ID_SYSTEM_ALERT, notification)
+        safeNotify(context, NOTIFICATION_ID_SYSTEM_ALERT, notification)
     }
 }

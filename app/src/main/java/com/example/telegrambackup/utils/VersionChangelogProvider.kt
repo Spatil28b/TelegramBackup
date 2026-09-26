@@ -28,6 +28,49 @@ object VersionChangelogProvider {
 
     private val releases = listOf(
         VersionRelease(
+            versionName = "2.5.0",
+            versionCode = 134,
+            releaseDate = "September 2026",
+            highlights = "Zero-Crash App Crash Shield, Jetpack Compose Media Viewer Hardening, Literal Path Renaming & Room DB Migration Resilience",
+            entries = listOf(
+                ChangelogEntry(
+                    Icons.Default.Shield,
+                    Color(0xFF10B981),
+                    "Zero-Crash App Crash Shield",
+                    "Integrated global application-level crash shield that intercepts uncaught coroutine and thread errors, suppresses benign OEM window manager crashes, and safely recovers the user session.",
+                    "STABILITY"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Visibility,
+                    Color(0xFF3B82F6),
+                    "Jetpack Compose Media Viewer & OOM Hardening",
+                    "Resolved slot table memoization glitches in media dialogs, added 256KB safe text reader limits, and removed unsafe manual bitmap recycling to guarantee 0 Canvas engine crashes.",
+                    "MEDIA VIEWER"
+                ),
+                ChangelogEntry(
+                    Icons.Default.DriveFileRenameOutline,
+                    Color(0xFF8B5CF6),
+                    "Literal Substring Folder Renaming",
+                    "Replaced regex parsing with literal prefix substitution, eliminating PatternSyntaxException and corrupted file paths when renaming folders with special characters.",
+                    "FILE ACTIONS"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Storage,
+                    Color(0xFFF59E0B),
+                    "Room DB Multi-Version Migration Resilience",
+                    "Added explicit database migrations from older schemas (v2, v3, v4, v5 to v12) with safe fallback to guarantee zero startup crashes for updating users.",
+                    "DATABASE"
+                ),
+                ChangelogEntry(
+                    Icons.Default.FolderZip,
+                    Color(0xFF06B6D4),
+                    "Scoped Storage Safe ZIP Downloader",
+                    "Hardened both Monthly and Folder ZIP archivers with guaranteed stream closure in finally blocks and app-private Scoped Storage fallbacks.",
+                    "ARCHIVE ENGINE"
+                )
+            )
+        ),
+        VersionRelease(
             versionName = "2.4.9",
             versionCode = 133,
             releaseDate = "September 2026",

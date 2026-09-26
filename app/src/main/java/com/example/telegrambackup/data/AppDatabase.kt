@@ -147,6 +147,30 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_2_12 = object : Migration(2, 12) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                createAllTablesAndIndexes(db)
+            }
+        }
+
+        private val MIGRATION_3_12 = object : Migration(3, 12) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                createAllTablesAndIndexes(db)
+            }
+        }
+
+        private val MIGRATION_4_12 = object : Migration(4, 12) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                createAllTablesAndIndexes(db)
+            }
+        }
+
+        private val MIGRATION_5_12 = object : Migration(5, 12) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                createAllTablesAndIndexes(db)
+            }
+        }
+
         private fun createAllTablesAndIndexes(db: SupportSQLiteDatabase) {
             try {
                 db.execSQL("""
@@ -254,6 +278,10 @@ abstract class AppDatabase : RoomDatabase() {
                 )
                 .addMigrations(
                     MIGRATION_1_12,
+                    MIGRATION_2_12,
+                    MIGRATION_3_12,
+                    MIGRATION_4_12,
+                    MIGRATION_5_12,
                     MIGRATION_6_7,
                     MIGRATION_7_8,
                     MIGRATION_8_9,
@@ -261,6 +289,7 @@ abstract class AppDatabase : RoomDatabase() {
                     MIGRATION_10_11,
                     MIGRATION_11_12
                 )
+                .fallbackToDestructiveMigrationFrom(2, 3, 4, 5)
                 // NEVER wipe database on normal upgrades; only allow destructive fallback on explicit APK downgrade
                 .fallbackToDestructiveMigrationOnDowngrade()
                 .addCallback(object : RoomDatabase.Callback() {

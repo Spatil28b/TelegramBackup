@@ -116,9 +116,20 @@ fun PermissionSetupDialog(
         }
     }
 
-    // Refresh state when returning to dialog
-    DisposableEffect(Unit) {
-        onDispose { }
+    // Auto-refresh permission state whenever user returns from Android Settings
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                notifGranted = isNotificationPermissionGranted(context)
+                storageGranted = isStoragePermissionGranted(context)
+                batteryIgnored = isBatteryOptimizationIgnored(context)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
     }
 
     AlertDialog(
@@ -164,7 +175,9 @@ fun PermissionSetupDialog(
                     isGranted = notifGranted,
                     onRequestPermission = {
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                            notifPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                            try {
+                                notifPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                            } catch (_: Throwable) {}
                         } else {
                             notifGranted = true
                         }
@@ -190,9 +203,11 @@ fun PermissionSetupDialog(
                                 }
                                 context.startActivity(intent)
                             }
-                        } catch (_: Exception) {
-                            val intent = Intent(Settings.ACTION_SETTINGS)
-                            context.startActivity(intent)
+                        } catch (_: Throwable) {
+                            try {
+                                val intent = Intent(Settings.ACTION_SETTINGS)
+                                context.startActivity(intent)
+                            } catch (_: Throwable) {}
                         }
                     }
                 )

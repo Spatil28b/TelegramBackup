@@ -84,14 +84,14 @@ fun ModernVideoPlayerDialog(
 
     // Live progress tracker loop
     LaunchedEffect(isPlaying) {
-        while (true) {
+        while (isPlaying) {
             videoViewRef?.let { vv ->
                 try {
                     if (vv.isPlaying) {
                         currentPositionMs = vv.currentPosition
                         durationMs = vv.duration.coerceAtLeast(1)
                     }
-                } catch (_: Exception) {}
+                } catch (_: Throwable) {}
             }
             delay(300)
         }
@@ -102,7 +102,8 @@ fun ModernVideoPlayerDialog(
             try {
                 videoViewRef?.stopPlayback()
                 videoViewRef?.suspend()
-            } catch (_: Exception) {}
+                videoViewRef = null
+            } catch (_: Throwable) {}
         }
     }
 
@@ -111,7 +112,8 @@ fun ModernVideoPlayerDialog(
             try {
                 videoViewRef?.stopPlayback()
                 videoViewRef?.suspend()
-            } catch (_: Exception) {}
+                videoViewRef = null
+            } catch (_: Throwable) {}
             onDismiss()
         },
         properties = DialogProperties(
@@ -161,42 +163,50 @@ fun ModernVideoPlayerDialog(
             }
 
             if (activeVideoSource != null) {
-                AndroidView(
-                    factory = { ctx ->
-                        VideoView(ctx).apply {
-                            val source = activeVideoSource!!
-                            if (source.startsWith("http://") || source.startsWith("https://")) {
-                                setVideoURI(Uri.parse(source))
-                            } else {
-                                setVideoPath(source)
-                            }
+                key(activeVideoSource) {
+                    AndroidView(
+                        factory = { ctx ->
+                            VideoView(ctx).apply {
+                                val source = activeVideoSource!!
+                                if (source.startsWith("http://") || source.startsWith("https://")) {
+                                    setVideoURI(Uri.parse(source))
+                                } else {
+                                    setVideoPath(source)
+                                }
 
-                            setOnPreparedListener { mp ->
-                                isBuffering = false
-                                durationMs = mp.duration.coerceAtLeast(1)
-                                mp.isLooping = true
-                                start()
-                                isPlaying = true
-                            }
+                                setOnPreparedListener { mp ->
+                                    isBuffering = false
+                                    durationMs = mp.duration.coerceAtLeast(1)
+                                    mp.isLooping = true
+                                    try {
+                                        start()
+                                        isPlaying = true
+                                    } catch (_: Throwable) {
+                                        isPlaying = false
+                                    }
+                                }
 
-                            setOnCompletionListener {
-                                isPlaying = false
-                                currentPositionMs = durationMs
-                            }
+                                setOnCompletionListener {
+                                    isPlaying = false
+                                    currentPositionMs = durationMs
+                                }
 
-                            setOnErrorListener { _, _, _ ->
-                                isBuffering = false
-                                Toast.makeText(ctx, "Cannot decode video. Opening in external player...", Toast.LENGTH_SHORT).show()
-                                FileViewerHelper.openFile(ctx, source, fileName)
-                                onDismiss()
-                                true
-                            }
+                                setOnErrorListener { _, _, _ ->
+                                    isBuffering = false
+                                    try {
+                                        Toast.makeText(ctx.applicationContext, "Cannot decode video. Opening in external player...", Toast.LENGTH_SHORT).show()
+                                        FileViewerHelper.openFile(ctx, source, fileName)
+                                    } catch (_: Throwable) {}
+                                    onDismiss()
+                                    true
+                                }
 
-                            videoViewRef = this
-                        }
-                    },
-                    modifier = Modifier.fillMaxSize()
-                )
+                                videoViewRef = this
+                            }
+                        },
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
             } else {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator(color = TelegramBlue)
@@ -350,12 +360,15 @@ fun ModernVideoPlayerDialog(
 
                         Spacer(modifier = Modifier.height(4.dp))
 
+                        val safeDuration = durationMs.coerceAtLeast(1).toFloat()
                         Slider(
-                            value = (currentPositionMs.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f),
+                            value = (currentPositionMs.toFloat() / safeDuration).coerceIn(0f, 1f),
                             onValueChange = { frac ->
                                 val target = (frac * durationMs).toInt()
                                 currentPositionMs = target
-                                videoViewRef?.seekTo(target)
+                                try {
+                                    videoViewRef?.seekTo(target)
+                                } catch (_: Throwable) {}
                             },
                             colors = SliderDefaults.colors(
                                 thumbColor = TelegramBlue,

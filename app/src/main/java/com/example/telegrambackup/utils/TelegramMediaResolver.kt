@@ -817,8 +817,8 @@ object TelegramMediaResolver {
                     bitmapMemoryCache.put(telegramFileId, bmp)
                     return@withContext bmp
                 }
-            } catch (e: Exception) {
-                Log.w(TAG, "Error decoding bitmap for $fileName", e)
+            } catch (t: Throwable) {
+                Log.w(TAG, "Error decoding bitmap for $fileName", t)
             }
         }
         return@withContext null

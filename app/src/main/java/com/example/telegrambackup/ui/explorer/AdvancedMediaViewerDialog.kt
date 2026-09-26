@@ -149,30 +149,33 @@ fun AdvancedMediaViewerDialog(
         dragAccumulator = 0f
     }
 
-    val currentFile = filesList.getOrNull(currentIndex) ?: run {
-        LaunchedEffect(Unit) { onDismiss() }
-        return
+    val currentFile = filesList.getOrNull(currentIndex)
+    LaunchedEffect(currentFile) {
+        if (currentFile == null) {
+            onDismiss()
+        }
     }
-    val nameLower = currentFile.fileName.lowercase()
+
+    val nameLower = currentFile?.fileName?.lowercase().orEmpty()
     val isImage = nameLower.endsWith(".jpg") || nameLower.endsWith(".jpeg") || nameLower.endsWith(".png") || nameLower.endsWith(".webp") || nameLower.endsWith(".heic") || nameLower.endsWith(".gif") || nameLower.endsWith(".bmp")
     val isVideo = nameLower.endsWith(".mp4") || nameLower.endsWith(".mkv") || nameLower.endsWith(".avi") || nameLower.endsWith(".mov") || nameLower.endsWith(".webm") || nameLower.endsWith(".3gp")
     val isAudio = nameLower.endsWith(".mp3") || nameLower.endsWith(".m4a") || nameLower.endsWith(".aac") || nameLower.endsWith(".wav") || nameLower.endsWith(".flac") || nameLower.endsWith(".ogg") || nameLower.endsWith(".opus") || nameLower.endsWith(".wma")
     val isPdf = nameLower.endsWith(".pdf")
     val isTextFile = nameLower.endsWith(".txt") || nameLower.endsWith(".log") || nameLower.endsWith(".json") || nameLower.endsWith(".csv") || nameLower.endsWith(".md") || nameLower.endsWith(".xml") || nameLower.endsWith(".kt") || nameLower.endsWith(".java") || nameLower.endsWith(".html") || nameLower.endsWith(".css") || nameLower.endsWith(".js") || nameLower.endsWith(".py") || nameLower.endsWith(".sh") || nameLower.endsWith(".yml") || nameLower.endsWith(".yaml")
 
-    val localFile = remember(currentFile.path) { File(currentFile.path) }
-    val isLocalReadable = localFile.exists() && localFile.length() > 0 && localFile.canRead()
-    val localFileExists = isLocalReadable && (FileEncryptor.isLikelyPlainFile(localFile, currentFile.fileName) || FileEncryptor.isEncryptedFile(localFile, currentFile.fileName))
+    val localFile = remember(currentFile?.path) { currentFile?.path?.let { File(it) } }
+    val isLocalReadable = localFile != null && localFile.exists() && localFile.length() > 0 && localFile.canRead()
+    val localFileExists = isLocalReadable && localFile != null && currentFile != null && (FileEncryptor.isLikelyPlainFile(localFile, currentFile.fileName) || FileEncryptor.isEncryptedFile(localFile, currentFile.fileName))
 
     // Cloud streaming / caching state
-    var resolvedDirectUrl by remember(currentFile.telegramFileId) { mutableStateOf<String?>(null) }
-    var cachedDownloadedFile by remember(currentFile.telegramFileId) { mutableStateOf<File?>(null) }
-    var isCloudResolving by remember(currentFile.telegramFileId) { mutableStateOf(false) }
+    var resolvedDirectUrl by remember(currentFile?.telegramFileId) { mutableStateOf<String?>(null) }
+    var cachedDownloadedFile by remember(currentFile?.telegramFileId) { mutableStateOf<File?>(null) }
+    var isCloudResolving by remember(currentFile?.telegramFileId) { mutableStateOf(false) }
     var showShareModal by remember { mutableStateOf(false) }
     var showAskAiSheet by remember { mutableStateOf(false) }
 
     LaunchedEffect(currentFile) {
-        if ((!localFileExists || isPdf || isAudio) && currentFile.telegramFileId.isNotBlank() && currentFile.telegramFileId != "DIR_MARKER") {
+        if (currentFile != null && (!localFileExists || isPdf || isAudio) && currentFile.telegramFileId.isNotBlank() && currentFile.telegramFileId != "DIR_MARKER") {
             isCloudResolving = true
             val directUrl = TelegramMediaResolver.resolveDirectUrl(context, currentFile.telegramFileId)
             resolvedDirectUrl = directUrl
@@ -189,6 +192,11 @@ fun AdvancedMediaViewerDialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false, dismissOnBackPress = true, dismissOnClickOutside = false)
     ) {
+        if (currentFile == null) {
+            Box(modifier = Modifier.fillMaxSize().background(Color.Black))
+            return@Dialog
+        }
+
         Surface(
             modifier = Modifier.fillMaxSize(),
             color = Color.Black.copy(alpha = 0.96f)
@@ -556,9 +564,24 @@ private fun TextDocumentViewerComponent(file: File, fileName: String) {
         isLoading = true
         withContext(Dispatchers.IO) {
             try {
-                textContent = file.readText()
-            } catch (e: Exception) {
-                textContent = "Error reading file: ${e.localizedMessage}"
+                if (file.exists() && file.length() > 0) {
+                    val maxBytes = 256 * 1024
+                    val buffer = ByteArray(minOf(file.length(), maxBytes.toLong()).toInt())
+                    var bytesRead = 0
+                    file.inputStream().use { fis ->
+                        bytesRead = fis.read(buffer)
+                    }
+                    val text = String(buffer, 0, bytesRead, Charsets.UTF_8)
+                    textContent = if (file.length() > maxBytes) {
+                        text + "\n\n--- [Preview truncated. File size: ${formatFileSize(file.length())}] ---"
+                    } else {
+                        text
+                    }
+                } else {
+                    textContent = "Empty file"
+                }
+            } catch (t: Throwable) {
+                textContent = "Error reading file: ${t.localizedMessage ?: "File could not be loaded"}"
             }
         }
         isLoading = false
@@ -670,8 +693,8 @@ private fun PdfViewerComponent(file: File, fileName: String = file.name) {
                     workingCopyFile = workingFile
 
                     val pfd = ParcelFileDescriptor.open(workingFile, ParcelFileDescriptor.MODE_READ_ONLY)
-                    val renderer = PdfRenderer(pfd)
                     fileDescriptor = pfd
+                    val renderer = PdfRenderer(pfd)
                     pdfRenderer = renderer
                     totalPdfPages = renderer.pageCount
                 } else {
@@ -681,6 +704,14 @@ private fun PdfViewerComponent(file: File, fileName: String = file.name) {
                 Log.e("PdfViewer", "PdfRenderer error", t)
                 totalPdfPages = 0
                 errorMessage = t.localizedMessage ?: "Invalid PDF document format"
+                try {
+                    pdfRenderer?.close()
+                    pdfRenderer = null
+                } catch (_: Throwable) {}
+                try {
+                    fileDescriptor?.close()
+                    fileDescriptor = null
+                } catch (_: Throwable) {}
             } finally {
                 isRendering = false
             }
@@ -691,12 +722,16 @@ private fun PdfViewerComponent(file: File, fileName: String = file.name) {
         onDispose {
             try {
                 pdfRenderer?.close()
+                pdfRenderer = null
+            } catch (_: Throwable) {}
+            try {
                 fileDescriptor?.close()
+                fileDescriptor = null
             } catch (_: Throwable) {}
             try {
                 workingCopyFile?.delete()
+                workingCopyFile = null
             } catch (_: Throwable) {}
-            pageBitmapCache.values.forEach { try { it.recycle() } catch (_: Throwable) {} }
             pageBitmapCache.clear()
         }
     }
@@ -782,7 +817,7 @@ private fun PdfViewerComponent(file: File, fileName: String = file.name) {
                                             if (pageBitmapCache.size > 10) {
                                                 val oldest = pageBitmapCache.keys.firstOrNull()
                                                 if (oldest != null) {
-                                                    pageBitmapCache.remove(oldest)?.recycle()
+                                                    pageBitmapCache.remove(oldest)
                                                 }
                                             }
                                             pageBitmapCache[pageIdx] = bitmap
@@ -929,10 +964,21 @@ private fun AudioPlayerComponent(
     var isPreparing by remember { mutableStateOf(true) }
     var mediaPlayer by remember { mutableStateOf<MediaPlayer?>(null) }
     var playbackError by remember { mutableStateOf<String?>(null) }
+    var activeWorkingFile by remember { mutableStateOf<File?>(null) }
 
     LaunchedEffect(file?.absolutePath, directUrl) {
         isPreparing = true
         playbackError = null
+        try {
+            mediaPlayer?.stop()
+            mediaPlayer?.release()
+            mediaPlayer = null
+        } catch (_: Throwable) {}
+        try {
+            activeWorkingFile?.delete()
+            activeWorkingFile = null
+        } catch (_: Throwable) {}
+
         withContext(Dispatchers.IO) {
             try {
                 val player = MediaPlayer()
@@ -941,6 +987,7 @@ private fun AudioPlayerComponent(
                     val workingFile = File(workingDir, "audio_${System.currentTimeMillis()}_${file.name}")
                     file.copyTo(workingFile, overwrite = true)
                     FileEncryptor.ensureDecrypted(workingFile, context, fileName)
+                    activeWorkingFile = workingFile
                     player.setDataSource(workingFile.absolutePath)
                 } else if (!directUrl.isNullOrBlank()) {
                     player.setDataSource(directUrl)
@@ -951,10 +998,15 @@ private fun AudioPlayerComponent(
                 }
 
                 player.setOnPreparedListener { mp ->
-                    durationMs = mp.duration
-                    isPreparing = false
-                    mp.start()
-                    isPlaying = true
+                    try {
+                        durationMs = mp.duration
+                        isPreparing = false
+                        mp.start()
+                        isPlaying = true
+                    } catch (_: Throwable) {
+                        isPreparing = false
+                        isPlaying = false
+                    }
                 }
                 player.setOnCompletionListener {
                     isPlaying = false
@@ -968,8 +1020,8 @@ private fun AudioPlayerComponent(
                 }
                 player.prepareAsync()
                 mediaPlayer = player
-            } catch (e: Exception) {
-                playbackError = e.localizedMessage ?: "Failed to play audio"
+            } catch (t: Throwable) {
+                playbackError = t.localizedMessage ?: "Failed to play audio"
                 isPreparing = false
             }
         }
@@ -978,9 +1030,11 @@ private fun AudioPlayerComponent(
     LaunchedEffect(isPlaying) {
         while (isPlaying) {
             mediaPlayer?.let {
-                if (it.isPlaying) {
-                    currentPositionMs = it.currentPosition
-                }
+                try {
+                    if (it.isPlaying) {
+                        currentPositionMs = it.currentPosition
+                    }
+                } catch (_: Throwable) {}
             }
             delay(400)
         }
@@ -992,7 +1046,11 @@ private fun AudioPlayerComponent(
                 mediaPlayer?.stop()
                 mediaPlayer?.release()
                 mediaPlayer = null
-            } catch (_: Exception) {}
+            } catch (_: Throwable) {}
+            try {
+                activeWorkingFile?.delete()
+                activeWorkingFile = null
+            } catch (_: Throwable) {}
         }
     }
 
@@ -1052,8 +1110,9 @@ private fun AudioPlayerComponent(
                 value = sliderValue.coerceIn(0f, 1f),
                 onValueChange = { frac ->
                     val targetMs = (frac * durationMs).toInt()
-                    currentPositionMs = targetMs
-                    mediaPlayer?.seekTo(targetMs)
+                    try {
+                        mediaPlayer?.seekTo(targetMs)
+                    } catch (_: Throwable) {}
                 },
                 colors = SliderDefaults.colors(
                     thumbColor = TelegramBlue,

@@ -31,13 +31,23 @@ object FolderZipDownloader {
 
         val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
         val targetFolder = File(downloadsDir, "TelegramBackup_Zips")
-        if (!targetFolder.exists()) targetFolder.mkdirs()
+        if (!targetFolder.exists()) {
+            try { targetFolder.mkdirs() } catch (_: Throwable) {}
+        }
+
+        val safeFolder = if (targetFolder.exists() && targetFolder.canWrite()) {
+            targetFolder
+        } else {
+            val privateDl = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS) ?: context.filesDir
+            File(privateDl, "TelegramBackup_Zips").also { if (!it.exists()) it.mkdirs() }
+        }
 
         val safeName = folderName.replace(Regex("[^a-zA-Z0-9_.-]"), "_")
-        val zipFile = File(targetFolder, "${safeName}_${System.currentTimeMillis()}.zip")
+        val zipFile = File(safeFolder, "${safeName}_${System.currentTimeMillis()}.zip")
 
+        var zos: ZipOutputStream? = null
         try {
-            val zos = ZipOutputStream(BufferedOutputStream(FileOutputStream(zipFile), 256 * 1024))
+            zos = ZipOutputStream(BufferedOutputStream(FileOutputStream(zipFile), 256 * 1024))
             zos.setLevel(Deflater.BEST_SPEED)
             val buffer = ByteArray(128 * 1024)
             val addedEntryNames = mutableSetOf<String>()
@@ -119,7 +129,10 @@ object FolderZipDownloader {
                 }
             }
 
-            zos.close()
+            try {
+                zos?.close()
+            } catch (_: Throwable) {}
+
             onProgress(totalFiles, totalFiles, 1.0f)
             if (successCount > 0 && zipFile.exists() && zipFile.length() > 0) {
                 return@withContext zipFile
@@ -127,8 +140,11 @@ object FolderZipDownloader {
                 if (zipFile.exists()) zipFile.delete()
                 return@withContext null
             }
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             Log.e(TAG, "Failed creating folder zip", e)
+            try {
+                zos?.close()
+            } catch (_: Throwable) {}
             if (zipFile.exists()) zipFile.delete()
             return@withContext null
         }

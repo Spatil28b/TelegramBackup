@@ -215,20 +215,31 @@ object LocalConfigVaultManager {
 
             val payloadStr = root.toString(2)
 
-            // Write to all target external storage locations
+            // Write to all target external storage locations atomically
             for (dir in getStorageDirs()) {
                 try {
                     if (!dir.exists()) dir.mkdirs()
-                    File(dir, HIDDEN_FILE_NAME).writeText(payloadStr)
-                    File(dir, BACKUP_FILE_NAME).writeText(payloadStr)
+                    val hiddenTarget = File(dir, HIDDEN_FILE_NAME)
+                    val backupTarget = File(dir, BACKUP_FILE_NAME)
+
+                    val tempHidden = File(dir, "${HIDDEN_FILE_NAME}.tmp")
+                    tempHidden.writeText(payloadStr)
+                    tempHidden.renameTo(hiddenTarget)
+
+                    val tempBackup = File(dir, "${BACKUP_FILE_NAME}.tmp")
+                    tempBackup.writeText(payloadStr)
+                    tempBackup.renameTo(backupTarget)
                 } catch (e: Exception) {
                     Log.w(TAG, "Failed writing vault snapshot to ${dir.absolutePath}: ${e.message}")
                 }
             }
 
-            // Also keep internal app copy
+            // Also keep internal app copy atomically
             try {
-                File(context.filesDir, HIDDEN_FILE_NAME).writeText(payloadStr)
+                val internalTarget = File(context.filesDir, HIDDEN_FILE_NAME)
+                val tempInternal = File(context.filesDir, "${HIDDEN_FILE_NAME}.tmp")
+                tempInternal.writeText(payloadStr)
+                tempInternal.renameTo(internalTarget)
             } catch (_: Exception) {}
 
             Log.d(TAG, "✓ Successfully saved local config vault snapshot (Version $VAULT_VERSION)")
@@ -253,8 +264,10 @@ object LocalConfigVaultManager {
             val localGemini = prefs.geminiApiKeys.trim()
             val localKey = prefs.encryptionKey.trim()
 
-            val isLocalBlank = (localEmail.isEmpty() && localBot.isEmpty()) ||
-                    (localBot.isEmpty() && localGemini.isEmpty()) ||
+            val isLocalBlank = localEmail.isEmpty() ||
+                    localBot.isEmpty() ||
+                    localGemini.isEmpty() ||
+                    localKey.isEmpty() ||
                     db.appSettingDao().getAllSettings().isEmpty()
 
             // Find best candidate snapshot file
@@ -452,12 +465,18 @@ object LocalConfigVaultManager {
             // Restore Starred & Safe Vault Paths
             snapshotJson.optJSONArray("starred_file_paths")?.let { arr ->
                 val set = mutableSetOf<String>()
-                for (i in 0 until arr.length()) set.add(arr.getString(i))
+                for (i in 0 until arr.length()) {
+                    val p = arr.optString(i, "")
+                    if (p.isNotBlank()) set.add(p)
+                }
                 if (set.isNotEmpty()) prefs.starredFilePaths = set
             }
             snapshotJson.optJSONArray("safe_vault_file_paths")?.let { arr ->
                 val set = mutableSetOf<String>()
-                for (i in 0 until arr.length()) set.add(arr.getString(i))
+                for (i in 0 until arr.length()) {
+                    val p = arr.optString(i, "")
+                    if (p.isNotBlank()) set.add(p)
+                }
                 if (set.isNotEmpty()) prefs.safeVaultFilePaths = set
             }
 

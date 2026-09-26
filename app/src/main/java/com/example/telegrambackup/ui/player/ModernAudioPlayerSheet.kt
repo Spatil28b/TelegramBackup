@@ -213,13 +213,15 @@ fun ModernAudioPlayerSheet(
             Spacer(modifier = Modifier.height(16.dp))
 
             // Live Seek Bar Slider
+            val safeDuration = if (totalDuration.isFinite() && totalDuration > 0f) totalDuration else 1f
+            val safePosition = if (currentPosition.isFinite() && currentPosition >= 0f) currentPosition.coerceIn(0f, safeDuration) else 0f
             Column(modifier = Modifier.fillMaxWidth()) {
                 Slider(
-                    value = currentPosition.coerceIn(0f, totalDuration),
+                    value = safePosition,
                     onValueChange = { newValue ->
                         AudioPlayerManager.seekTo(newValue)
                     },
-                    valueRange = 0f..totalDuration,
+                    valueRange = 0f..safeDuration,
                     colors = SliderDefaults.colors(
                         thumbColor = TelegramEmerald,
                         activeTrackColor = TelegramEmerald,

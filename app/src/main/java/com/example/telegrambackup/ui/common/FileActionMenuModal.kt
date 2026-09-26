@@ -776,7 +776,11 @@ fun FileActionMenuModal(
                                 val allFiles = dao.getAllRawFiles()
                                 val children = allFiles.filter { it.path.startsWith("$oldPath/") }
                                 children.forEach { child ->
-                                    val newChildPath = child.path.replaceFirst(oldPath, newPath)
+                                    val newChildPath = if (child.path.startsWith(oldPath)) {
+                                        newPath + child.path.substring(oldPath.length)
+                                    } else {
+                                        child.path
+                                    }
                                     dao.deleteByPath(child.path)
                                     dao.insert(child.copy(path = newChildPath))
                                     try { chunkDao.updateSourcePath(child.path, newChildPath) } catch (_: Exception) {}

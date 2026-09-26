@@ -571,7 +571,11 @@ fun DriveExplorerScreen(
                                     val children = allFiles.filter { it.path.startsWith("$oldPath/") }
                                     val chunkDao = AppDatabase.getDatabase(context).chunkProgressDao()
                                     children.forEach { child ->
-                                        val newChildPath = child.path.replaceFirst(oldPath, newPath)
+                                        val newChildPath = if (child.path.startsWith(oldPath)) {
+                                            newPath + child.path.substring(oldPath.length)
+                                        } else {
+                                            child.path
+                                        }
                                         dbDao.deleteByPath(child.path)
                                         dbDao.insert(child.copy(path = newChildPath).apply { isDriveUpload = true })
                                         try { chunkDao.updateSourcePath(child.path, newChildPath) } catch (_: Exception) {}

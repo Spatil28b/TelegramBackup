@@ -20,6 +20,7 @@ object AudioPlayerManager {
     private var mediaPlayer: MediaPlayer? = null
     private var scope = CoroutineScope(Dispatchers.Main + Job())
     private var tickerJob: Job? = null
+    private var playJob: Job? = null
 
     var activeTrackPath by mutableStateOf<String?>(null)
         private set
@@ -53,6 +54,7 @@ object AudioPlayerManager {
             return
         }
 
+        playJob?.cancel()
         stop()
         activeTrackPath = filePathOrUrl
         activeTrackName = fileName
@@ -60,7 +62,7 @@ object AudioPlayerManager {
         currentPositionMs = 0f
         totalDurationMs = 1f
 
-        scope.launch(Dispatchers.IO) {
+        playJob = scope.launch(Dispatchers.IO) {
             try {
                 var activeSource: String? = null
                 val localResolved = FileViewerHelper.findLocalFile(filePathOrUrl, fileName)
@@ -88,25 +90,40 @@ object AudioPlayerManager {
                     }
                 }
 
+                if (!isActive) return@launch
+
                 withContext(Dispatchers.Main) {
+                    if (!isActive) return@withContext
                     if (activeSource != null) {
+                        try {
+                            mediaPlayer?.release()
+                        } catch (_: Throwable) {}
+
                         val player = MediaPlayer()
                         mediaPlayer = player
 
                         if (activeSource.startsWith("http://") || activeSource.startsWith("https://")) {
-                            player.setDataSource(context, Uri.parse(activeSource))
+                            player.setDataSource(context.applicationContext, Uri.parse(activeSource))
                         } else {
                             player.setDataSource(activeSource)
                         }
 
                         player.setOnPreparedListener { mp ->
+                            if (!isActive) {
+                                try { mp.release() } catch (_: Throwable) {}
+                                return@setOnPreparedListener
+                            }
                             isBuffering = false
                             totalDurationMs = mp.duration.toFloat().coerceAtLeast(1f)
                             mp.isLooping = isLooping
                             applySpeed(playbackSpeed)
-                            mp.start()
-                            isPlaying = true
-                            startProgressTicker()
+                            try {
+                                mp.start()
+                                isPlaying = true
+                                startProgressTicker()
+                            } catch (_: Throwable) {
+                                isPlaying = false
+                            }
                         }
 
                         player.setOnCompletionListener {
@@ -119,20 +136,28 @@ object AudioPlayerManager {
                         player.setOnErrorListener { _, _, _ ->
                             isBuffering = false
                             isPlaying = false
-                            Toast.makeText(context, "Error playing audio", Toast.LENGTH_SHORT).show()
+                            try {
+                                Toast.makeText(context.applicationContext, "Error playing audio", Toast.LENGTH_SHORT).show()
+                            } catch (_: Throwable) {}
                             true
                         }
 
                         player.prepareAsync()
                     } else {
                         isBuffering = false
-                        Toast.makeText(context, "Audio file not available", Toast.LENGTH_SHORT).show()
+                        try {
+                            Toast.makeText(context.applicationContext, "Audio file not available", Toast.LENGTH_SHORT).show()
+                        } catch (_: Throwable) {}
                     }
                 }
-            } catch (e: Exception) {
-                withContext(Dispatchers.Main) {
-                    isBuffering = false
-                    Toast.makeText(context, "Failed to load audio: ${e.message}", Toast.LENGTH_SHORT).show()
+            } catch (t: Throwable) {
+                if (isActive) {
+                    withContext(Dispatchers.Main) {
+                        isBuffering = false
+                        try {
+                            Toast.makeText(context.applicationContext, "Failed to load audio: ${t.localizedMessage ?: "Unknown error"}", Toast.LENGTH_SHORT).show()
+                        } catch (_: Throwable) {}
+                    }
                 }
             }
         }
@@ -199,14 +224,16 @@ object AudioPlayerManager {
     }
 
     fun stop() {
+        playJob?.cancel()
+        playJob = null
         tickerJob?.cancel()
         tickerJob = null
         try {
-            if (mediaPlayer?.isPlaying == true) {
-                mediaPlayer?.stop()
-            }
+            mediaPlayer?.stop()
+        } catch (_: Throwable) { }
+        try {
             mediaPlayer?.release()
-        } catch (_: Exception) { }
+        } catch (_: Throwable) { }
         mediaPlayer = null
         activeTrackPath = null
         activeTrackName = null
@@ -222,7 +249,7 @@ object AudioPlayerManager {
                 try {
                     val pos = mediaPlayer?.currentPosition ?: 0
                     currentPositionMs = pos.toFloat()
-                } catch (_: Exception) { }
+                } catch (_: Throwable) { }
                 delay(250)
             }
         }
