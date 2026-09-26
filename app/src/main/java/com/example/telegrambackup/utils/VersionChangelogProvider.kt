@@ -28,6 +28,49 @@ object VersionChangelogProvider {
 
     private val releases = listOf(
         VersionRelease(
+            versionName = "2.6.0",
+            versionCode = 138,
+            releaseDate = "September 2026",
+            highlights = "Direct High-Speed Architecture, Fluid Compute, Bounded Channels, Bot Fleet Load Balancing & Resumable Manifests",
+            entries = listOf(
+                ChangelogEntry(
+                    Icons.Default.Speed,
+                    Color(0xFF3B82F6),
+                    "Direct High-Speed Architecture",
+                    "Android app transfers file chunks directly to and from Telegram Bot API and CDN, eliminating serverless proxy latency and keeping raw file bytes off Vercel.",
+                    "ARCHITECTURE"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Bolt,
+                    Color(0xFF10B981),
+                    "Vercel Fluid Compute & Decoupled DDL",
+                    "Enabled Vercel Fluid Compute with 300s function duration and decoupled database DDL migrations into a standalone deployment engine, reducing cold-start latency to near-instant.",
+                    "BACKEND"
+                ),
+                ChangelogEntry(
+                    Icons.Default.SyncAlt,
+                    Color(0xFF8B5CF6),
+                    "Bounded Channel Concurrency & Backpressure",
+                    "Replaced unbounded coroutine mapping with bounded 4–12 worker Channel pools for uploads and downloads, eliminating RAM spikes, coroutine exhaustion, and disk contention.",
+                    "PERFORMANCE"
+                ),
+                ChangelogEntry(
+                    Icons.Default.SmartToy,
+                    Color(0xFFEC4899),
+                    "Dynamic Least-Connections Bot Load Balancer",
+                    "Fleet manager dynamically load-balances chunk transfers to bots with the fewest active requests and isolates HTTP 429 rate-limited bots into automatic cooldown.",
+                    "LOAD BALANCER"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Storage,
+                    Color(0xFFF59E0B),
+                    "Idempotent file_chunks & Resume Manifests",
+                    "Added dedicated file_chunks table with ON CONFLICT DO UPDATE upserts, fast manifest verification endpoints, and composite cursor-based delta pagination.",
+                    "DATABASE"
+                )
+            )
+        ),
+        VersionRelease(
             versionName = "2.5.3",
             versionCode = 137,
             releaseDate = "September 2026",
