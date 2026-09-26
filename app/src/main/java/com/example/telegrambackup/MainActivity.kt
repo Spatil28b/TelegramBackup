@@ -288,6 +288,14 @@ fun MainApp(
         AppNotificationHelper.initNotificationChannels(context)
         AppNotificationHelper.showPersistentControlNotification(context, isRunning = false)
         kotlinx.coroutines.withContext(Dispatchers.IO) {
+            // STEP 0: Auto-restore persistent external vault if app was reinstalled
+            try {
+                val restored = com.example.telegrambackup.utils.LocalConfigVaultManager.autoRestoreIfLocalEmpty(context)
+                if (restored) {
+                    authRepository.refreshSession()
+                }
+            } catch (_: Exception) {}
+
             // STEP 1: Restore cloud file index into Room DB FIRST before starting worker!
             try { SettingsDbManager.restoreCloudFileIndexToRoom(context) } catch (_: Exception) {}
             try { SettingsDbManager.fetchAndSyncSettingsOnAppOpen(context) } catch (_: Exception) {}
@@ -295,6 +303,7 @@ fun MainApp(
             try { com.example.telegrambackup.utils.AppCacheManager.autoPruneCache(context) } catch (_: Exception) {}
             try { com.example.telegrambackup.utils.NetworkAnalysisManager.syncSelfAnalysisWorker(context) } catch (_: Exception) {}
             try { com.example.telegrambackup.service.LiveCameraObserverService.start(context) } catch (_: Exception) {}
+            try { authRepository.refreshSession() } catch (_: Exception) {}
 
             // STEP 2: Kickstart background backup scan AFTER Room DB is fully restored!
             if (prefs.autoBackupEnabled && !prefs.stopAllBackups) {

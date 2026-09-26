@@ -24,10 +24,16 @@ class AuthRepository(private val context: Context) {
     private val _session = MutableStateFlow(
         UserSession(
             email = prefs.getString("user_email", "") ?: "",
-            isLoggedIn = prefs.getBoolean("is_logged_in", false)
+            isLoggedIn = prefs.getBoolean("is_logged_in", false) || (prefs.getString("user_email", "")?.isNotBlank() == true && appPrefs.botToken.isNotBlank())
         )
     )
     val session: StateFlow<UserSession> = _session
+
+    fun refreshSession() {
+        val email = prefs.getString("user_email", "") ?: ""
+        val loggedIn = prefs.getBoolean("is_logged_in", false) || (email.isNotBlank() && appPrefs.botToken.isNotBlank())
+        _session.value = UserSession(email = email, isLoggedIn = loggedIn)
+    }
 
     suspend fun requestOtp(email: String, type: String = "register"): Result<String> {
         return serverApi.sendOtp(appPrefs.serverUrl, email, type)

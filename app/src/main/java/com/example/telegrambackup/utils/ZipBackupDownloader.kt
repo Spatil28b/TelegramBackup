@@ -109,6 +109,7 @@ object ZipBackupDownloader {
 
         val notifBuilder = NotificationCompat.Builder(context, channelId)
             .setSmallIcon(R.drawable.ic_notif_download)
+            .apply { AppNotificationHelper.getAppLargeIcon(context)?.let { setLargeIcon(it) } }
             .setContentTitle("📦 Creating Archive: $archiveTitle")
             .setContentText("Preparing ${validFiles.size} files...")
             .setPriority(NotificationCompat.PRIORITY_LOW)

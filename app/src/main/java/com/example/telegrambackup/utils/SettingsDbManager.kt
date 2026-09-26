@@ -19,6 +19,9 @@ object SettingsDbManager {
     suspend fun fetchAndSyncSettingsOnAppOpen(context: Context) {
         withContext(Dispatchers.IO) {
             try {
+                // STEP 0: Check persistent external vault FIRST (works across uninstalls)
+                try { LocalConfigVaultManager.autoRestoreIfLocalEmpty(context) } catch (_: Exception) {}
+
                 val db = AppDatabase.getDatabase(context)
                 val dao = db.appSettingDao()
                 val prefs = AppPrefs(context)
@@ -66,9 +69,14 @@ object SettingsDbManager {
                         AppSettingEntity("app_theme", prefs.appTheme.toString()),
                         AppSettingEntity("trash_auto_clean_days", prefs.trashAutoCleanDays.toString()),
                         AppSettingEntity("stop_all_backups", prefs.stopAllBackups.toString()),
+                        AppSettingEntity("gemini_api_keys", prefs.geminiApiKeys),
+                        AppSettingEntity("active_ai_model", prefs.activeAiModel),
+                        AppSettingEntity("ai_document_scanner_enabled", prefs.isAiDocumentScannerEnabled.toString()),
+                        AppSettingEntity("selected_app_icon", prefs.appIcon),
                         AppSettingEntity("credentials_verified", prefs.credentialsVerified.toString())
                     )
                     dao.saveSettings(initialDefaults)
+                    try { LocalConfigVaultManager.saveVaultSnapshot(context) } catch (_: Exception) {}
                 } else {
                     // Hydrate AppPrefs from Room Database records
                     val settingsMap = savedSettings.associate { it.key to it.value }
@@ -115,11 +123,16 @@ object SettingsDbManager {
                     settingsMap["trash_auto_clean_days"]?.let { prefs.trashAutoCleanDays = it.toIntOrNull() ?: 30 }
                     settingsMap["stop_all_backups"]?.let { prefs.stopAllBackups = it.toBoolean() }
                     settingsMap["credentials_verified"]?.let { prefs.credentialsVerified = it.toBoolean() }
+                    settingsMap["gemini_api_keys"]?.let { if (it.isNotBlank()) prefs.geminiApiKeys = it }
+                    settingsMap["active_ai_model"]?.let { prefs.activeAiModel = it }
+                    settingsMap["ai_document_scanner_enabled"]?.let { prefs.isAiDocumentScannerEnabled = it.toBoolean() }
+                    settingsMap["selected_app_icon"]?.let { prefs.appIcon = it }
                     settingsMap["encryption_key"]?.let {
                         if (it.isNotBlank() && it != "default_aes_key") {
                             prefs.forceSetEncryptionKey(it)
                         }
                     }
+                    try { LocalConfigVaultManager.saveVaultSnapshot(context) } catch (_: Exception) {}
                 }
 
                 // Sync credentials to PostgreSQL DB if missing, or retrieve if local is completely blank
@@ -174,6 +187,11 @@ object SettingsDbManager {
             }
             if (userEmail.isEmpty()) {
                 userEmail = prefs.recoveryEmail.trim().lowercase()
+            }
+            if (userEmail.isEmpty()) {
+                try { LocalConfigVaultManager.autoRestoreIfLocalEmpty(context) } catch (_: Exception) {}
+                userEmail = authPrefs.getString("user_email", "")?.takeIf { it.isNotBlank() }
+                    ?: prefs.userEmail.ifBlank { prefs.recoveryEmail }.trim().lowercase()
             }
             if (userEmail.isEmpty()) return@withContext 0
 

@@ -51,6 +51,25 @@ object AppNotificationHelper {
     val COLOR_SUCCESS = 0xFF10B981.toInt()   // Telegram Emerald
     val COLOR_WARNING = 0xFFF59E0B.toInt()   // Amber
 
+    private var cachedLargeIcon: android.graphics.Bitmap? = null
+
+    fun getAppLargeIcon(context: Context): android.graphics.Bitmap? {
+        val cached = cachedLargeIcon
+        if (cached != null && !cached.isRecycled) return cached
+        return try {
+            val prefs = AppPrefs(context)
+            val iconRes = if (prefs.appIcon == "blue") R.drawable.app_icon_blue else R.drawable.app_icon_green
+            val bmp = android.graphics.BitmapFactory.decodeResource(context.resources, iconRes) ?: return null
+            val density = context.resources.displayMetrics.density
+            val sizePx = (64 * density).toInt().coerceAtLeast(64)
+            val scaled = android.graphics.Bitmap.createScaledBitmap(bmp, sizePx, sizePx, true)
+            cachedLargeIcon = scaled
+            scaled
+        } catch (_: Throwable) {
+            null
+        }
+    }
+
     fun initNotificationChannels(context: Context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -163,6 +182,7 @@ object AppNotificationHelper {
 
         val builder = NotificationCompat.Builder(context, CHANNEL_ID_CONTROLLER)
             .setSmallIcon(if (isRunning) R.drawable.ic_notif_cloud_upload else R.drawable.ic_notif_cloud_done)
+            .apply { getAppLargeIcon(context)?.let { setLargeIcon(it) } }
             .setColor(if (isRunning) COLOR_PRIMARY else COLOR_SUCCESS)
             .setSubText("TSpace Cloud Vault")
             .setContentTitle(title)
@@ -220,6 +240,7 @@ object AppNotificationHelper {
 
         val notification = NotificationCompat.Builder(context, CHANNEL_ID_UPLOADS)
             .setSmallIcon(R.drawable.ic_notif_cloud_upload)
+            .apply { getAppLargeIcon(context)?.let { setLargeIcon(it) } }
             .setColor(COLOR_PRIMARY)
             .setSubText(subtextSpeed)
             .setContentTitle(displayTitle)
@@ -267,6 +288,7 @@ object AppNotificationHelper {
 
         val notification = NotificationCompat.Builder(context, CHANNEL_ID_DOWNLOADS)
             .setSmallIcon(R.drawable.ic_notif_download)
+            .apply { getAppLargeIcon(context)?.let { setLargeIcon(it) } }
             .setColor(COLOR_PRIMARY)
             .setSubText(subtext)
             .setContentTitle("Downloading: $cleanName")
@@ -356,6 +378,7 @@ object AppNotificationHelper {
 
         val notification = NotificationCompat.Builder(context, CHANNEL_ID_DOWNLOADS)
             .setSmallIcon(R.drawable.ic_notif_cloud_done)
+            .apply { getAppLargeIcon(context)?.let { setLargeIcon(it) } }
             .setColor(COLOR_SUCCESS)
             .setSubText("⬇️ ✓ Done")
             .setContentTitle("✓ $cleanName")
@@ -395,6 +418,7 @@ object AppNotificationHelper {
 
         val notification = NotificationCompat.Builder(context, CHANNEL_ID_ALERTS)
             .setSmallIcon(R.drawable.ic_notif_cloud_done)
+            .apply { getAppLargeIcon(context)?.let { setLargeIcon(it) } }
             .setColor(COLOR_SUCCESS)
             .setSubText("☁️ ✓ Done")
             .setContentTitle(if (totalCount > 0) "✓ Synced • ☁️ $totalCount Files" else "✓ Synced • ☁️ Cloud")
@@ -422,6 +446,7 @@ object AppNotificationHelper {
 
         val notification = NotificationCompat.Builder(context, CHANNEL_ID_ALERTS)
             .setSmallIcon(R.drawable.ic_notif_pause)
+            .apply { getAppLargeIcon(context)?.let { setLargeIcon(it) } }
             .setColor(COLOR_WARNING)
             .setSubText("⏸️ Paused")
             .setContentTitle("⏸️ Uploads Paused")
@@ -444,6 +469,7 @@ object AppNotificationHelper {
 
         val notification = NotificationCompat.Builder(context, CHANNEL_ID_ALERTS)
             .setSmallIcon(R.drawable.ic_notif_cloud_upload)
+            .apply { getAppLargeIcon(context)?.let { setLargeIcon(it) } }
             .setColor(COLOR_PRIMARY)
             .setSubText("⚠️ System")
             .setContentTitle("⚠️ $title")

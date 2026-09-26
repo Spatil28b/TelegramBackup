@@ -149,8 +149,21 @@ object CloudProfileSyncManager {
             put("enable_data_compression", prefs.enableDataCompression)
             put("app_theme", prefs.appTheme)
             put("trash_auto_clean_days", prefs.trashAutoCleanDays)
+            put("gemini_api_keys", prefs.geminiApiKeys)
+            put("active_ai_model", prefs.activeAiModel)
+            put("ai_document_scanner_enabled", prefs.isAiDocumentScannerEnabled)
+            put("selected_app_icon", prefs.appIcon)
         }
         root.put("sub_settings", settingsJson)
+
+        // 6. Starred & Safe Vault Paths
+        val starredArr = JSONArray()
+        prefs.starredFilePaths.forEach { starredArr.put(it) }
+        root.put("starred_file_paths", starredArr)
+
+        val safeArr = JSONArray()
+        prefs.safeVaultFilePaths.forEach { safeArr.put(it) }
+        root.put("safe_vault_file_paths", safeArr)
 
         return@withContext root.toString()
     }
@@ -298,6 +311,25 @@ object CloudProfileSyncManager {
                 if (sub.has("enable_data_compression")) prefs.enableDataCompression = sub.optBoolean("enable_data_compression", false)
                 if (sub.has("app_theme")) prefs.appTheme = sub.optInt("app_theme", 0)
                 if (sub.has("trash_auto_clean_days")) prefs.trashAutoCleanDays = sub.optInt("trash_auto_clean_days", 30)
+                if (sub.has("gemini_api_keys")) {
+                    val keys = sub.optString("gemini_api_keys", "").trim()
+                    if (keys.isNotEmpty()) prefs.geminiApiKeys = keys
+                }
+                if (sub.has("active_ai_model")) prefs.activeAiModel = sub.optString("active_ai_model", "auto")
+                if (sub.has("ai_document_scanner_enabled")) prefs.isAiDocumentScannerEnabled = sub.optBoolean("ai_document_scanner_enabled", true)
+                if (sub.has("selected_app_icon")) prefs.appIcon = sub.optString("selected_app_icon", "green")
+            }
+
+            // Restore Starred & Safe Vault Paths
+            root.optJSONArray("starred_file_paths")?.let { arr ->
+                val set = mutableSetOf<String>()
+                for (i in 0 until arr.length()) set.add(arr.getString(i))
+                if (set.isNotEmpty()) prefs.starredFilePaths = set
+            }
+            root.optJSONArray("safe_vault_file_paths")?.let { arr ->
+                val set = mutableSetOf<String>()
+                for (i in 0 until arr.length()) set.add(arr.getString(i))
+                if (set.isNotEmpty()) prefs.safeVaultFilePaths = set
             }
 
             // Sync with Room app_settings table as well
@@ -314,9 +346,16 @@ object CloudProfileSyncManager {
                 AppSettingEntity("master_cloud_sync_enabled", prefs.masterCloudSyncEnabled.toString(), now),
                 AppSettingEntity("drive_sync_enabled", prefs.driveSyncEnabled.toString(), now),
                 AppSettingEntity("auto_backup_enabled", prefs.autoBackupEnabled.toString(), now),
+                AppSettingEntity("gemini_api_keys", prefs.geminiApiKeys, now),
+                AppSettingEntity("active_ai_model", prefs.activeAiModel, now),
+                AppSettingEntity("ai_document_scanner_enabled", prefs.isAiDocumentScannerEnabled.toString(), now),
+                AppSettingEntity("selected_app_icon", prefs.appIcon, now),
                 AppSettingEntity("credentials_verified", "true", now)
             )
             appSettingDao.saveSettings(entities)
+
+            // Save persistent external storage snapshot immediately
+            try { LocalConfigVaultManager.saveVaultSnapshot(context) } catch (_: Exception) {}
 
             Log.d(TAG, "✓ Successfully applied cloud config manifest (Version $MANIFEST_VERSION)")
             return@withContext true
@@ -333,6 +372,10 @@ object CloudProfileSyncManager {
         try {
             val authPrefs = context.getSharedPreferences("auth_prefs", Context.MODE_PRIVATE)
             val prefs = AppPrefs(context)
+
+            // Always save persistent external storage vault snapshot first!
+            try { LocalConfigVaultManager.saveVaultSnapshot(context) } catch (_: Exception) {}
+
             val userEmail = authPrefs.getString("user_email", "")?.takeIf { it.isNotBlank() }
                 ?: prefs.userEmail.ifBlank { prefs.recoveryEmail }.trim().lowercase()
 
@@ -375,6 +418,14 @@ object CloudProfileSyncManager {
      */
     suspend fun autoRestoreConfigFromCloud(context: Context): Boolean = withContext(Dispatchers.IO) {
         try {
+            // First check persistent external vault snapshot (works 100% offline across uninstalls)
+            try {
+                val localRestored = LocalConfigVaultManager.autoRestoreIfLocalEmpty(context)
+                if (localRestored) {
+                    Log.d(TAG, "✓ Restored from local persistent vault on app open")
+                }
+            } catch (_: Exception) {}
+
             val authPrefs = context.getSharedPreferences("auth_prefs", Context.MODE_PRIVATE)
             val prefs = AppPrefs(context)
             val serverApi = ServerApi()

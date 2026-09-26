@@ -766,6 +766,7 @@ class BackupWorker(
 
             val notif = NotificationCompat.Builder(applicationContext, channelId)
                 .setSmallIcon(R.drawable.ic_notif_cloud_done)
+                .apply { AppNotificationHelper.getAppLargeIcon(applicationContext)?.let { setLargeIcon(it) } }
                 .setContentTitle("☁️ TSpace Backup Complete")
                 .setContentText(summaryMsg)
                 .setPriority(NotificationCompat.PRIORITY_DEFAULT)

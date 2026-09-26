@@ -28,6 +28,49 @@ object VersionChangelogProvider {
 
     private val releases = listOf(
         VersionRelease(
+            versionName = "2.4.9",
+            versionCode = 133,
+            releaseDate = "September 2026",
+            highlights = "Zero-Loss Settings & API Keys Persistence Across Uninstall, Adaptive Launcher Icon Fitting & Modern TSpace Shield Status Bar",
+            entries = listOf(
+                ChangelogEntry(
+                    Icons.Default.Security,
+                    Color(0xFF10B981),
+                    "Zero-Loss Config & API Key Persistence",
+                    "Added persistent external storage vault (.tspace_vault_config.json) that automatically backs up and seamlessly restores all app settings, Google Gemini API keys, Telegram Bot Fleet, Storage Channels, and Master AES-256 encryption keys across app uninstalls and reboots.",
+                    "NEW"
+                ),
+                ChangelogEntry(
+                    Icons.Default.AutoAwesome,
+                    Color(0xFF8B5CF6),
+                    "Google Gemini API Keys Auto-Recovery",
+                    "Configured complete multi-layer cloud profile and local vault synchronization for Gemini API keys, AI model selection, and document scanner preferences.",
+                    "AI PERSISTENCE"
+                ),
+                ChangelogEntry(
+                    Icons.Default.NotificationsActive,
+                    TelegramBlue,
+                    "TSpace Shield Status Bar & Notification Badge",
+                    "Redesigned notification status bar icons with high-contrast monochrome TSpace Vault Shield vectors with upload arrows, checkmarks, download glyphs, and pause bars. Integrated full-fidelity colored app shield icon in notification drawer.",
+                    "UI & STATUS BAR"
+                ),
+                ChangelogEntry(
+                    Icons.Default.CropFree,
+                    Color(0xFFF59E0B),
+                    "Adaptive Launcher Icon Scale & Mask Fitting",
+                    "Downscaled launcher inner shield by 0.72x across all screen densities (MDPI to XXXHDPI), preventing round/squircle launcher mask clipping and ensuring full visibility on all Android app drawers.",
+                    "ICON FIX"
+                ),
+                ChangelogEntry(
+                    Icons.Default.CloudSync,
+                    TelegramEmerald,
+                    "Android 12+ Full Auto-Backup & Device Transfer",
+                    "Enabled comprehensive Android Auto-Backup rules for SharedPreferences and Room SQLite databases, ensuring automatic Google Drive backup and instant device transfer.",
+                    "BACKUP ENGINE"
+                )
+            )
+        ),
+        VersionRelease(
             versionName = "2.4.8",
             versionCode = 132,
             releaseDate = "September 2026",

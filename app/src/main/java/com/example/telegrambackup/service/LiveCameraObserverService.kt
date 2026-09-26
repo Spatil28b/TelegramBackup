@@ -2,6 +2,7 @@ package com.example.telegrambackup.service
 
 import android.app.Notification
 import android.app.NotificationChannel
+import com.example.telegrambackup.R
 import android.app.NotificationManager
 import android.app.Service
 import android.content.Context
@@ -89,7 +90,7 @@ class LiveCameraObserverService : Service() {
         val notification: Notification = NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Cloud Auto-Backup Active")
             .setContentText("Watching camera & downloads for instant sync")
-            .setSmallIcon(android.R.drawable.stat_sys_upload)
+            .setSmallIcon(R.drawable.ic_notif_cloud_upload)
             .setPriority(NotificationCompat.PRIORITY_MIN)
             .setOngoing(true)
             .build()

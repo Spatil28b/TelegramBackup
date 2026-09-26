@@ -8,6 +8,7 @@ import androidx.core.app.NotificationCompat
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.example.telegrambackup.R
+import com.example.telegrambackup.utils.AppNotificationHelper
 import com.example.telegrambackup.utils.AppPrefs
 
 class StopBackupNotificationWorker(
@@ -42,6 +43,7 @@ class StopBackupNotificationWorker(
 
         val notification = NotificationCompat.Builder(applicationContext, channelId)
             .setSmallIcon(R.drawable.ic_notif_pause)
+            .apply { AppNotificationHelper.getAppLargeIcon(applicationContext)?.let { setLargeIcon(it) } }
             .setContentTitle("⚠️ Backups Paused for ${stoppedHours}+ Hours")
             .setContentText("Your files are not being backed up. Open the app to resume backup protection.")
             .setStyle(NotificationCompat.BigTextStyle()

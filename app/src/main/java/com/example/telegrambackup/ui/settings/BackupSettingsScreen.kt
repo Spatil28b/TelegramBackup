@@ -3712,6 +3712,10 @@ fun BackupSettingsScreen(
                             prefs.geminiApiKeys = geminiKeysInput.trim()
                             prefs.activeAiModel = selectedAiModel
                             prefs.isAiDocumentScannerEnabled = docScannerEnabled
+                            scope.launch(Dispatchers.IO) {
+                                try { com.example.telegrambackup.utils.LocalConfigVaultManager.saveVaultSnapshot(context) } catch (_: Exception) {}
+                                try { com.example.telegrambackup.utils.CloudProfileSyncManager.syncLocalConfigToCloud(context) } catch (_: Exception) {}
+                            }
                             currentCategory = StreamlinedCategory.MAIN
                         }
                     )
@@ -3764,6 +3768,10 @@ fun BackupSettingsScreen(
                                     onClick = {
                                         triggerHapticFeedback(context, haptic)
                                         prefs.geminiApiKeys = geminiKeysInput.trim()
+                                        scope.launch(Dispatchers.IO) {
+                                            try { com.example.telegrambackup.utils.LocalConfigVaultManager.saveVaultSnapshot(context) } catch (_: Exception) {}
+                                            try { com.example.telegrambackup.utils.CloudProfileSyncManager.syncLocalConfigToCloud(context) } catch (_: Exception) {}
+                                        }
                                         Toast.makeText(context, "Saved Gemini API Keys", Toast.LENGTH_SHORT).show()
                                     },
                                     colors = ButtonDefaults.buttonColors(containerColor = TelegramBlue),
@@ -3799,6 +3807,8 @@ fun BackupSettingsScreen(
                                                 testResultSuccess = true
                                                 testResultText = "✅ ${res.getOrNull()}"
                                                 prefs.geminiApiKeys = geminiKeysInput.trim()
+                                                try { com.example.telegrambackup.utils.LocalConfigVaultManager.saveVaultSnapshot(context) } catch (_: Exception) {}
+                                                try { com.example.telegrambackup.utils.CloudProfileSyncManager.syncLocalConfigToCloud(context) } catch (_: Exception) {}
                                             } else {
                                                 testResultSuccess = false
                                                 testResultText = "❌ Connection failed: ${res.exceptionOrNull()?.message ?: "Invalid key or rate limit"}"
