@@ -328,12 +328,13 @@ object DriveUploadManager {
             val workers = (1..chunkConcurrency).map {
                 launch(Dispatchers.IO) {
                     for (chunkIdx in chunkChannel) {
-                        val botIndex = (driveGlobalBotIndex.getAndIncrement() and 0x7FFFFFFF) % driveBotPool.size
-                        val assignedBot = driveBotPool.getOrNull(botIndex)
+                        val assignedBot = BotFleetManager.getNextAvailableBot(context)
+                            ?: (if (driveBotPool.isNotEmpty()) driveBotPool.getOrNull((driveGlobalBotIndex.getAndIncrement() and 0x7FFFFFFF) % driveBotPool.size) else null)
                         val botTokenToUse = if (!assignedBot?.botToken.isNullOrBlank()) assignedBot!!.botToken else defaultBotToken
 
                         val safeChunkId = System.currentTimeMillis() + ((targetPath.hashCode() + chunkIdx).toLong() and 0x7FFFFFFF)
                         val chunkFile = File(tempDir, "${safeChunkId}_drive_part%03d".format(chunkIdx))
+                        BotFleetManager.acquireBot(botTokenToUse)
                         BackupProgressTracker.onBotStartedWork(botTokenToUse, allBotsCount)
                         try {
                             FileChunker.extractSingleChunk(fileToUpload, chunkIdx, chunkFile)
@@ -381,6 +382,7 @@ object DriveUploadManager {
                                 Log.e(TAG, "Failed chunk $chunkIdx for Drive file $fileName")
                             }
                         } finally {
+                            BotFleetManager.releaseBot(botTokenToUse)
                             BackupProgressTracker.onBotFinishedWork(botTokenToUse)
                             if (chunkFile.exists()) chunkFile.delete()
                         }
@@ -518,7 +520,7 @@ object DriveUploadManager {
         return null
     }
 
-    private fun uploadSingleChunk(
+    private suspend fun uploadSingleChunk(
         context: Context,
         botToken: String,
         chatId: String,
@@ -593,6 +595,14 @@ object DriveUploadManager {
                     val doc = result.optJSONObject("document")
                     val fileId = doc?.optString("file_id", "") ?: ""
                     if (fileId.isNotEmpty()) return Pair(fileId, messageId)
+                }
+            } else if (resp.code == 429) {
+                try {
+                    val json = JSONObject(respStr)
+                    val retryAfter = json.optJSONObject("parameters")?.optInt("retry_after", 30) ?: 30
+                    BotFleetManager.markBotRateLimited(context, botToken, retryAfter)
+                } catch (_: Exception) {
+                    BotFleetManager.markBotRateLimited(context, botToken, 30)
                 }
             }
             null

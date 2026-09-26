@@ -491,10 +491,8 @@ class BackupWorker(
                                             for (chunkIdx in chunkChannel) {
                                                 if (prefs.stopAllBackups) break
 
-                                                val botIdx = if (botPool.isNotEmpty()) {
-                                                    (globalBotIndex.getAndIncrement() and 0x7FFFFFFF) % botPool.size
-                                                } else 0
-                                                val assignedBot = botPool.getOrNull(botIdx) ?: BotFleetManager.getNextAvailableBot(applicationContext)
+                                                val assignedBot = BotFleetManager.getNextAvailableBot(applicationContext)
+                                                    ?: (if (botPool.isNotEmpty()) botPool[(globalBotIndex.getAndIncrement() and 0x7FFFFFFF) % botPool.size] else null)
                                                 val botTokenToUse: String = if (!assignedBot?.botToken.isNullOrBlank()) assignedBot!!.botToken else botToken
 
                                                 val claimEntity = ChunkProgressEntity(
@@ -513,6 +511,7 @@ class BackupWorker(
 
                                                 val safeChunkId = System.currentTimeMillis() + ((file.hashCode() + chunkIdx).toLong() and 0x7FFFFFFF)
                                                 val chunkTempFile = File(tempDir, "${safeChunkId}_part%03d".format(chunkIdx))
+                                                BotFleetManager.acquireBot(botTokenToUse)
                                                 BackupProgressTracker.onBotStartedWork(botTokenToUse, allBotsCount)
                                                 try {
                                                     FileChunker.extractSingleChunk(fileToUpload, chunkIdx, chunkTempFile)
@@ -566,6 +565,7 @@ class BackupWorker(
                                                         Log.e(TAG, "Failed to upload chunk $chunkIdx/$totalChunks for ${file.name}")
                                                     }
                                                 } finally {
+                                                    BotFleetManager.releaseBot(botTokenToUse)
                                                     BackupProgressTracker.onBotFinishedWork(botTokenToUse)
                                                     if (chunkTempFile.exists()) chunkTempFile.delete()
                                                 }

@@ -28,8 +28,28 @@ object BotFleetManager {
     private const val TAG = "BotFleetManager"
 
     private val roundRobinIndex = AtomicInteger(0)
+    private val activeRequestsMap = java.util.concurrent.ConcurrentHashMap<String, AtomicInteger>()
     private val initMutex = Mutex()
     private var isInitialized = false
+
+    fun acquireBot(botToken: String) {
+        val clean = botToken.trim()
+        if (clean.isNotEmpty()) {
+            activeRequestsMap.computeIfAbsent(clean) { AtomicInteger(0) }.incrementAndGet()
+        }
+    }
+
+    fun releaseBot(botToken: String) {
+        val clean = botToken.trim()
+        if (clean.isNotEmpty()) {
+            activeRequestsMap[clean]?.decrementAndGet()
+        }
+    }
+
+    fun getActiveRequests(botToken: String): Int {
+        val clean = botToken.trim()
+        return activeRequestsMap[clean]?.get()?.coerceAtLeast(0) ?: 0
+    }
 
     private val client = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
@@ -83,7 +103,7 @@ object BotFleetManager {
     }
 
     /**
-     * Returns the next active, healthy bot from the pool using round-robin distribution.
+     * Returns the next active, healthy bot from the pool using least-connections load-balancing.
      * Automatically skips bots in a rate-limit cooldown (HTTP 429).
      */
     suspend fun getNextAvailableBot(context: Context): TelegramBotEntity? = withContext(Dispatchers.IO) {
@@ -104,8 +124,10 @@ object BotFleetManager {
             val healthyBots = activeBots.filter { it.rateLimitUntil <= now }
 
             val candidatePool = if (healthyBots.isNotEmpty()) healthyBots else activeBots
-            val idx = (roundRobinIndex.getAndIncrement() and 0x7FFFFFFF) % candidatePool.size
-            return@withContext candidatePool[idx]
+            // Least-connections load balancer: prefer bot with fewest active requests, with round-robin tie breaker
+            val bestBot = candidatePool.minByOrNull { getActiveRequests(it.botToken) }
+                ?: candidatePool[(roundRobinIndex.getAndIncrement() and 0x7FFFFFFF) % candidatePool.size]
+            return@withContext bestBot
         } catch (e: Exception) {
             Log.e(TAG, "Error retrieving available bot", e)
             val prefs = AppPrefs(context)
@@ -115,6 +137,7 @@ object BotFleetManager {
 
     /**
      * Returns a rotating list of distinct active bots to upload chunks in parallel.
+     * Sorted by least-active connections to ensure balanced work distribution.
      */
     suspend fun getBotPoolForParallelChunks(context: Context, requiredCount: Int): List<TelegramBotEntity> = withContext(Dispatchers.IO) {
         ensureInitialized(context)
@@ -128,11 +151,12 @@ object BotFleetManager {
         val now = System.currentTimeMillis()
         val healthyBots = activeBots.filter { it.rateLimitUntil <= now }
         val pool = if (healthyBots.isNotEmpty()) healthyBots else activeBots
+        val sortedPool = pool.sortedBy { getActiveRequests(it.botToken) }
 
         val result = mutableListOf<TelegramBotEntity>()
-        val count = maxOf(requiredCount, pool.size)
+        val count = maxOf(requiredCount, sortedPool.size)
         for (i in 0 until count) {
-            result.add(pool[i % pool.size])
+            result.add(sortedPool[i % sortedPool.size])
         }
         return@withContext result
     }
