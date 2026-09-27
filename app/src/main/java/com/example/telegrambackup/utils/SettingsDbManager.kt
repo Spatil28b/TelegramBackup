@@ -209,7 +209,12 @@ object SettingsDbManager {
             }
 
             val serverApi = ServerApi()
-            val cloudFiles = serverApi.listFiles(prefs.serverUrl, userEmail, since = sinceTimestamp)
+            val cloudFilesResult = serverApi.listFiles(prefs.serverUrl, userEmail, since = sinceTimestamp)
+            if (cloudFilesResult.isFailure) {
+                android.util.Log.w("SettingsDbManager", "Sync failed: ${cloudFilesResult.exceptionOrNull()?.message}")
+                return@withContext 0
+            }
+            val cloudFiles = cloudFilesResult.getOrDefault(emptyList())
 
             if (cloudFiles.isNotEmpty()) {
                 val existingTrashList = try { dao.getTrashFiles() } catch (_: Exception) { emptyList() }

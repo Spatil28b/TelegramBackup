@@ -32,10 +32,21 @@ object ThumbnailManager {
     private const val TAG = "ThumbnailManager"
     private const val TARGET_THUMBNAIL_SIZE = 256 // Standard gallery thumbnail resolution
 
-    // 30MB memory LRU cache for 120Hz smooth scrolling
-    private val memoryCache = object : LruCache<String, Bitmap>(30 * 1024 * 1024) {
+    // Dynamic memory cache: 1/8th of available runtime maxMemory, bounded safely between 10MB and 24MB
+    private val maxMemoryBytes = Runtime.getRuntime().maxMemory()
+    private val cacheSizeBytes = (maxMemoryBytes / 8).coerceIn(10L * 1024 * 1024, 24L * 1024 * 1024).toInt()
+
+    private val memoryCache = object : LruCache<String, Bitmap>(cacheSizeBytes) {
         override fun sizeOf(key: String, value: Bitmap): Int {
             return value.byteCount
+        }
+    }
+
+    fun trimMemory(level: Int) {
+        if (level >= android.content.ComponentCallbacks2.TRIM_MEMORY_MODERATE) {
+            memoryCache.evictAll()
+        } else if (level >= android.content.ComponentCallbacks2.TRIM_MEMORY_BACKGROUND) {
+            memoryCache.trimToSize(cacheSizeBytes / 2)
         }
     }
 

@@ -90,7 +90,7 @@ object DataCrossVerifier {
         // =====================================================================
         if (userEmail.isNotEmpty()) {
             try {
-                val cloudFiles = serverApi.listFiles(appPrefs.serverUrl, userEmail)
+                val cloudFiles = serverApi.listFiles(appPrefs.serverUrl, userEmail).getOrThrow()
                 if (cloudFiles.isNotEmpty()) {
                     // Only insert cloud records that have real Telegram file IDs
                     val validCloudFiles = cloudFiles.filter {

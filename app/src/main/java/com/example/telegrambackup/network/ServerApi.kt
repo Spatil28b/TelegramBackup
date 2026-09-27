@@ -50,145 +50,85 @@ class ServerApi {
         return "$cleanBase$cleanPath"
     }
 
+    fun sanitizeBotId(token: String): String {
+        if (token.isBlank()) return ""
+        val trimmed = token.trim()
+        val colonIdx = trimmed.indexOf(':')
+        if (colonIdx > 0) {
+            val prefix = trimmed.substring(0, colonIdx)
+            if (prefix.all { it.isDigit() }) {
+                return prefix
+            }
+        }
+        return trimmed
+    }
+
+    fun sanitizeChunksJson(chunksJson: String): String {
+        if (chunksJson.isBlank() || chunksJson == "[]") return chunksJson
+        return try {
+            val arr = org.json.JSONArray(chunksJson)
+            for (i in 0 until arr.length()) {
+                val obj = arr.optJSONObject(i) ?: continue
+                if (obj.has("botToken")) {
+                    val raw = obj.optString("botToken", "")
+                    obj.put("botToken", sanitizeBotId(raw))
+                }
+                if (obj.has("bot_token")) {
+                    val raw = obj.optString("bot_token", "")
+                    obj.put("bot_token", sanitizeBotId(raw))
+                }
+            }
+            arr.toString()
+        } catch (_: Exception) {
+            chunksJson
+        }
+    }
+
     /**
      * Checks online server for the latest released app version & APK download link.
-     */
-    /**
-     * Checks online server & GitHub for the latest released app version & APK download link.
-     * Supports both backend endpoint and direct GitHub Releases / app-version.json fallback.
+     * Uses backend endpoint with fallback to production backend.
      */
     suspend fun getLatestAppVersion(serverUrl: String): com.example.telegrambackup.ui.update.AppVersionInfo = withContext(Dispatchers.IO) {
-        val candidates = mutableListOf<com.example.telegrambackup.ui.update.AppVersionInfo>()
-        // 1. Try Backend Vercel Endpoint
-        try {
-            val url = cleanUrl(serverUrl, "/api/app/latest-version")
-            val request = Request.Builder().url(url).cacheControl(okhttp3.CacheControl.FORCE_NETWORK).build()
-            val response = client.newCall(request).execute()
-            val body = response.body?.string() ?: ""
-
-            if (response.isSuccessful && body.contains("\"success\":true")) {
-                val json = JSONObject(body)
-                val info = com.example.telegrambackup.ui.update.AppVersionInfo(
-                    success = true,
-                    versionCode = json.optInt("versionCode", 1),
-                    versionName = json.optString("versionName", "1.0.0"),
-                    downloadUrl = json.optString("downloadUrl", ""),
-                    releaseNotes = json.optString("releaseNotes", "New performance and feature updates.")
-                )
-                if (info.downloadUrl.isNotEmpty()) {
-                    candidates.add(info)
-                }
-            }
-        } catch (e: Exception) {
-            Log.e("ServerApi", "getLatestAppVersion backend check error", e)
+        val urlsToTry = mutableListOf<String>()
+        val primary = cleanUrl(serverUrl, "/api/app/latest-version")
+        urlsToTry.add(primary)
+        val fallback = "https://telegram-backup-backend.vercel.app/api/app/latest-version"
+        if (!urlsToTry.contains(fallback)) {
+            urlsToTry.add(fallback)
         }
 
-        // 2. Try GitHub raw app-version.json (direct repository source)
-        try {
-            val ghRawUrl = "https://raw.githubusercontent.com/sid-codes28/telegram_backup_backend/main/app-version.json"
-            val request = Request.Builder()
-                .url(ghRawUrl)
-                .header("Accept", "application/vnd.github.v3.raw")
-                .cacheControl(okhttp3.CacheControl.FORCE_NETWORK)
-                .build()
-            val response = client.newCall(request).execute()
-            val body = response.body?.string() ?: ""
+        for (u in urlsToTry) {
+            try {
+                val request = Request.Builder().url(u).cacheControl(okhttp3.CacheControl.FORCE_NETWORK).build()
+                val response = client.newCall(request).execute()
+                val body = response.body?.string() ?: ""
 
-            if (response.isSuccessful && body.contains("\"versionCode\"")) {
-                val json = JSONObject(body)
-                val dlUrl = json.optString("downloadUrl", "").ifEmpty { json.optString("directApkUrl", "") }
-                val info = com.example.telegrambackup.ui.update.AppVersionInfo(
-                    success = true,
-                    versionCode = json.optInt("versionCode", 1),
-                    versionName = json.optString("versionName", "1.0.0"),
-                    downloadUrl = dlUrl,
-                    releaseNotes = json.optString("releaseNotes", "New performance and feature updates.")
-                )
-                if (info.downloadUrl.isNotEmpty()) {
-                    candidates.add(info)
-                }
-            }
-        } catch (e: Exception) {
-            Log.e("ServerApi", "getLatestAppVersion GitHub raw check error", e)
-        }
-
-        // 3. Try GitHub Releases API
-        try {
-            val ghReleasesUrl = "https://api.github.com/repos/sid-codes28/telegram_backup_backend/releases/latest"
-            val request = Request.Builder()
-                .url(ghReleasesUrl)
-                .header("Accept", "application/vnd.github.v3+json")
-                .cacheControl(okhttp3.CacheControl.FORCE_NETWORK)
-                .build()
-            val response = client.newCall(request).execute()
-            val body = response.body?.string() ?: ""
-
-            if (response.isSuccessful && body.contains("\"tag_name\"")) {
-                val json = JSONObject(body)
-                val tagName = json.optString("tag_name", "").removePrefix("v")
-                val bodyText = json.optString("body", "New updates on GitHub.")
-                val assets = json.optJSONArray("assets")
-                var apkUrl = cleanUrl(serverUrl, "/api/app/download-latest")
-                if (apkUrl.isBlank() || apkUrl.contains("localhost")) {
-                    apkUrl = "https://telegram-backup-backend.vercel.app/api/app/download-latest"
-                }
-                if (assets != null) {
-                    for (i in 0 until assets.length()) {
-                        val asset = assets.optJSONObject(i)
-                        val name = asset?.optString("name", "") ?: ""
-                        if (name.endsWith(".apk", ignoreCase = true)) {
-                            val browserDownloadUrl = asset?.optString("browser_download_url", "") ?: ""
-                            if (browserDownloadUrl.isNotBlank()) {
-                                apkUrl = browserDownloadUrl
-                            }
-                            break
-                        }
+                if (response.isSuccessful && body.contains("\"success\":true")) {
+                    val json = JSONObject(body)
+                    var dlUrl = json.optString("downloadUrl", "")
+                    if (dlUrl.isBlank() || dlUrl.startsWith("/")) {
+                        dlUrl = cleanUrl(serverUrl, if (dlUrl.isNotBlank()) dlUrl else "/api/app/download-latest")
                     }
-                }
-                val parts = tagName.split(".").mapNotNull { it.toIntOrNull() }
-                val code = if (parts.size >= 3) {
-                    val major = parts[0]
-                    val minor = parts[1]
-                    val patch = parts[2]
-                    if (major == 2 && minor == 1) {
-                        patch + 3
-                    } else if (major == 2 && minor >= 2) {
-                        103 + (minor - 2) * 10 + patch
-                    } else if (major > 2) {
-                        103 + 80 + (major - 3) * 100 + minor * 10 + patch
-                    } else {
-                        parts[2] + 3
-                    }
-                } else 104
-                candidates.add(
-                    com.example.telegrambackup.ui.update.AppVersionInfo(
+                    return@withContext com.example.telegrambackup.ui.update.AppVersionInfo(
                         success = true,
-                        versionCode = code,
-                        versionName = tagName.ifEmpty { "1.0.0" },
-                        downloadUrl = apkUrl,
-                        releaseNotes = bodyText
+                        versionCode = json.optInt("versionCode", 1),
+                        versionName = json.optString("versionName", "1.0.0"),
+                        downloadUrl = dlUrl,
+                        releaseNotes = json.optString("releaseNotes", "New performance and feature updates.")
                     )
-                )
-            }
-        } catch (e: Exception) {
-            Log.e("ServerApi", "getLatestAppVersion GitHub Releases API error", e)
-        }
-
-        // Return candidate with highest semantic version, then highest version code
-        if (candidates.isNotEmpty()) {
-            return@withContext candidates.maxWithOrNull(
-                Comparator { a, b ->
-                    val semCompare = when {
-                        com.example.telegrambackup.utils.SemVerUtils.isServerVersionNewer(a.versionName, b.versionName) -> 1
-                        com.example.telegrambackup.utils.SemVerUtils.isServerVersionNewer(b.versionName, a.versionName) -> -1
-                        else -> 0
-                    }
-                    if (semCompare != 0) semCompare else a.versionCode.compareTo(b.versionCode)
                 }
-            ) ?: candidates.first()
+            } catch (e: Exception) {
+                Log.e("ServerApi", "getLatestAppVersion check error for $u", e)
+            }
         }
 
-        return@withContext com.example.telegrambackup.ui.update.AppVersionInfo(false, 1, "1.0.0", "", "")
+        return@withContext com.example.telegrambackup.ui.update.AppVersionInfo(
+            success = false,
+            versionCode = 1,
+            versionName = "1.0.0",
+            downloadUrl = "",
+            releaseNotes = "Unable to check updates"
+        )
     }
 
     /**
@@ -410,9 +350,9 @@ class ServerApi {
     /**
      * Retrieves saved Telegram Bot Token and Chat ID from cloud server database.
      */
-    suspend fun getCredentials(serverUrl: String, email: String): Pair<String, String>? = withContext(Dispatchers.IO) {
+    suspend fun getCredentials(serverUrl: String, email: String = ""): Pair<String, String>? = withContext(Dispatchers.IO) {
         try {
-            val url = cleanUrl(serverUrl, "/api/credentials/get?email=${email.trim().lowercase()}")
+            val url = cleanUrl(serverUrl, "/api/credentials/get")
             val request = Request.Builder().url(url).get().build()
             val response = client.newCall(request).execute()
             val body = response.body?.string() ?: ""
@@ -456,6 +396,8 @@ class ServerApi {
     ): Boolean = withContext(Dispatchers.IO) {
         try {
             val url = cleanUrl(serverUrl, "/api/files/index")
+            val sanitizedBot = sanitizeBotId(botTokenUsed)
+            val sanitizedChunks = sanitizeChunksJson(chunksJson)
             val json = JSONObject().apply {
                 put("email", email.trim().lowercase())
                 put("fileName", fileName)
@@ -465,9 +407,9 @@ class ServerApi {
                 put("timestamp", timestamp)
                 put("messageId", messageId)
                 put("isDriveUpload", isDriveUpload)
-                if (chunksJson.isNotBlank() && chunksJson != "[]") put("chunksJson", chunksJson)
+                if (sanitizedChunks.isNotBlank() && sanitizedChunks != "[]") put("chunksJson", sanitizedChunks)
                 if (channelId.isNotBlank()) put("channelId", channelId)
-                if (botTokenUsed.isNotBlank()) put("botTokenUsed", botTokenUsed)
+                if (sanitizedBot.isNotBlank()) put("botTokenUsed", sanitizedBot)
                 if (totalChunks > 1) put("totalChunks", totalChunks)
             }
             val requestBody = json.toString().toRequestBody("application/json".toMediaTypeOrNull())
@@ -498,6 +440,8 @@ class ServerApi {
             for (batch in files.chunked(100)) {
                 val array = org.json.JSONArray()
                 for (f in batch) {
+                    val sanitizedBot = sanitizeBotId(f.botTokenUsed)
+                    val sanitizedChunks = sanitizeChunksJson(f.chunksJson)
                     val obj = JSONObject().apply {
                         put("fileName", f.fileName)
                         put("telegramFileId", f.telegramFileId)
@@ -506,9 +450,9 @@ class ServerApi {
                         put("timestamp", f.timestamp)
                         put("messageId", f.messageId)
                         put("isDriveUpload", f.isDriveUpload)
-                        if (f.chunksJson.isNotBlank() && f.chunksJson != "[]") put("chunksJson", f.chunksJson)
+                        if (sanitizedChunks.isNotBlank() && sanitizedChunks != "[]") put("chunksJson", sanitizedChunks)
                         if (f.channelId.isNotBlank()) put("channelId", f.channelId)
-                        if (f.botTokenUsed.isNotBlank()) put("botTokenUsed", f.botTokenUsed)
+                        if (sanitizedBot.isNotBlank()) put("botTokenUsed", sanitizedBot)
                         if (f.totalChunks > 1) put("totalChunks", f.totalChunks)
                     }
                     array.put(obj)
@@ -537,17 +481,17 @@ class ServerApi {
      * Retrieves the list of backed up files from the user's cloud database account with delta sync support.
      * @param since Optional timestamp filter in ms; if > 0, fetches only records added/modified after this time.
      */
-    suspend fun listFiles(serverUrl: String, email: String, since: Long = 0L): List<UploadedFile> = withContext(Dispatchers.IO) {
+    suspend fun listFiles(serverUrl: String, email: String = "", since: Long = 0L): Result<List<UploadedFile>> = withContext(Dispatchers.IO) {
         try {
             val sinceParam = if (since > 0L) "&since=$since" else ""
-            val url = cleanUrl(serverUrl, "/api/files/list?email=${email.trim().lowercase()}&limit=10000$sinceParam")
+            val url = cleanUrl(serverUrl, "/api/files/list?limit=10000$sinceParam")
             val request = Request.Builder().url(url).get().build()
             val response = client.newCall(request).execute()
             val body = response.body?.string() ?: ""
             val jsonRes = JSONObject(body)
 
             if (response.isSuccessful && jsonRes.optBoolean("success")) {
-                val array = jsonRes.optJSONArray("files") ?: return@withContext emptyList()
+                val array = jsonRes.optJSONArray("files") ?: return@withContext Result.success(emptyList())
                 val list = mutableListOf<UploadedFile>()
                 for (i in 0 until array.length()) {
                     val obj = array.getJSONObject(i)
@@ -603,12 +547,15 @@ class ServerApi {
                     }
                     list.add(entity)
                 }
-                return@withContext list
+                return@withContext Result.success(list)
+            } else {
+                val msg = jsonRes.optString("message", "Server returned HTTP ${response.code}")
+                return@withContext Result.failure(Exception(msg))
             }
         } catch (e: Exception) {
             Log.e("ServerApi", "listFiles error", e)
+            return@withContext Result.failure(e)
         }
-        return@withContext emptyList()
     }
 
     /**
@@ -696,9 +643,9 @@ class ServerApi {
     /**
      * Retrieves stored user app settings JSON string from cloud database on login.
      */
-    suspend fun getUserSettings(serverUrl: String, email: String): String? = withContext(Dispatchers.IO) {
+    suspend fun getUserSettings(serverUrl: String, email: String = ""): String? = withContext(Dispatchers.IO) {
         try {
-            val url = cleanUrl(serverUrl, "/api/user/settings?email=${email.trim().lowercase()}")
+            val url = cleanUrl(serverUrl, "/api/user/settings")
             val request = Request.Builder().url(url).get().build()
             val response = client.newCall(request).execute()
             val body = response.body?.string() ?: ""

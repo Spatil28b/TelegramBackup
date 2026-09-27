@@ -86,10 +86,7 @@ fun ShareLinkModal(
         }
     }
 
-    LaunchedEffect(expiryHours, passwordPin) {
-        if (passwordPin.isNotBlank()) {
-            kotlinx.coroutines.delay(500)
-        }
+    LaunchedEffect(Unit) {
         generateLink()
     }
 
@@ -310,6 +307,22 @@ fun ShareLinkModal(
                     modifier = Modifier.fillMaxWidth()
                 )
 
+                // Explicit Generate / Update Link Button
+                Button(
+                    onClick = { generateLink() },
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                    ),
+                    modifier = Modifier.fillMaxWidth().height(42.dp),
+                    enabled = !isGenerating
+                ) {
+                    Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Apply Settings & Generate Link", style = MaterialTheme.typography.labelLarge)
+                }
+
                 // Mode Toggle: URL Link vs QR Code
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -508,29 +521,106 @@ fun ShareLinkModal(
                 // Bottom Action Buttons
                 Column(
                     modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Button(
-                        onClick = {
-                            val res = shareResult
-                            if (res != null) {
-                                ShareLinkManager.launchShareSheet(context, res.formattedShareText, "Share ${file.fileName}")
-                                onDismiss()
-                            }
-                        },
-                        shape = RoundedCornerShape(9999.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.primary,
-                            contentColor = MaterialTheme.colorScheme.onPrimary
-                        ),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(52.dp),
-                        enabled = !isGenerating && shareResult != null
+                    val res = shareResult
+                    val hasPin = passwordPin.isNotBlank()
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Icon(Icons.AutoMirrored.Filled.Send, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Share via Apps (WhatsApp / Telegram)", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                        OutlinedButton(
+                            onClick = {
+                                if (res != null) {
+                                    val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                                    cm?.setPrimaryClip(ClipData.newPlainText("Share Link", res.shareUrl))
+                                    Toast.makeText(context, "Link copied to clipboard", Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            modifier = Modifier.weight(1f).height(44.dp),
+                            shape = RoundedCornerShape(12.dp),
+                            enabled = res != null
+                        ) {
+                            Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Copy Link", style = MaterialTheme.typography.labelMedium)
+                        }
+
+                        if (hasPin) {
+                            OutlinedButton(
+                                onClick = {
+                                    val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                                    cm?.setPrimaryClip(ClipData.newPlainText("Access PIN", passwordPin.trim()))
+                                    Toast.makeText(context, "PIN copied to clipboard", Toast.LENGTH_SHORT).show()
+                                },
+                                modifier = Modifier.weight(1f).height(44.dp),
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                Icon(Icons.Default.Lock, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Copy PIN", style = MaterialTheme.typography.labelMedium)
+                            }
+                        }
+                    }
+
+                    if (hasPin) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Button(
+                                onClick = {
+                                    if (res != null) {
+                                        ShareLinkManager.launchShareSheet(context, res.shareUrl, "Share ${file.fileName}")
+                                        onDismiss()
+                                    }
+                                },
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier.weight(1f).height(48.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary),
+                                enabled = !isGenerating && res != null
+                            ) {
+                                Text("Share Link Only", style = MaterialTheme.typography.labelMedium)
+                            }
+
+                            Button(
+                                onClick = {
+                                    if (res != null) {
+                                        ShareLinkManager.launchShareSheet(context, res.formattedShareText, "Share ${file.fileName}")
+                                        onDismiss()
+                                    }
+                                },
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier.weight(1f).height(48.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                                enabled = !isGenerating && res != null
+                            ) {
+                                Text("Share with PIN", style = MaterialTheme.typography.labelMedium)
+                            }
+                        }
+                    } else {
+                        Button(
+                            onClick = {
+                                if (res != null) {
+                                    ShareLinkManager.launchShareSheet(context, res.formattedShareText, "Share ${file.fileName}")
+                                    onDismiss()
+                                }
+                            },
+                            shape = RoundedCornerShape(9999.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.primary,
+                                contentColor = MaterialTheme.colorScheme.onPrimary
+                            ),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(50.dp),
+                            enabled = !isGenerating && res != null
+                        ) {
+                            Icon(Icons.AutoMirrored.Filled.Send, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Share via Apps (WhatsApp / Telegram)", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                        }
                     }
 
                     OutlinedButton(
@@ -538,7 +628,7 @@ fun ShareLinkModal(
                         shape = RoundedCornerShape(9999.dp),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(48.dp)
+                            .height(44.dp)
                     ) {
                         Text("Done", style = MaterialTheme.typography.labelLarge)
                     }

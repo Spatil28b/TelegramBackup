@@ -10,6 +10,11 @@ class AppPrefs(private val context: Context) {
 
     fun clearAll() {
         prefs.edit().clear().apply()
+        authPrefs.edit().clear().apply()
+        KeystoreVault.deleteEncryptedString(context, "bot_token")
+        KeystoreVault.deleteEncryptedString(context, "chat_id")
+        KeystoreVault.deleteEncryptedString(context, "gemini_api_keys")
+        KeystoreVault.deleteEncryptedString(context, "auth_token")
     }
 
     var serverUrl: String
@@ -29,8 +34,20 @@ class AppPrefs(private val context: Context) {
         }
 
     var authToken: String
-        get() = authPrefs.getString("auth_token", "") ?: ""
-        set(value) = authPrefs.edit().putString("auth_token", value).apply()
+        get() {
+            val enc = KeystoreVault.retrieveEncryptedString(context, "auth_token")
+            if (!enc.isNullOrBlank()) return enc
+            val plain = authPrefs.getString("auth_token", "") ?: ""
+            if (plain.isNotBlank()) {
+                KeystoreVault.storeEncryptedString(context, "auth_token", plain)
+                authPrefs.edit().remove("auth_token").apply()
+            }
+            return plain
+        }
+        set(value) {
+            KeystoreVault.storeEncryptedString(context, "auth_token", value)
+            authPrefs.edit().remove("auth_token").apply()
+        }
 
     var encryptionEnabled: Boolean
         get() = prefs.getBoolean("encryption_enabled", true)
@@ -42,39 +59,37 @@ class AppPrefs(private val context: Context) {
 
     var encryptionKey: String
         get() {
-            var key = prefs.getString("encryption_key", "") ?: ""
+            var key = KeystoreVault.retrieveMasterKey(context) ?: ""
             if (key.isEmpty() || key == "default_aes_key") {
-                // Try retrieving from hardware-backed KeystoreVault
-                val vaultKey = KeystoreVault.retrieveMasterKey(context)
-                if (!vaultKey.isNullOrBlank() && vaultKey != "default_aes_key") {
-                    key = vaultKey
-                    prefs.edit().putString("encryption_key", key).apply()
+                val plainKey = prefs.getString("encryption_key", null)
+                if (!plainKey.isNullOrBlank() && plainKey != "default_aes_key") {
+                    key = plainKey
+                    KeystoreVault.storeMasterKey(context, key)
+                    prefs.edit().remove("encryption_key").apply()
                 } else {
-                    // Try retrieving from Room AppSettingDao
                     val dbKey = try {
                         com.example.telegrambackup.data.AppDatabase.getDatabase(context).appSettingDao().getSetting("encryption_key")?.value
                     } catch (_: Exception) { null }
                     if (!dbKey.isNullOrBlank() && dbKey != "default_aes_key") {
                         key = dbKey
-                        prefs.edit().putString("encryption_key", key).apply()
                         KeystoreVault.storeMasterKey(context, key)
                     } else {
-                        // Generate a unique, cryptographically secure 256-bit AES master key
                         key = "AES256-" + java.util.UUID.randomUUID().toString().replace("-", "")
-                        prefs.edit().putString("encryption_key", key).apply()
                         KeystoreVault.storeMasterKey(context, key)
                     }
+                    prefs.edit().remove("encryption_key").apply()
                 }
             } else {
-                // Ensure key is backed up in hardware vault
-                KeystoreVault.storeMasterKey(context, key)
+                if (prefs.contains("encryption_key")) {
+                    prefs.edit().remove("encryption_key").apply()
+                }
             }
             return key
         }
         set(value) {
             if (value.isNotBlank() && value != "default_aes_key") {
-                prefs.edit().putString("encryption_key", value).apply()
                 KeystoreVault.storeMasterKey(context, value)
+                prefs.edit().remove("encryption_key").apply()
             }
         }
 
@@ -114,8 +129,8 @@ class AppPrefs(private val context: Context) {
 
     fun forceSetEncryptionKey(key: String) {
         if (key.isNotBlank()) {
-            prefs.edit().putString("encryption_key", key).apply()
             KeystoreVault.storeMasterKey(context, key)
+            prefs.edit().remove("encryption_key").apply()
         }
     }
 
@@ -277,12 +292,38 @@ class AppPrefs(private val context: Context) {
     }
 
     var botToken: String
-        get() = prefs.getString("bot_token", "") ?: ""
-        set(value) = prefs.edit().putString("bot_token", value).apply()
+        get() {
+            val enc = KeystoreVault.retrieveEncryptedString(context, "bot_token")
+            if (!enc.isNullOrBlank()) return enc
+            val plain = prefs.getString("bot_token", "") ?: ""
+            if (plain.isNotBlank()) {
+                KeystoreVault.storeEncryptedString(context, "bot_token", plain)
+                prefs.edit().remove("bot_token").apply()
+            }
+            return plain
+        }
+        set(value) {
+            val trimmed = value.trim()
+            KeystoreVault.storeEncryptedString(context, "bot_token", trimmed)
+            prefs.edit().remove("bot_token").apply()
+        }
 
     var chatId: String
-        get() = prefs.getString("chat_id", "") ?: ""
-        set(value) = prefs.edit().putString("chat_id", value).apply()
+        get() {
+            val enc = KeystoreVault.retrieveEncryptedString(context, "chat_id")
+            if (!enc.isNullOrBlank()) return enc
+            val plain = prefs.getString("chat_id", "") ?: ""
+            if (plain.isNotBlank()) {
+                KeystoreVault.storeEncryptedString(context, "chat_id", plain)
+                prefs.edit().remove("chat_id").apply()
+            }
+            return plain
+        }
+        set(value) {
+            val trimmed = value.trim()
+            KeystoreVault.storeEncryptedString(context, "chat_id", trimmed)
+            prefs.edit().remove("chat_id").apply()
+        }
 
     var autoBackupEnabled: Boolean
         get() = prefs.getBoolean("auto_backup_enabled", false)
@@ -611,8 +652,21 @@ class AppPrefs(private val context: Context) {
     }
 
     var geminiApiKeys: String
-        get() = prefs.getString("gemini_api_keys", "") ?: ""
-        set(value) = prefs.edit().putString("gemini_api_keys", value).apply()
+        get() {
+            val enc = KeystoreVault.retrieveEncryptedString(context, "gemini_api_keys")
+            if (!enc.isNullOrBlank()) return enc
+            val plain = prefs.getString("gemini_api_keys", "") ?: ""
+            if (plain.isNotBlank()) {
+                KeystoreVault.storeEncryptedString(context, "gemini_api_keys", plain)
+                prefs.edit().remove("gemini_api_keys").apply()
+            }
+            return plain
+        }
+        set(value) {
+            val trimmed = value.trim()
+            KeystoreVault.storeEncryptedString(context, "gemini_api_keys", trimmed)
+            prefs.edit().remove("gemini_api_keys").apply()
+        }
 
     var activeAiModel: String
         get() {

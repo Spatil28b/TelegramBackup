@@ -1,6 +1,7 @@
 package com.example.telegrambackup.data
 
 import android.content.Context
+import android.util.Log
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
@@ -28,6 +29,8 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun networkAnalysisDao(): NetworkAnalysisDao
 
     companion object {
+        private const val TAG = "AppDatabase"
+
         @Volatile
         private var INSTANCE: AppDatabase? = null
 
@@ -88,16 +91,24 @@ abstract class AppDatabase : RoomDatabase() {
 
                 try {
                     db.execSQL("ALTER TABLE `uploaded_files` ADD COLUMN `channelId` TEXT NOT NULL DEFAULT ''")
-                } catch (_: Exception) {}
+                } catch (e: Exception) {
+                    Log.w(TAG, "Column channelId already exists or failed: ${e.message}")
+                }
                 try {
                     db.execSQL("ALTER TABLE `uploaded_files` ADD COLUMN `botTokenUsed` TEXT NOT NULL DEFAULT ''")
-                } catch (_: Exception) {}
+                } catch (e: Exception) {
+                    Log.w(TAG, "Column botTokenUsed already exists or failed: ${e.message}")
+                }
                 try {
                     db.execSQL("ALTER TABLE `chunk_upload_progress` ADD COLUMN `botTokenUsed` TEXT NOT NULL DEFAULT ''")
-                } catch (_: Exception) {}
+                } catch (e: Exception) {
+                    Log.w(TAG, "Column botTokenUsed in chunk_progress already exists or failed: ${e.message}")
+                }
                 try {
                     db.execSQL("ALTER TABLE `chunk_upload_progress` ADD COLUMN `channelId` TEXT NOT NULL DEFAULT ''")
-                } catch (_: Exception) {}
+                } catch (e: Exception) {
+                    Log.w(TAG, "Column channelId in chunk_progress already exists or failed: ${e.message}")
+                }
             }
         }
 
@@ -128,7 +139,9 @@ abstract class AppDatabase : RoomDatabase() {
                     db.execSQL("CREATE INDEX IF NOT EXISTS `index_uploaded_files_fileName` ON `uploaded_files` (`fileName`)")
                     db.execSQL("CREATE INDEX IF NOT EXISTS `index_uploaded_files_deletedAt` ON `uploaded_files` (`deletedAt`)")
                     db.execSQL("CREATE INDEX IF NOT EXISTS `index_uploaded_files_telegramFileId` ON `uploaded_files` (`telegramFileId`)")
-                } catch (_: Exception) {}
+                } catch (e: Exception) {
+                    Log.w(TAG, "Index creation failed: ${e.message}")
+                }
             }
         }
 
@@ -136,13 +149,14 @@ abstract class AppDatabase : RoomDatabase() {
             override fun migrate(db: SupportSQLiteDatabase) {
                 try {
                     db.execSQL("ALTER TABLE `uploaded_files` ADD COLUMN `chunksJson` TEXT NOT NULL DEFAULT ''")
-                } catch (_: Exception) {}
+                } catch (e: Exception) {
+                    Log.w(TAG, "Column chunksJson already exists or failed: ${e.message}")
+                }
             }
         }
 
         private val MIGRATION_1_12 = object : Migration(1, 12) {
             override fun migrate(db: SupportSQLiteDatabase) {
-                // Ensure all latest schema elements exist for legacy users jumping directly from v1
                 createAllTablesAndIndexes(db)
             }
         }
@@ -261,12 +275,14 @@ abstract class AppDatabase : RoomDatabase() {
                     )
                 """.trimIndent())
 
-                try { db.execSQL("CREATE INDEX IF NOT EXISTS `index_uploaded_files_isDeleted_timestamp` ON `uploaded_files` (`isDeleted`, `timestamp`)") } catch (_: Exception) {}
-                try { db.execSQL("CREATE INDEX IF NOT EXISTS `index_uploaded_files_isDeleted_isDriveUpload` ON `uploaded_files` (`isDeleted`, `isDriveUpload`)") } catch (_: Exception) {}
-                try { db.execSQL("CREATE INDEX IF NOT EXISTS `index_uploaded_files_fileName` ON `uploaded_files` (`fileName`)") } catch (_: Exception) {}
-                try { db.execSQL("CREATE INDEX IF NOT EXISTS `index_uploaded_files_deletedAt` ON `uploaded_files` (`deletedAt`)") } catch (_: Exception) {}
-                try { db.execSQL("CREATE INDEX IF NOT EXISTS `index_uploaded_files_telegramFileId` ON `uploaded_files` (`telegramFileId`)") } catch (_: Exception) {}
-            } catch (_: Exception) {}
+                try { db.execSQL("CREATE INDEX IF NOT EXISTS `index_uploaded_files_isDeleted_timestamp` ON `uploaded_files` (`isDeleted`, `timestamp`)") } catch (e: Exception) { Log.w(TAG, "Index failed: ${e.message}") }
+                try { db.execSQL("CREATE INDEX IF NOT EXISTS `index_uploaded_files_isDeleted_isDriveUpload` ON `uploaded_files` (`isDeleted`, `isDriveUpload`)") } catch (e: Exception) { Log.w(TAG, "Index failed: ${e.message}") }
+                try { db.execSQL("CREATE INDEX IF NOT EXISTS `index_uploaded_files_fileName` ON `uploaded_files` (`fileName`)") } catch (e: Exception) { Log.w(TAG, "Index failed: ${e.message}") }
+                try { db.execSQL("CREATE INDEX IF NOT EXISTS `index_uploaded_files_deletedAt` ON `uploaded_files` (`deletedAt`)") } catch (e: Exception) { Log.w(TAG, "Index failed: ${e.message}") }
+                try { db.execSQL("CREATE INDEX IF NOT EXISTS `index_uploaded_files_telegramFileId` ON `uploaded_files` (`telegramFileId`)") } catch (e: Exception) { Log.w(TAG, "Index failed: ${e.message}") }
+            } catch (e: Exception) {
+                Log.w(TAG, "createAllTablesAndIndexes failed: ${e.message}")
+            }
         }
 
         private fun ensureUploadedFilesColumns(db: SupportSQLiteDatabase) {
@@ -278,7 +294,9 @@ abstract class AppDatabase : RoomDatabase() {
                         if (nameIdx >= 0) existing.add(cursor.getString(nameIdx))
                     }
                 }
-            } catch (_: Throwable) {}
+            } catch (e: Throwable) {
+                Log.w(TAG, "Failed reading table info for uploaded_files: ${e.message}")
+            }
 
             val columns = listOf(
                 "fileName" to "TEXT NOT NULL DEFAULT ''",
@@ -298,7 +316,9 @@ abstract class AppDatabase : RoomDatabase() {
                 if (!existing.contains(col)) {
                     try {
                         db.execSQL("ALTER TABLE `uploaded_files` ADD COLUMN `$col` $def")
-                    } catch (_: Throwable) {}
+                    } catch (e: Throwable) {
+                        Log.w(TAG, "Failed adding column $col: ${e.message}")
+                    }
                 }
             }
         }
@@ -312,7 +332,9 @@ abstract class AppDatabase : RoomDatabase() {
                         if (nameIdx >= 0) existing.add(cursor.getString(nameIdx))
                     }
                 }
-            } catch (_: Throwable) {}
+            } catch (e: Throwable) {
+                Log.w(TAG, "Failed reading table info for chunk_upload_progress: ${e.message}")
+            }
 
             val columns = listOf(
                 "status" to "TEXT NOT NULL DEFAULT 'COMPLETED'",
@@ -323,7 +345,9 @@ abstract class AppDatabase : RoomDatabase() {
                 if (!existing.contains(col)) {
                     try {
                         db.execSQL("ALTER TABLE `chunk_upload_progress` ADD COLUMN `$col` $def")
-                    } catch (_: Throwable) {}
+                    } catch (e: Throwable) {
+                        Log.w(TAG, "Failed adding column $col: ${e.message}")
+                    }
                 }
             }
         }
@@ -349,9 +373,6 @@ abstract class AppDatabase : RoomDatabase() {
                     MIGRATION_10_11,
                     MIGRATION_11_12
                 )
-                // Guarantee zero crashes on startup for any corrupt or unknown previous database schema
-                .fallbackToDestructiveMigration()
-                .fallbackToDestructiveMigrationOnDowngrade()
                 .addCallback(object : RoomDatabase.Callback() {
                     override fun onOpen(db: SupportSQLiteDatabase) {
                         super.onOpen(db)
@@ -360,7 +381,9 @@ abstract class AppDatabase : RoomDatabase() {
                         try {
                             val now = System.currentTimeMillis()
                             db.execSQL("UPDATE uploaded_files SET timestamp = $now WHERE timestamp = 1784030400000 OR timestamp < 946684800000 OR timestamp IS NULL")
-                        } catch (_: Exception) {}
+                        } catch (e: Exception) {
+                            Log.w(TAG, "Failed healing dates in uploaded_files: ${e.message}")
+                        }
                     }
                 })
                 .build()
@@ -370,3 +393,4 @@ abstract class AppDatabase : RoomDatabase() {
         }
     }
 }
+

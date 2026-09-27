@@ -1,8 +1,9 @@
 package com.example.telegrambackup.ui.main
 
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -40,7 +41,11 @@ fun MainScreen(
 
 @Composable
 internal fun MainScreen(data: List<String>, modifier: Modifier = Modifier) {
-  Column(modifier) { data.forEach { Greeting(it) } }
+  LazyColumn(modifier = modifier) {
+    items(data) { item ->
+      Greeting(item)
+    }
+  }
 }
 
 @Composable

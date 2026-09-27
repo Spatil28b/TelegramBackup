@@ -72,7 +72,7 @@ object VaultHealthManager {
                 val rawFiles = db.uploadedFileDao().getAllRawFiles()
                 val missingChunks = rawFiles.filter { it.totalChunks > 1 && it.parseChunks().size < it.totalChunks }
                 if (missingChunks.isNotEmpty()) {
-                    val cloudFiles = ServerApi().listFiles(prefs.serverUrl, userEmail)
+                    val cloudFiles = ServerApi().listFiles(prefs.serverUrl, userEmail).getOrDefault(emptyList())
                     if (cloudFiles.isNotEmpty()) {
                         val cloudMap = cloudFiles.associateBy { it.path }
                         val toUpdate = mutableListOf<UploadedFile>()
@@ -203,7 +203,7 @@ object VaultHealthManager {
 
             // 1. Pull from cloud for any files missing local chunks
             if (userEmail.isNotBlank()) {
-                val cloudFiles = ServerApi().listFiles(prefs.serverUrl, userEmail)
+                val cloudFiles = ServerApi().listFiles(prefs.serverUrl, userEmail).getOrDefault(emptyList())
                 val cloudMap = cloudFiles.associateBy { it.path }
                 for (file in files) {
                     if (file.totalChunks > 1 && (file.chunksJson.isBlank() || file.chunksJson == "[]")) {

@@ -183,9 +183,9 @@ fun AppUpdaterDialog(
                 }
             } catch (_: Exception) { null }
 
-            if (pkgInfo == null) {
-                downloadStatusText = "⚠️ Downloaded APK is incomplete or corrupted. Please try updating again."
-                Toast.makeText(context, "Downloaded file is corrupted or not a valid APK.", Toast.LENGTH_LONG).show()
+            if (pkgInfo == null || pkgInfo.packageName != context.packageName) {
+                downloadStatusText = "⚠️ Downloaded APK verification failed (package mismatch or corrupted). Update aborted for security."
+                Toast.makeText(context, "Security warning: APK package mismatch or corrupted archive.", Toast.LENGTH_LONG).show()
                 return
             }
 

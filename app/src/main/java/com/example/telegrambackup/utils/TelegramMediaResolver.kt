@@ -210,7 +210,7 @@ object TelegramMediaResolver {
                 val prefs = AppPrefs(context)
                 val userEmail = prefs.userEmail
                 if (userEmail.isNotBlank()) {
-                    val cloudFiles = ServerApi().listFiles(prefs.serverUrl, userEmail)
+                    val cloudFiles = ServerApi().listFiles(prefs.serverUrl, userEmail).getOrDefault(emptyList())
                     val cloudMatch = cloudFiles.firstOrNull { it.path == file.path }
                         ?: cloudFiles.firstOrNull { it.fileName == file.fileName && it.size == file.size }
                     if (cloudMatch != null) {
@@ -724,7 +724,7 @@ object TelegramMediaResolver {
             try {
                 val prefs = AppPrefs(context)
                 if (prefs.userEmail.isNotBlank()) {
-                    val cloudFiles = ServerApi().listFiles(prefs.serverUrl, prefs.userEmail)
+                    val cloudFiles = ServerApi().listFiles(prefs.serverUrl, prefs.userEmail).getOrDefault(emptyList())
                     fileRecord = cloudFiles.firstOrNull { it.telegramFileId == telegramFileId }
                         ?: cloudFiles.firstOrNull { it.fileName.equals(fileName, ignoreCase = true) }
                     if (fileRecord != null) {
