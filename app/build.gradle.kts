@@ -50,10 +50,17 @@ android {
         }
         release {
             val releaseConfig = signingConfigs.findByName("release")
-                ?: throw GradleException(
-                    "No release signing config found. Place release.keystore in app/ or set RELEASE_KEYSTORE_PATH."
-                )
-            signingConfig = releaseConfig
+            if (releaseConfig != null) {
+                signingConfig = releaseConfig
+            } else {
+                tasks.matching { it.name.startsWith("assembleRelease") || it.name.startsWith("bundleRelease") }.configureEach {
+                    doFirst {
+                        throw GradleException(
+                            "No release signing config found. Place release.keystore in app/ or set RELEASE_KEYSTORE_PATH, RELEASE_KEYSTORE_PASSWORD, RELEASE_KEY_ALIAS, and RELEASE_KEY_PASSWORD."
+                        )
+                    }
+                }
+            }
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
