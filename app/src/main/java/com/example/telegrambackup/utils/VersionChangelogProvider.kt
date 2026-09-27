@@ -28,6 +28,49 @@ object VersionChangelogProvider {
 
     private val releases = listOf(
         VersionRelease(
+            versionName = "2.6.1",
+            versionCode = 139,
+            releaseDate = "September 2026",
+            highlights = "Full Security & Integrity Overhaul, Dynamic Keystore AES Keys, Credential Sanitization & Concurrency Guard",
+            entries = listOf(
+                ChangelogEntry(
+                    Icons.Default.Security,
+                    Color(0xFF10B981),
+                    "Zero-Exposure Keystore Encryption",
+                    "Eliminated static key fallbacks with dynamic 256-bit AES master keys generated securely in Android Keystore.",
+                    "SECURITY"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Lock,
+                    Color(0xFF3B82F6),
+                    "Strict JWT Bearer Authentication",
+                    "Eliminated local plaintext password retention in SharedPreferences; authentication relies entirely on secure signed JWT tokens.",
+                    "AUTH"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Share,
+                    Color(0xFF8B5CF6),
+                    "Opaque Server Share Shielding",
+                    "Deprecated client credential embedding in fallback share links, strictly serving opaque server-side encrypted tokens.",
+                    "PRIVACY"
+                ),
+                ChangelogEntry(
+                    Icons.Default.AltRoute,
+                    Color(0xFFF59E0B),
+                    "Distinct Bot Fleet Concurrency",
+                    "Removed modulo bot duplication in parallel chunk transfer pools and added non-negative connection bounds to prevent Telegram flood-wait limits.",
+                    "PERFORMANCE"
+                ),
+                ChangelogEntry(
+                    Icons.Default.CallSplit,
+                    Color(0xFF06B6D4),
+                    "Strict Byte Chunk Splitting",
+                    "Fixed exact-size chunk boundary splitting and reinforced chunk assembly regex to guarantee zero payload truncation.",
+                    "INTEGRITY"
+                )
+            )
+        ),
+        VersionRelease(
             versionName = "2.6.0",
             versionCode = 138,
             releaseDate = "September 2026",
