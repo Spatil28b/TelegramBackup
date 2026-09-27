@@ -10,6 +10,8 @@ import java.security.MessageDigest
 import javax.crypto.Cipher
 import javax.crypto.CipherInputStream
 import javax.crypto.CipherOutputStream
+import java.security.SecureRandom
+import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.IvParameterSpec
 import javax.crypto.spec.SecretKeySpec
 import kotlinx.coroutines.Dispatchers
@@ -19,20 +21,29 @@ import kotlinx.coroutines.runBlocking
  * =====================================================================================
  * AES-256 ZERO-KNOWLEDGE FILE ENCRYPTOR
  * =====================================================================================
- * Encrypts files on the user's Android device using AES-256-CBC Zero-Knowledge Encryption
- * prior to uploading to Telegram Cloud storage.
+ * Encrypts files on the user's Android device using Authenticated AES-256-GCM Zero-Knowledge
+ * Encryption prior to uploading to Telegram Cloud storage.
  *
  * Security Characteristics:
- * - Cipher mode: AES/CBC/PKCS5Padding
+ * - Modern Cipher: AES/GCM/NoPadding with 128-bit authentication tag & random 12-byte nonce
+ * - Legacy Migration: Full backward compatibility for AES/CBC/PKCS5Padding (ENC256 header)
  * - Key derivation: 256-bit key generated via SHA-256 hash of Master Key
- * - Initialization Vector (IV): Derived via MD5 digest
  * - Ensures zero-knowledge cloud backups (Telegram servers only store encrypted bytes)
  * =====================================================================================
  */
 object FileEncryptor {
-    private const val ALGORITHM = "AES/CBC/PKCS5Padding"
-    // 8-byte magic header identifying AES-256 encrypted payload
-    val MAGIC_HEADER = byteArrayOf(0x45, 0x4E, 0x43, 0x32, 0x35, 0x36, 0x01, 0x00) // "ENC256\x01\x00"
+    private const val ALGORITHM_GCM = "AES/GCM/NoPadding"
+    private const val ALGORITHM_CBC = "AES/CBC/PKCS5Padding"
+    private const val GCM_TAG_LENGTH_BITS = 128
+    private const val GCM_NONCE_LENGTH_BYTES = 12
+
+    // 8-byte modern authenticated AES-256-GCM magic header matching backend
+    val MAGIC_HEADER_GCM = byteArrayOf(0x47, 0x43, 0x4D, 0x32, 0x35, 0x36, 0x01, 0x00) // "GCM256\x01\x00"
+    // 8-byte legacy AES-256-CBC magic header
+    val MAGIC_HEADER_CBC = byteArrayOf(0x45, 0x4E, 0x43, 0x32, 0x35, 0x36, 0x01, 0x00) // "ENC256\x01\x00"
+
+    // Backward-compatible alias
+    val MAGIC_HEADER = MAGIC_HEADER_GCM
 
     /** Derives a 256-bit AES secret key spec from user's Master Key string */
     private fun deriveKey(secret: String): SecretKeySpec {
@@ -41,7 +52,7 @@ object FileEncryptor {
         return SecretKeySpec(keyBytes, "AES")
     }
 
-    /** Derives a 128-bit Initialization Vector (IV) spec from user's Master Key string */
+    /** Derives a 128-bit Initialization Vector (IV) spec from user's Master Key string for legacy CBC */
     private fun deriveIV(secret: String): IvParameterSpec {
         val digest = MessageDigest.getInstance("MD5")
         val ivBytes = digest.digest(secret.toByteArray(Charsets.UTF_8))
@@ -49,7 +60,7 @@ object FileEncryptor {
     }
 
     /**
-     * Checks if a file was explicitly prepended with the 8-byte ENC256 magic header.
+     * Checks if a file was explicitly prepended with either GCM256 or ENC256 magic header.
      */
     fun isEncryptedWithMagicHeader(file: File): Boolean {
         if (!file.exists() || file.length() < 8) return false
@@ -63,8 +74,28 @@ object FileEncryptor {
                     bytesRead += r
                 }
                 if (bytesRead == 8) {
-                    return header.contentEquals(MAGIC_HEADER)
+                    return header.contentEquals(MAGIC_HEADER_GCM) || header.contentEquals(MAGIC_HEADER_CBC)
                 }
+            }
+        } catch (_: Exception) {}
+        return false
+    }
+
+    /**
+     * Checks if a file uses modern authenticated AES-256-GCM.
+     */
+    fun isGcmEncrypted(file: File): Boolean {
+        if (!file.exists() || file.length() < 8) return false
+        try {
+            FileInputStream(file).use { fis ->
+                val header = ByteArray(8)
+                var bytesRead = 0
+                while (bytesRead < 8) {
+                    val r = fis.read(header, bytesRead, 8 - bytesRead)
+                    if (r == -1) break
+                    bytesRead += r
+                }
+                return bytesRead == 8 && header.contentEquals(MAGIC_HEADER_GCM)
             }
         } catch (_: Exception) {}
         return false
@@ -178,21 +209,26 @@ object FileEncryptor {
     }
 
     /**
-     * Encrypts a plain file into an AES-256 encrypted file output with magic header.
+     * Encrypts a plain file into an Authenticated AES-256-GCM file output with GCM256 magic header.
      * @param inputFile Source plain file
      * @param outputFile Encrypted output file destination
      * @param secretKey Master AES-256 encryption key
      */
     fun encryptFile(inputFile: File, outputFile: File, secretKey: String) {
         val keySpec = deriveKey(secretKey)
-        val ivSpec = deriveIV(secretKey)
-        val cipher = Cipher.getInstance(ALGORITHM)
-        cipher.init(Cipher.ENCRYPT_MODE, keySpec, ivSpec)
+        val nonce = ByteArray(GCM_NONCE_LENGTH_BYTES)
+        SecureRandom().nextBytes(nonce)
+        val gcmSpec = GCMParameterSpec(GCM_TAG_LENGTH_BITS, nonce)
+
+        val cipher = Cipher.getInstance(ALGORITHM_GCM)
+        cipher.init(Cipher.ENCRYPT_MODE, keySpec, gcmSpec)
 
         java.io.BufferedInputStream(FileInputStream(inputFile), 128 * 1024).use { fis ->
             java.io.BufferedOutputStream(FileOutputStream(outputFile), 128 * 1024).use { fos ->
-                // Write 8-byte Magic Header first
-                fos.write(MAGIC_HEADER)
+                // Write 8-byte GCM256 Magic Header
+                fos.write(MAGIC_HEADER_GCM)
+                // Write 12-byte random Nonce
+                fos.write(nonce)
                 CipherOutputStream(fos, cipher).use { cos ->
                     val buffer = ByteArray(128 * 1024)
                     var bytesRead: Int
@@ -207,7 +243,8 @@ object FileEncryptor {
 
     /**
      * Decrypts an AES-256 encrypted file back into its original plain file format.
-     * Supports both modern files (with 8-byte magic header) and legacy files (offset 0).
+     * Supports modern Authenticated AES-256-GCM files (with GCM256 magic header)
+     * and legacy AES-256-CBC files (ENC256 header or legacy offset 0).
      * @param inputFile Encrypted source file
      * @param outputFile Decrypted plain output file destination
      * @param secretKey Master AES-256 encryption key used during encryption
@@ -215,8 +252,48 @@ object FileEncryptor {
      */
     fun decryptFile(inputFile: File, outputFile: File, secretKey: String, forceLegacyNoHeader: Boolean = false) {
         val keySpec = deriveKey(secretKey)
+
+        if (!forceLegacyNoHeader && isGcmEncrypted(inputFile)) {
+            // Modern Authenticated AES-256-GCM decryption
+            java.io.BufferedInputStream(FileInputStream(inputFile), 128 * 1024).use { fis ->
+                // Skip 8-byte magic header
+                val headerBuf = ByteArray(8)
+                var skipped = 0
+                while (skipped < 8) {
+                    val r = fis.read(headerBuf, skipped, 8 - skipped)
+                    if (r == -1) break
+                    skipped += r
+                }
+                // Read 12-byte nonce
+                val nonce = ByteArray(GCM_NONCE_LENGTH_BYTES)
+                var nonceRead = 0
+                while (nonceRead < GCM_NONCE_LENGTH_BYTES) {
+                    val r = fis.read(nonce, nonceRead, GCM_NONCE_LENGTH_BYTES - nonceRead)
+                    if (r == -1) break
+                    nonceRead += r
+                }
+
+                val gcmSpec = GCMParameterSpec(GCM_TAG_LENGTH_BITS, nonce)
+                val cipher = Cipher.getInstance(ALGORITHM_GCM)
+                cipher.init(Cipher.DECRYPT_MODE, keySpec, gcmSpec)
+
+                CipherInputStream(fis, cipher).use { cis ->
+                    java.io.BufferedOutputStream(FileOutputStream(outputFile), 128 * 1024).use { fos ->
+                        val buffer = ByteArray(128 * 1024)
+                        var bytesRead: Int
+                        while (cis.read(buffer).also { bytesRead = it } != -1) {
+                            fos.write(buffer, 0, bytesRead)
+                        }
+                        fos.flush()
+                    }
+                }
+            }
+            return
+        }
+
+        // Legacy AES-256-CBC migration path
         val ivSpec = deriveIV(secretKey)
-        val cipher = Cipher.getInstance(ALGORITHM)
+        val cipher = Cipher.getInstance(ALGORITHM_CBC)
         cipher.init(Cipher.DECRYPT_MODE, keySpec, ivSpec)
 
         java.io.BufferedInputStream(FileInputStream(inputFile), 128 * 1024).use { fis ->
@@ -244,26 +321,49 @@ object FileEncryptor {
         }
     }
 
-    /** Encrypts plain text string to Base64 AES-256 cipher string */
+    /** Encrypts plain text string with Authenticated AES-256-GCM */
     fun encryptText(plainText: String, secretKey: String): String {
         return try {
             val keySpec = deriveKey(secretKey)
-            val ivSpec = deriveIV(secretKey)
-            val cipher = Cipher.getInstance(ALGORITHM)
-            cipher.init(Cipher.ENCRYPT_MODE, keySpec, ivSpec)
-            val encryptedBytes = cipher.doFinal(plainText.toByteArray(Charsets.UTF_8))
-            android.util.Base64.encodeToString(encryptedBytes, android.util.Base64.NO_WRAP)
+            val nonce = ByteArray(GCM_NONCE_LENGTH_BYTES)
+            SecureRandom().nextBytes(nonce)
+            val gcmSpec = GCMParameterSpec(GCM_TAG_LENGTH_BITS, nonce)
+            val cipher = Cipher.getInstance(ALGORITHM_GCM)
+            cipher.init(Cipher.ENCRYPT_MODE, keySpec, gcmSpec)
+            val cipherBytes = cipher.doFinal(plainText.toByteArray(Charsets.UTF_8))
+            val combined = ByteArray(nonce.size + cipherBytes.size)
+            System.arraycopy(nonce, 0, combined, 0, nonce.size)
+            System.arraycopy(cipherBytes, 0, combined, nonce.size, cipherBytes.size)
+            "GCM:" + android.util.Base64.encodeToString(combined, android.util.Base64.NO_WRAP)
         } catch (_: Exception) {
             plainText
         }
     }
 
-    /** Decrypts Base64 AES-256 cipher string to plain text */
+    /** Decrypts cipher string supporting both modern GCM and legacy CBC */
     fun decryptText(cipherText: String, secretKey: String): String {
+        if (cipherText.startsWith("GCM:")) {
+            try {
+                val keySpec = deriveKey(secretKey)
+                val rawBytes = android.util.Base64.decode(cipherText.removePrefix("GCM:"), android.util.Base64.NO_WRAP)
+                if (rawBytes.size > GCM_NONCE_LENGTH_BYTES) {
+                    val nonce = ByteArray(GCM_NONCE_LENGTH_BYTES)
+                    System.arraycopy(rawBytes, 0, nonce, 0, GCM_NONCE_LENGTH_BYTES)
+                    val cipherBytes = ByteArray(rawBytes.size - GCM_NONCE_LENGTH_BYTES)
+                    System.arraycopy(rawBytes, GCM_NONCE_LENGTH_BYTES, cipherBytes, 0, cipherBytes.size)
+
+                    val gcmSpec = GCMParameterSpec(GCM_TAG_LENGTH_BITS, nonce)
+                    val cipher = Cipher.getInstance(ALGORITHM_GCM)
+                    cipher.init(Cipher.DECRYPT_MODE, keySpec, gcmSpec)
+                    return String(cipher.doFinal(cipherBytes), Charsets.UTF_8)
+                }
+            } catch (_: Exception) {}
+        }
+        // Legacy CBC fallback
         return try {
             val keySpec = deriveKey(secretKey)
             val ivSpec = deriveIV(secretKey)
-            val cipher = Cipher.getInstance(ALGORITHM)
+            val cipher = Cipher.getInstance(ALGORITHM_CBC)
             cipher.init(Cipher.DECRYPT_MODE, keySpec, ivSpec)
             val decodedBytes = android.util.Base64.decode(cipherText, android.util.Base64.NO_WRAP)
             String(cipher.doFinal(decodedBytes), Charsets.UTF_8)

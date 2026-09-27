@@ -410,8 +410,34 @@ class AppPrefs(private val context: Context) {
         set(value) = prefs.edit().putBoolean("is_zero_knowledge_enabled", value).apply()
 
     var zeroKnowledgePassphrase: String
-        get() = prefs.getString("zero_knowledge_passphrase", "") ?: ""
-        set(value) = prefs.edit().putString("zero_knowledge_passphrase", value).apply()
+        get() {
+            // Try KeystoreVault first (new secure storage)
+            val vaultVal = try {
+                KeystoreVault.retrieveEncryptedString(context, "zero_knowledge_passphrase")
+            } catch (_: Exception) { null }
+            if (!vaultVal.isNullOrBlank()) return vaultVal
+
+            // Migrate legacy plaintext value if present
+            val legacy = prefs.getString("zero_knowledge_passphrase", "") ?: ""
+            if (legacy.isNotBlank()) {
+                try {
+                    KeystoreVault.storeEncryptedString(context, "zero_knowledge_passphrase", legacy)
+                    prefs.edit().remove("zero_knowledge_passphrase").apply()
+                } catch (_: Exception) {}
+                return legacy
+            }
+            return ""
+        }
+        set(value) {
+            try {
+                KeystoreVault.storeEncryptedString(context, "zero_knowledge_passphrase", value)
+                // Remove any legacy plaintext entry
+                prefs.edit().remove("zero_knowledge_passphrase").apply()
+            } catch (_: Exception) {
+                // Fallback to SharedPreferences only if KeystoreVault fails
+                prefs.edit().putString("zero_knowledge_passphrase", value).apply()
+            }
+        }
 
     var isBiometricEnabled: Boolean
         get() = prefs.getBoolean("is_biometric_enabled", false)

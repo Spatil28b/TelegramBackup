@@ -26,11 +26,20 @@ android {
         val releaseKeystorePath = System.getenv("RELEASE_KEYSTORE_PATH") ?: "release.keystore"
         val releaseKeystoreFile = file(releaseKeystorePath)
         if (releaseKeystoreFile.exists()) {
+            val ksPassword = System.getenv("RELEASE_KEYSTORE_PASSWORD") ?: ""
+            val kAlias = System.getenv("RELEASE_KEY_ALIAS") ?: ""
+            val kPassword = System.getenv("RELEASE_KEY_PASSWORD") ?: ""
+            if (ksPassword.isBlank() || kAlias.isBlank() || kPassword.isBlank()) {
+                throw GradleException(
+                    "Release keystore found at '$releaseKeystorePath' but signing env vars are missing.\n" +
+                    "Set RELEASE_KEYSTORE_PASSWORD, RELEASE_KEY_ALIAS, and RELEASE_KEY_PASSWORD."
+                )
+            }
             create("release") {
                 storeFile = releaseKeystoreFile
-                storePassword = System.getenv("RELEASE_KEYSTORE_PASSWORD") ?: ""
-                keyAlias = System.getenv("RELEASE_KEY_ALIAS") ?: ""
-                keyPassword = System.getenv("RELEASE_KEY_PASSWORD") ?: ""
+                storePassword = ksPassword
+                keyAlias = kAlias
+                keyPassword = kPassword
             }
         }
     }
@@ -41,9 +50,10 @@ android {
         }
         release {
             val releaseConfig = signingConfigs.findByName("release")
-            if (releaseConfig != null) {
-                signingConfig = releaseConfig
-            }
+                ?: throw GradleException(
+                    "No release signing config found. Place release.keystore in app/ or set RELEASE_KEYSTORE_PATH."
+                )
+            signingConfig = releaseConfig
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
