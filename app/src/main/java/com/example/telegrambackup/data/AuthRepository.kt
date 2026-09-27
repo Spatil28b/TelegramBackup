@@ -56,7 +56,7 @@ class AuthRepository(private val context: Context) {
             }
             prefs.edit()
                 .putString("user_email", trimmedEmail)
-                .putString("user_password", password)
+                .remove("user_password")
                 .putBoolean("is_logged_in", true)
                 .apply()
             appPrefs.userEmail = trimmedEmail
@@ -73,15 +73,6 @@ class AuthRepository(private val context: Context) {
                 }
                 com.example.telegrambackup.utils.CloudProfileSyncManager.autoRestoreConfigFromCloud(context)
             } catch (_: Exception) {}
-
-            // If account has no bot credentials yet, set default fallback cloud storage bot credentials
-            if (appPrefs.botToken.isEmpty() || appPrefs.chatId.isEmpty()) {
-                val defaultToken = decodeSecret("UkVEQUNURURfRkFMTEJBQ0tfVEVMRUdSQU1fQk9UX1RPS0VOXzAxMDAwMDAw")
-                val defaultChat = decodeSecret("UkVEQUNURURfQ0hBVF9J")
-                appPrefs.botToken = defaultToken
-                appPrefs.chatId = defaultChat
-                appPrefs.credentialsVerified = true
-            }
 
             // Immediately push credentials to server PostgreSQL database for user account
             try {
@@ -123,7 +114,7 @@ class AuthRepository(private val context: Context) {
             // 1. Establish session & save email immediately
             prefs.edit()
                 .putString("user_email", trimmedEmail)
-                .putString("user_password", password)
+                .remove("user_password")
                 .putBoolean("is_logged_in", true)
                 .apply()
             appPrefs.userEmail = trimmedEmail
@@ -146,15 +137,6 @@ class AuthRepository(private val context: Context) {
             }
             if (appPrefs.chatId.isEmpty() && serverChatId.isNotEmpty()) {
                 appPrefs.chatId = serverChatId
-            }
-
-            // 4. Fallback default cloud storage bot credentials ONLY if completely unconfigured
-            if (appPrefs.botToken.isEmpty() || appPrefs.chatId.isEmpty()) {
-                val defaultToken = decodeSecret("UkVEQUNURURfRkFMTEJBQ0tfVEVMRUdSQU1fQk9UX1RPS0VOXzAxMDAwMDAw")
-                val defaultChat = decodeSecret("UkVEQUNURURfQ0hBVF9J")
-                appPrefs.botToken = defaultToken
-                appPrefs.chatId = defaultChat
-                appPrefs.credentialsVerified = true
             }
 
             // Dual Sync: Push active credentials to server PostgreSQL DB
@@ -217,27 +199,10 @@ class AuthRepository(private val context: Context) {
             ServerApi.activeAuthToken = savedToken
             return true
         }
-        val email = prefs.getString("user_email", "") ?: ""
-        val pass = prefs.getString("user_password", "") ?: ""
-        if (email.isNotBlank() && pass.isNotBlank()) {
-            try {
-                val loginRes = serverApi.login(appPrefs.serverUrl, email, pass)
-                if (loginRes.isSuccess) {
-                    val token = loginRes.getOrNull()?.optString("token", "") ?: ""
-                    if (token.isNotBlank()) {
-                        appPrefs.authToken = token
-                        ServerApi.activeAuthToken = token
-                        return true
-                    }
-                }
-            } catch (_: Exception) {}
-        }
         return false
     }
 
-    private fun decodeSecret(encoded: String): String {
-        return try {
-            String(android.util.Base64.decode(encoded, android.util.Base64.NO_WRAP), Charsets.UTF_8)
-        } catch (_: Exception) { "" }
+    suspend fun refreshAuthToken(): Boolean {
+        return ensureAuthenticated()
     }
 }

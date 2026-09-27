@@ -59,8 +59,8 @@ class AppPrefs(private val context: Context) {
                         prefs.edit().putString("encryption_key", key).apply()
                         KeystoreVault.storeMasterKey(context, key)
                     } else {
-                        // Use verified cloud master key so previous backups decrypt flawlessly
-                        key = "AES256-REDACTED_AES_KEY_0000000"
+                        // Generate a unique, cryptographically secure 256-bit AES master key
+                        key = "AES256-" + java.util.UUID.randomUUID().toString().replace("-", "")
                         prefs.edit().putString("encryption_key", key).apply()
                         KeystoreVault.storeMasterKey(context, key)
                     }

@@ -42,7 +42,7 @@ object BotFleetManager {
     fun releaseBot(botToken: String) {
         val clean = botToken.trim()
         if (clean.isNotEmpty()) {
-            activeRequestsMap[clean]?.decrementAndGet()
+            activeRequestsMap[clean]?.updateAndGet { current -> maxOf(0, current - 1) }
         }
     }
 
@@ -153,12 +153,8 @@ object BotFleetManager {
         val pool = if (healthyBots.isNotEmpty()) healthyBots else activeBots
         val sortedPool = pool.sortedBy { getActiveRequests(it.botToken) }
 
-        val result = mutableListOf<TelegramBotEntity>()
-        val count = maxOf(requiredCount, sortedPool.size)
-        for (i in 0 until count) {
-            result.add(sortedPool[i % sortedPool.size])
-        }
-        return@withContext result
+        val limit = if (requiredCount > 0) minOf(requiredCount, sortedPool.size) else sortedPool.size
+        return@withContext sortedPool.take(limit)
     }
 
     /**
@@ -205,12 +201,8 @@ object BotFleetManager {
             }
         }
 
-        val targetCount = maxOf(requiredCount, driveBots.size)
-        val result = mutableListOf<TelegramBotEntity>()
-        for (i in 0 until targetCount) {
-            result.add(driveBots[i % driveBots.size])
-        }
-        return@withContext result
+        val limit = if (requiredCount > 0) minOf(requiredCount, driveBots.size) else driveBots.size
+        return@withContext driveBots.take(limit)
     }
 
     /**
@@ -257,12 +249,8 @@ object BotFleetManager {
             }
         }
 
-        val targetCount = maxOf(requiredChunks, backupBots.size)
-        val result = mutableListOf<TelegramBotEntity>()
-        for (i in 0 until targetCount) {
-            result.add(backupBots[i % backupBots.size])
-        }
-        return@withContext result
+        val limit = if (requiredChunks > 0) minOf(requiredChunks, backupBots.size) else backupBots.size
+        return@withContext backupBots.take(limit)
     }
 
     /**

@@ -42,7 +42,7 @@ object FileChunker {
         val chunkFiles = mutableListOf<File>()
         val buffer = ByteArray(8192)
         var chunkIndex = 1
-        var bytesInCurrentChunk = 0L
+        var bytesInCurrentChunk = 0
 
         FileInputStream(sourceFile).use { inputStream ->
             var currentChunkFile = File(outputDir, "${sourceFile.name}.part%03d".format(chunkIndex))
@@ -51,19 +51,29 @@ object FileChunker {
 
             var bytesRead: Int
             while (inputStream.read(buffer).also { bytesRead = it } != -1) {
-                if (bytesInCurrentChunk + bytesRead > chunkSize) {
-                    outputStream.close()
-                    chunkIndex++
-                    bytesInCurrentChunk = 0L
-                    currentChunkFile = File(outputDir, "${sourceFile.name}.part%03d".format(chunkIndex))
-                    outputStream = FileOutputStream(currentChunkFile)
-                    chunkFiles.add(currentChunkFile)
-                }
+                var offset = 0
+                while (offset < bytesRead) {
+                    val remainingInChunk = chunkSize - bytesInCurrentChunk
+                    val bytesToWrite = minOf(remainingInChunk, bytesRead - offset)
+                    outputStream.write(buffer, offset, bytesToWrite)
+                    bytesInCurrentChunk += bytesToWrite
+                    offset += bytesToWrite
 
-                outputStream.write(buffer, 0, bytesRead)
-                bytesInCurrentChunk += bytesRead
+                    if (bytesInCurrentChunk >= chunkSize) {
+                        outputStream.close()
+                        chunkIndex++
+                        bytesInCurrentChunk = 0
+                        currentChunkFile = File(outputDir, "${sourceFile.name}.part%03d".format(chunkIndex))
+                        outputStream = FileOutputStream(currentChunkFile)
+                        chunkFiles.add(currentChunkFile)
+                    }
+                }
             }
             outputStream.close()
+            if (currentChunkFile.length() == 0L && chunkFiles.size > 1) {
+                chunkFiles.remove(currentChunkFile)
+                currentChunkFile.delete()
+            }
         }
 
         return chunkFiles
@@ -98,12 +108,10 @@ object FileChunker {
      * Uses zero-copy OS kernel FileChannel DMA transfers for maximum flash throughput.
      */
     fun mergeChunks(chunkFiles: List<File>, outputFile: File) {
-        val chunkRegex = Regex("""\.part(\d+)""")
+        val chunkRegex = Regex("""\.part(\d+)$""")
         val sorted = chunkFiles.sortedWith(Comparator { a, b ->
-            val idxA = chunkRegex.find(a.name)?.groupValues?.get(1)?.toIntOrNull()
-                ?: a.name.filter { it.isDigit() }.toIntOrNull() ?: 0
-            val idxB = chunkRegex.find(b.name)?.groupValues?.get(1)?.toIntOrNull()
-                ?: b.name.filter { it.isDigit() }.toIntOrNull() ?: 0
+            val idxA = chunkRegex.find(a.name)?.groupValues?.get(1)?.toIntOrNull() ?: 0
+            val idxB = chunkRegex.find(b.name)?.groupValues?.get(1)?.toIntOrNull() ?: 0
             idxA.compareTo(idxB)
         })
         FileOutputStream(outputFile).use { fos ->

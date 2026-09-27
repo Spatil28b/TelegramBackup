@@ -137,9 +137,9 @@ class ServerApi {
                         val asset = assets.optJSONObject(i)
                         val name = asset?.optString("name", "") ?: ""
                         if (name.endsWith(".apk", ignoreCase = true)) {
-                            val assetApiUrl = asset?.optString("url", "") ?: ""
-                            if (assetApiUrl.isNotBlank()) {
-                                apkUrl = assetApiUrl
+                            val browserDownloadUrl = asset?.optString("browser_download_url", "") ?: ""
+                            if (browserDownloadUrl.isNotBlank()) {
+                                apkUrl = browserDownloadUrl
                             }
                             break
                         }

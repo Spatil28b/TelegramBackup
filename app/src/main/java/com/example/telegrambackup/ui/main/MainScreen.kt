@@ -1,9 +1,13 @@
 package com.example.telegrambackup.ui.main
 
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -21,7 +25,9 @@ fun MainScreen(
   val state by viewModel.uiState.collectAsStateWithLifecycle()
   when (state) {
     MainScreenUiState.Loading -> {
-      // Blank
+      Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        CircularProgressIndicator()
+      }
     }
     is MainScreenUiState.Success -> {
       MainScreen(data = (state as MainScreenUiState.Success).data, modifier = modifier)

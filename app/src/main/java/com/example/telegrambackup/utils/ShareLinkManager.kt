@@ -109,46 +109,16 @@ object ShareLinkManager {
             directDl = serverResult.directDownloadUrl
             isOpaque = true
         } else {
-            // Fallback: URL token with full chunk map so multi-chunk files remain downloadable
-            val fallbackPayload = JSONObject().apply {
-                put("fileId", file.telegramFileId)
-                put("fileName", file.fileName)
-                put("fileSize", file.size)
-                put("botToken", botToken)
-                if (candidateTokens.isNotEmpty()) {
-                    val bArray = JSONArray()
-                    for (t in candidateTokens) bArray.put(t)
-                    put("candidateBots", bArray)
-                }
-                if (prefs.encryptionKey.isNotBlank()) {
-                    put("encryptionKey", prefs.encryptionKey)
-                }
-                put("expiresAt", expiresAtMs)
-                if (passwordPin.isNotBlank()) {
-                    put("pin", passwordPin.trim())
-                }
-                if (resolvedChunks.isNotEmpty()) {
-                    val chunksArray = JSONArray()
-                    for (c in resolvedChunks) {
-                        chunksArray.put(JSONObject().apply {
-                            put("chunkIndex", c.first)
-                            put("telegramFileId", c.second)
-                            if (c.third.isNotBlank()) put("botTokenUsed", c.third)
-                        })
-                    }
-                    put("chunks", chunksArray)
-                    put("totalChunks", resolvedChunks.size)
-                }
-            }
-
-            val encodedPayload = Base64.encodeToString(
-                fallbackPayload.toString().toByteArray(Charsets.UTF_8),
-                Base64.NO_WRAP or Base64.URL_SAFE
+            val errMsg = serverResult.message.ifBlank { "Could not generate secure share link from server" }
+            return@withContext ShareLinkResult(
+                shareUrl = "",
+                formattedShareText = "⚠️ Failed to create share link: $errMsg",
+                expiresAtText = expiryText,
+                hasPassword = passwordPin.isNotBlank(),
+                shareId = "",
+                directDownloadUrl = "",
+                isOpaqueSecure = false
             )
-            finalUrl = "$serverUrl/share?data=$encodedPayload"
-            shareId = ""
-            directDl = "$serverUrl/api/share/download/fallback?data=$encodedPayload"
-            isOpaque = false
         }
 
         val shareMessage = buildString {

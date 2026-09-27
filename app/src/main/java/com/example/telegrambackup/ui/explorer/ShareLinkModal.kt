@@ -87,12 +87,16 @@ fun ShareLinkModal(
     }
 
     LaunchedEffect(expiryHours, passwordPin) {
+        if (passwordPin.isNotBlank()) {
+            kotlinx.coroutines.delay(500)
+        }
         generateLink()
     }
 
-    LaunchedEffect(showQrCode, shareResult) {
+    LaunchedEffect(showQrCode, shareResult?.shareUrl) {
+        qrBitmap = null
         val url = shareResult?.shareUrl
-        if (showQrCode && !url.isNullOrBlank() && qrBitmap == null) {
+        if (showQrCode && !url.isNullOrBlank()) {
             withContext(Dispatchers.IO) {
                 qrBitmap = ShareLinkManager.generateQrBitmap(url, 512)
             }
