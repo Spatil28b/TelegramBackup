@@ -32,6 +32,10 @@ object ShareLinkManager {
         passwordPin: String = ""
     ): ShareLinkResult = withContext(Dispatchers.IO) {
         val prefs = AppPrefs(context)
+        val savedAuth = prefs.authToken
+        if (savedAuth.isNotBlank() && ServerApi.activeAuthToken.isBlank()) {
+            ServerApi.activeAuthToken = savedAuth
+        }
         val db = AppDatabase.getDatabase(context)
 
         // Find primary or active bot token

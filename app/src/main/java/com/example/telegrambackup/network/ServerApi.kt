@@ -1700,7 +1700,12 @@ class ServerApi {
             }
 
             val body = json.toString().toRequestBody("application/json; charset=utf-8".toMediaTypeOrNull())
-            val request = Request.Builder().url(url).post(body).build()
+            val requestBuilder = Request.Builder().url(url).post(body)
+            val token = activeAuthToken
+            if (token.isNotBlank()) {
+                requestBuilder.header("Authorization", "Bearer $token")
+            }
+            val request = requestBuilder.build()
             val response = client.newCall(request).execute()
             val respBody = response.body?.string() ?: ""
 
