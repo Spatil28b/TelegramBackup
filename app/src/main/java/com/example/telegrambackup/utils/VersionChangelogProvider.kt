@@ -28,6 +28,42 @@ object VersionChangelogProvider {
 
     private val releases = listOf(
         VersionRelease(
+            versionName = "2.6.3",
+            versionCode = 141,
+            releaseDate = "September 2026",
+            highlights = "Keystore Hardware Cryptography, AES-GCM Direct Stream Decryption, Resilient Serverless Endpoints & Opaque Sharing",
+            entries = listOf(
+                ChangelogEntry(
+                    Icons.Default.Security,
+                    Color(0xFF10B981),
+                    "Hardware-Backed Keystore Vault",
+                    "Master security key, zero-knowledge passphrases, bot tokens, and auth secrets are secured in hardware-backed Android KeyStore.",
+                    "SECURITY"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Shield,
+                    Color(0xFF3B82F6),
+                    "Authenticated AES-256-GCM Slicing",
+                    "Full GCM256 authenticated encryption with byte-exact CTR decryption for seamless, zero-corruption media streaming.",
+                    "CRYPTO"
+                ),
+                ChangelogEntry(
+                    Icons.Default.CloudSync,
+                    Color(0xFF8B5CF6),
+                    "Zero-Downtime Serverless Engine",
+                    "Resilient fallbacks for environment variables, instant pre-signed CDN download redirection, and robust Neon DB connection pooling.",
+                    "BACKEND"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Share,
+                    Color(0xFFF59E0B),
+                    "HttpOnly Share Authentication",
+                    "Share link web portal protects file streaming with HttpOnly session cookies, removing raw tokens and credentials from query URLs.",
+                    "PRIVACY"
+                )
+            )
+        ),
+        VersionRelease(
             versionName = "2.6.1",
             versionCode = 139,
             releaseDate = "September 2026",
