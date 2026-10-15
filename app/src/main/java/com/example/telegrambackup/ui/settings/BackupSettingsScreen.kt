@@ -3033,6 +3033,24 @@ fun BackupSettingsScreen(
                                                         )
                                                     }
                                                 }
+                                                if (themeMode == AppThemeMode.LIQUID_GLASS) {
+                                                    Surface(
+                                                        shape = RoundedCornerShape(6.dp),
+                                                        color = Color(0xFF00E5FF).copy(alpha = 0.15f)
+                                                    ) {
+                                                        Text(
+                                                            text = "Liquid Glass",
+                                                            style = MaterialTheme.typography.labelSmall.copy(
+                                                                color = Color(0xFF00E5FF),
+                                                                fontWeight = FontWeight.Bold,
+                                                                fontSize = 10.5.sp
+                                                            ),
+                                                            maxLines = 1,
+                                                            softWrap = false,
+                                                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.5.dp)
+                                                        )
+                                                    }
+                                                }
                                                 if (isSelected) {
                                                     Surface(
                                                         shape = RoundedCornerShape(6.dp),

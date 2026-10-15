@@ -144,3 +144,32 @@ val MochaSurfaceVariant = Color(0xFF2E221E)
 val MochaOutline = Color(0xFF523D35)
 val MochaTextPrimary = Color(0xFFFEF3C7)
 val MochaTextSecondary = Color(0xFFFDE68A)
+
+// 12. Liquid Glass Material Palette (iOS 26 / VisionOS Spatial Aesthetics)
+val LiquidGlassPrimary = Color(0xFF00E5FF)            // High-refraction Crystal Cyan
+val LiquidGlassOnPrimary = Color(0xFF002233)          // Deep obsidian contrast
+val LiquidGlassPrimaryContainer = Color(0xFF0C3D59)   // Luminous glass cyan container
+val LiquidGlassOnPrimaryContainer = Color(0xFFBAF7FF)
+val LiquidGlassSecondary = Color(0xFFA78BFA)          // Prismatic Radiant Violet
+val LiquidGlassOnSecondary = Color(0xFF261054)
+val LiquidGlassSecondaryContainer = Color(0xFF3B1D78)
+val LiquidGlassOnSecondaryContainer = Color(0xFFE9D5FF)
+val LiquidGlassTertiary = Color(0xFF38BDF8)           // Luminous Electric Sky
+val LiquidGlassOnTertiary = Color(0xFF002E4D)
+val LiquidGlassTertiaryContainer = Color(0xFF074870)
+val LiquidGlassOnTertiaryContainer = Color(0xFFBAE6FD)
+val LiquidGlassBackground = Color(0xFF060B18)         // Deep Oceanic Obsidian Glass
+val LiquidGlassOnBackground = Color(0xFFF8FAFC)
+val LiquidGlassSurface = Color(0xFF0D1B36)            // Translucent Frosted Glass Base
+val LiquidGlassOnSurface = Color(0xFFF8FAFC)          // Diamond White
+val LiquidGlassSurfaceVariant = Color(0xFF152649)     // Floating Glass Slab
+val LiquidGlassOnSurfaceVariant = Color(0xFF94A3B8)   // Crystalline Silver Frost
+val LiquidGlassSurfaceContainerLowest = Color(0xFF03070F)
+val LiquidGlassSurfaceContainerLow = Color(0xFF081226)
+val LiquidGlassSurfaceContainer = Color(0xFF0F1E3D)   // Elevated Glass Card
+val LiquidGlassSurfaceContainerHigh = Color(0xFF172D59)// Glass Modal / Header
+val LiquidGlassSurfaceContainerHighest = Color(0xFF223E75)
+val LiquidGlassOutline = Color(0xFF00E5FF)            // Specular Cyan Edge Reflection
+val LiquidGlassOutlineVariant = Color(0xFF1D355B)     // Frosted Beveled Boundary
+val LiquidGlassSpecularHighlight = Color(0xFFE0F7FF)  // Pure Prism Edge Glow
+

@@ -98,7 +98,17 @@ fun <T> KomiBottomBar(
                 )
                 .border(
                     width = 1.dp,
-                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f),
+                    brush = if (com.example.telegrambackup.theme.LocalIsLiquidGlass.current) {
+                        Brush.linearGradient(
+                            listOf(
+                                Color(0xFFE0F7FF).copy(alpha = 0.50f),
+                                MaterialTheme.colorScheme.primary.copy(alpha = 0.35f),
+                                MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.15f)
+                            )
+                        )
+                    } else {
+                        androidx.compose.ui.graphics.SolidColor(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
+                    },
                     shape = RoundedCornerShape(28.dp)
                 )
                 .padding(horizontal = 6.dp, vertical = 4.dp),

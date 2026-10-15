@@ -147,6 +147,35 @@ private val SunsetAmberColorScheme = darkColorScheme(
     outlineVariant = Color(0xFF3D2612)
 )
 
+// 7: Liquid Glass (iOS 26 / VisionOS Spatial Glassmorphism)
+private val LiquidGlassColorScheme = darkColorScheme(
+    primary = LiquidGlassPrimary,
+    onPrimary = LiquidGlassOnPrimary,
+    primaryContainer = LiquidGlassPrimaryContainer,
+    onPrimaryContainer = LiquidGlassOnPrimaryContainer,
+    secondary = LiquidGlassSecondary,
+    onSecondary = LiquidGlassOnSecondary,
+    secondaryContainer = LiquidGlassSecondaryContainer,
+    onSecondaryContainer = LiquidGlassOnSecondaryContainer,
+    tertiary = LiquidGlassTertiary,
+    onTertiary = LiquidGlassOnTertiary,
+    tertiaryContainer = LiquidGlassTertiaryContainer,
+    onTertiaryContainer = LiquidGlassOnTertiaryContainer,
+    background = LiquidGlassBackground,
+    onBackground = LiquidGlassOnBackground,
+    surface = LiquidGlassSurface,
+    onSurface = LiquidGlassOnSurface,
+    surfaceVariant = LiquidGlassSurfaceVariant,
+    onSurfaceVariant = LiquidGlassOnSurfaceVariant,
+    surfaceContainerLowest = LiquidGlassSurfaceContainerLowest,
+    surfaceContainerLow = LiquidGlassSurfaceContainerLow,
+    surfaceContainer = LiquidGlassSurfaceContainer,
+    surfaceContainerHigh = LiquidGlassSurfaceContainerHigh,
+    surfaceContainerHighest = LiquidGlassSurfaceContainerHighest,
+    outline = LiquidGlassOutline,
+    outlineVariant = LiquidGlassOutlineVariant
+)
+
 enum class AppThemeMode(
     val id: Int,
     val title: String,
@@ -162,7 +191,8 @@ enum class AppThemeMode(
     AMOLED(3, "Pure AMOLED Black", "100% pitch black with electric cyber accents for OLED", Color(0xFF00F0FF), Color(0xFF38BDF8), Color(0xFF000000), Color(0xFF121215)),
     EMERALD(4, "Emerald Forest", "Deep jade slate with lush mint & botanical emerald", Color(0xFF10B981), Color(0xFF34D399), Color(0xFF03140D), Color(0xFF0F3A27)),
     SUNSET(5, "Sunset Amber", "Obsidian espresso with warm golden amber & copper", Color(0xFFF59E0B), Color(0xFFFB923C), Color(0xFF100A05), Color(0xFF301F10)),
-    DYNAMIC_WALLPAPER(6, "Material You Dynamic", "Adaptive palette extracted live from your device wallpaper (Android 12+)", Color(0xFF8B5CF6), Color(0xFFEC4899), Color(0xFF0F172A), Color(0xFF1E293B));
+    DYNAMIC_WALLPAPER(6, "Material You Dynamic", "Adaptive palette extracted live from your device wallpaper (Android 12+)", Color(0xFF8B5CF6), Color(0xFFEC4899), Color(0xFF0F172A), Color(0xFF1E293B)),
+    LIQUID_GLASS(7, "Liquid Glass", "Translucent frosted glass with luminous refraction, prismatic cyan & obsidian crystal depth", Color(0xFF00E5FF), Color(0xFFA78BFA), Color(0xFF060B18), Color(0xFF0F1E3D));
 
     companion object {
         fun fromId(id: Int): AppThemeMode = entries.firstOrNull { it.id == id } ?: SYSTEM
@@ -191,11 +221,18 @@ fun TelegramBackupTheme(
                 if (darkTheme) DarkColorScheme else LightColorScheme
             }
         }
+        AppThemeMode.LIQUID_GLASS -> LiquidGlassColorScheme
     }
 
-    MaterialTheme(
-        colorScheme = colorScheme,
-        typography = Typography,
-        content = content
-    )
+    val isLiquidGlass = mode == AppThemeMode.LIQUID_GLASS
+
+    androidx.compose.runtime.CompositionLocalProvider(
+        LocalIsLiquidGlass provides isLiquidGlass
+    ) {
+        MaterialTheme(
+            colorScheme = colorScheme,
+            typography = Typography,
+            content = content
+        )
+    }
 }

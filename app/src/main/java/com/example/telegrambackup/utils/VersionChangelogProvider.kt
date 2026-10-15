@@ -60,6 +60,13 @@ object VersionChangelogProvider {
                     "Autonomous Server-Side Share Creation",
                     "Share link generation resolves bot tokens and chunk credentials internally from the database without requiring client devices to transmit secrets.",
                     "PRIVACY"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Palette,
+                    Color(0xFF00E5FF),
+                    "Liquid Glass Material Theme",
+                    "Full-fidelity Liquid Glass theme with deep oceanic obsidian crystal, translucent frosted surfaces, and specular refraction edge highlights.",
+                    "DESIGN"
                 )
             )
         ),
