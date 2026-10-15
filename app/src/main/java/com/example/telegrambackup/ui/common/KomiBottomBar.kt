@@ -76,35 +76,44 @@ fun <T> KomiBottomBar(
             .padding(horizontal = 14.dp, vertical = 6.dp),
         contentAlignment = Alignment.Center
     ) {
-        // Floating pill capsule matching Komi Store exactly
+        val isGlass = com.example.telegrambackup.theme.LocalIsLiquidGlass.current
+
+        // Floating pill capsule matching Komi Store & Liquid Glass Spatial aesthetics
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(barHeight)
                 .shadow(
-                    elevation = 12.dp,
+                    elevation = if (isGlass) 16.dp else 12.dp,
                     shape = RoundedCornerShape(28.dp),
-                    spotColor = Color.Black.copy(alpha = 0.28f),
-                    ambientColor = Color.Black.copy(alpha = 0.10f)
+                    spotColor = if (isGlass) Color(0xFF00E5FF).copy(alpha = 0.25f) else Color.Black.copy(alpha = 0.28f),
+                    ambientColor = if (isGlass) Color(0xFFA78BFA).copy(alpha = 0.15f) else Color.Black.copy(alpha = 0.10f)
                 )
                 .clip(RoundedCornerShape(28.dp))
                 .background(
-                    Brush.verticalGradient(
-                        colors = listOf(
-                            MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.96f),
-                            MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.92f)
+                    if (isGlass) {
+                        Brush.verticalGradient(
+                            colors = listOf(
+                                Color(0xFF1E355B).copy(alpha = 0.45f),
+                                Color(0xFF0D1B36).copy(alpha = 0.28f)
+                            )
                         )
-                    )
+                    } else {
+                        Brush.verticalGradient(
+                            colors = listOf(
+                                MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.96f),
+                                MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.92f)
+                            )
+                        )
+                    }
                 )
                 .border(
                     width = 1.dp,
-                    brush = if (com.example.telegrambackup.theme.LocalIsLiquidGlass.current) {
-                        Brush.linearGradient(
-                            listOf(
-                                Color(0xFFE0F7FF).copy(alpha = 0.50f),
-                                MaterialTheme.colorScheme.primary.copy(alpha = 0.35f),
-                                MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.15f)
-                            )
+                    brush = if (isGlass) {
+                        com.example.telegrambackup.theme.liquidGlassBorderBrush(
+                            highlightAlpha = 0.65f,
+                            accentAlpha = 0.35f,
+                            baseAlpha = 0.15f
                         )
                     } else {
                         androidx.compose.ui.graphics.SolidColor(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
