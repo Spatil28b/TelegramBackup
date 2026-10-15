@@ -28,6 +28,49 @@ object VersionChangelogProvider {
 
     private val releases = listOf(
         VersionRelease(
+            versionName = "2.6.5",
+            versionCode = 143,
+            releaseDate = "October 2026",
+            highlights = "Liquid Glass Material Design System, Translucent Frosted Glass UI, High-Speed Native Stream Downloads & Hardware Cryptography",
+            entries = listOf(
+                ChangelogEntry(
+                    Icons.Default.Palette,
+                    Color(0xFF00E5FF),
+                    "Liquid Glass Design System",
+                    "Full-fidelity Liquid Glass theme with deep oceanic obsidian crystal, translucent frosted surfaces, dynamic specular refraction highlights, and glassmorphic bottom navigation bars.",
+                    "DESIGN"
+                ),
+                ChangelogEntry(
+                    Icons.Default.CloudDownload,
+                    Color(0xFF10B981),
+                    "Fast Direct Stream Downloads Default",
+                    "Web share links now stream files directly via native browser download manager, bypassing sequential chunk stitching for maximum download speed.",
+                    "PERFORMANCE"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Speed,
+                    Color(0xFF3B82F6),
+                    "Zero-Overhead Browser Performance",
+                    "Eliminated client-side memory blob buffers, chunk-by-chunk polling, and heavy progress bars to prevent mobile browser memory leaks and crashes.",
+                    "OPTIMIZATION"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Security,
+                    Color(0xFF8B5CF6),
+                    "Strict Bot Token Sanitization",
+                    "API credentials endpoints strictly mask raw Telegram bot tokens in query responses, completely preventing accidental token exposure.",
+                    "SECURITY"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Share,
+                    Color(0xFFF59E0B),
+                    "Autonomous Server-Side Share Creation",
+                    "Share link generation resolves bot tokens and chunk credentials internally from the database without requiring client devices to transmit secrets.",
+                    "PRIVACY"
+                )
+            )
+        ),
+        VersionRelease(
             versionName = "2.6.4",
             versionCode = 142,
             releaseDate = "October 2026",
