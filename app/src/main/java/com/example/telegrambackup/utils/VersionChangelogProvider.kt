@@ -28,6 +28,42 @@ object VersionChangelogProvider {
 
     private val releases = listOf(
         VersionRelease(
+            versionName = "2.6.4",
+            versionCode = 142,
+            releaseDate = "October 2026",
+            highlights = "Fast Direct Stream Downloads Default, Zero-Memory Browser Streaming, Strict Bot Token Sanitization & Server-Side Share Link Creation",
+            entries = listOf(
+                ChangelogEntry(
+                    Icons.Default.CloudDownload,
+                    Color(0xFF10B981),
+                    "Fast Direct Stream Downloads Default",
+                    "Web share links now stream files directly via native browser download manager, bypassing sequential chunk stitching for maximum download speed.",
+                    "PERFORMANCE"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Speed,
+                    Color(0xFF3B82F6),
+                    "Zero-Overhead Browser Performance",
+                    "Eliminated client-side memory blob buffers, chunk-by-chunk polling, and heavy progress bars to prevent mobile browser memory leaks and crashes.",
+                    "OPTIMIZATION"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Security,
+                    Color(0xFF8B5CF6),
+                    "Strict Bot Token Sanitization",
+                    "API credentials endpoints strictly mask raw Telegram bot tokens in query responses, completely preventing accidental token exposure.",
+                    "SECURITY"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Share,
+                    Color(0xFFF59E0B),
+                    "Autonomous Server-Side Share Creation",
+                    "Share link generation resolves bot tokens and chunk credentials internally from the database without requiring client devices to transmit secrets.",
+                    "PRIVACY"
+                )
+            )
+        ),
+        VersionRelease(
             versionName = "2.6.3",
             versionCode = 141,
             releaseDate = "September 2026",
