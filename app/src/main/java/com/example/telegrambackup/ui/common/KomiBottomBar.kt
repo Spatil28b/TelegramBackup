@@ -84,20 +84,15 @@ fun <T> KomiBottomBar(
                 .fillMaxWidth()
                 .height(barHeight)
                 .shadow(
-                    elevation = if (isGlass) 16.dp else 12.dp,
+                    elevation = if (isGlass) 14.dp else 12.dp,
                     shape = RoundedCornerShape(28.dp),
-                    spotColor = if (isGlass) Color(0xFF00E5FF).copy(alpha = 0.25f) else Color.Black.copy(alpha = 0.28f),
-                    ambientColor = if (isGlass) Color(0xFFA78BFA).copy(alpha = 0.15f) else Color.Black.copy(alpha = 0.10f)
+                    spotColor = if (isGlass) Color(0xFF6366F1).copy(alpha = 0.16f) else Color.Black.copy(alpha = 0.28f),
+                    ambientColor = if (isGlass) Color(0xFF818CF8).copy(alpha = 0.10f) else Color.Black.copy(alpha = 0.10f)
                 )
                 .clip(RoundedCornerShape(28.dp))
                 .background(
                     if (isGlass) {
-                        Brush.verticalGradient(
-                            colors = listOf(
-                                Color(0xFF1E355B).copy(alpha = 0.45f),
-                                Color(0xFF0D1B36).copy(alpha = 0.28f)
-                            )
-                        )
+                        com.example.telegrambackup.theme.liquidGlassSurfaceBrush(14.dp)
                     } else {
                         Brush.verticalGradient(
                             colors = listOf(
@@ -108,12 +103,12 @@ fun <T> KomiBottomBar(
                     }
                 )
                 .border(
-                    width = 1.dp,
+                    width = 0.8.dp,
                     brush = if (isGlass) {
                         com.example.telegrambackup.theme.liquidGlassBorderBrush(
-                            highlightAlpha = 0.65f,
-                            accentAlpha = 0.35f,
-                            baseAlpha = 0.15f
+                            highlightAlpha = 0.50f,
+                            accentAlpha = 0.20f,
+                            baseAlpha = 0.10f
                         )
                     } else {
                         androidx.compose.ui.graphics.SolidColor(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
@@ -137,7 +132,9 @@ fun <T> KomiBottomBar(
                 )
 
                 val containerColor by animateColorAsState(
-                    targetValue = if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.16f) else Color.Transparent,
+                    targetValue = if (isSelected) {
+                        if (isGlass) Color.White.copy(alpha = 0.12f) else MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)
+                    } else Color.Transparent,
                     animationSpec = tween(durationMillis = 180),
                     label = "containerColor"
                 )
@@ -156,6 +153,15 @@ fun <T> KomiBottomBar(
                         .fillMaxHeight()
                         .clip(RoundedCornerShape(20.dp))
                         .background(containerColor)
+                        .then(
+                            if (isGlass && isSelected) {
+                                Modifier.border(
+                                    width = 0.6.dp,
+                                    brush = com.example.telegrambackup.theme.liquidGlassBorderBrush(0.40f, 0.15f, 0.08f),
+                                    shape = RoundedCornerShape(20.dp)
+                                )
+                            } else Modifier
+                        )
                         .clickable(
                             interactionSource = interactionSource,
                             indication = null

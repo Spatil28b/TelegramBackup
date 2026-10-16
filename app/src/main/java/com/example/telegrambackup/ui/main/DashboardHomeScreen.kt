@@ -36,6 +36,8 @@ import com.example.telegrambackup.data.AppDatabase
 import com.example.telegrambackup.data.UploadedFile
 import com.example.telegrambackup.theme.TelegramBlue
 import com.example.telegrambackup.theme.TelegramEmerald
+import com.example.telegrambackup.theme.isLiquidGlass
+import com.example.telegrambackup.theme.liquidGlassCard
 import com.example.telegrambackup.ui.common.FileThumbnailView
 import com.example.telegrambackup.ui.explorer.DuplicateCleanerDialog
 import com.example.telegrambackup.ui.explorer.formatFileSize
@@ -224,9 +226,15 @@ fun DashboardHomeScreen(
         item {
             Surface(
                 shape = RoundedCornerShape(24.dp),
-                color = MaterialTheme.colorScheme.surfaceContainerLow,
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
-                modifier = Modifier.fillMaxWidth()
+                color = if (MaterialTheme.isLiquidGlass) Color.Transparent else MaterialTheme.colorScheme.surfaceContainerLow,
+                border = if (MaterialTheme.isLiquidGlass) null else BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .then(
+                        if (MaterialTheme.isLiquidGlass) {
+                            Modifier.liquidGlassCard(shape = RoundedCornerShape(24.dp), elevation = 12.dp)
+                        } else Modifier
+                    )
             ) {
                 Column(modifier = Modifier.padding(20.dp)) {
                     Row(
@@ -386,10 +394,15 @@ fun DashboardHomeScreen(
         item {
             Surface(
                 shape = RoundedCornerShape(22.dp),
-                color = MaterialTheme.colorScheme.surfaceContainerLow,
-                border = BorderStroke(1.dp, TelegramBlue.copy(alpha = 0.35f)),
+                color = if (MaterialTheme.isLiquidGlass) Color.Transparent else MaterialTheme.colorScheme.surfaceContainerLow,
+                border = if (MaterialTheme.isLiquidGlass) null else BorderStroke(1.dp, TelegramBlue.copy(alpha = 0.35f)),
                 modifier = Modifier
                     .fillMaxWidth()
+                    .then(
+                        if (MaterialTheme.isLiquidGlass) {
+                            Modifier.liquidGlassCard(shape = RoundedCornerShape(22.dp), elevation = 10.dp)
+                        } else Modifier
+                    )
                     .clickable {
                         onQuickActionClick(-3) // -3 triggers AI Photo Search Dialog
                     }
@@ -790,9 +803,15 @@ private fun GoogleCleanCard(
 ) {
     Surface(
         shape = RoundedCornerShape(24.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
-        modifier = Modifier.fillMaxWidth()
+        color = if (MaterialTheme.isLiquidGlass) Color.Transparent else MaterialTheme.colorScheme.surfaceContainerLow,
+        border = if (MaterialTheme.isLiquidGlass) null else BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(
+                if (MaterialTheme.isLiquidGlass) {
+                    Modifier.liquidGlassCard(shape = RoundedCornerShape(24.dp), elevation = 10.dp)
+                } else Modifier
+            )
     ) {
         Column(modifier = Modifier.padding(18.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {

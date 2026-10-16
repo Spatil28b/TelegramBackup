@@ -48,6 +48,8 @@ import com.example.telegrambackup.data.AppDatabase
 import com.example.telegrambackup.data.UploadedFile
 import com.example.telegrambackup.network.ServerApi
 import com.example.telegrambackup.theme.TelegramBlue
+import com.example.telegrambackup.theme.isLiquidGlass
+import com.example.telegrambackup.theme.liquidGlassCard
 import com.example.telegrambackup.theme.TelegramEmerald
 import com.example.telegrambackup.ui.common.*
 import com.example.telegrambackup.ui.explorer.AdvancedMediaViewerDialog
@@ -697,14 +699,20 @@ fun DriveExplorerScreen(
 
     Box(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
-            Spacer(modifier = Modifier.height(10.dp))
+            val isGlass = MaterialTheme.isLiquidGlass
 
             // INTERACTIVE BREADCRUMB PATH HEADER
             Surface(
                 shape = RoundedCornerShape(16.dp),
-                color = MaterialTheme.colorScheme.surface,
-                tonalElevation = 1.dp,
-                modifier = Modifier.fillMaxWidth()
+                color = if (isGlass) Color.Transparent else MaterialTheme.colorScheme.surface,
+                tonalElevation = if (isGlass) 0.dp else 1.dp,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .then(
+                        if (isGlass) {
+                            Modifier.liquidGlassCard(shape = RoundedCornerShape(16.dp), elevation = 6.dp)
+                        } else Modifier
+                    )
             ) {
                 Column(modifier = Modifier.padding(12.dp)) {
                     Row(
@@ -1171,14 +1179,20 @@ private fun GridDriveItemCard(
     onLongClick: () -> Unit,
     onOverflowClick: () -> Unit
 ) {
+    val isGlass = MaterialTheme.isLiquidGlass
     Surface(
         shape = RoundedCornerShape(16.dp),
-        color = MaterialTheme.colorScheme.surface,
-        tonalElevation = 2.dp,
-        border = if (isSelected) BorderStroke(2.dp, TelegramBlue) else BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+        color = if (isGlass) Color.Transparent else MaterialTheme.colorScheme.surface,
+        tonalElevation = if (isGlass) 0.dp else 2.dp,
+        border = if (isSelected) BorderStroke(2.dp, TelegramBlue) else if (isGlass) null else BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
         modifier = Modifier
             .fillMaxWidth()
             .height(if (isBigGrid) 175.dp else 145.dp)
+            .then(
+                if (isGlass) {
+                    Modifier.liquidGlassCard(shape = RoundedCornerShape(16.dp), elevation = 6.dp)
+                } else Modifier
+            )
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
@@ -1276,11 +1290,19 @@ private fun ListDriveItemCard(
 ) {
     val ext = item.fileName.substringAfterLast('.', "").uppercase()
 
+    val isGlass = MaterialTheme.isLiquidGlass
     Surface(
         shape = RoundedCornerShape(14.dp),
-        color = if (isSelected) TelegramBlue.copy(alpha = 0.08f) else MaterialTheme.colorScheme.surface,
-        border = if (isSelected) BorderStroke(2.dp, TelegramBlue) else BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
-        modifier = Modifier.fillMaxWidth().combinedClickable(onClick = onClick, onLongClick = onLongClick)
+        color = if (isSelected) TelegramBlue.copy(alpha = 0.14f) else if (isGlass) Color.Transparent else MaterialTheme.colorScheme.surface,
+        border = if (isSelected) BorderStroke(2.dp, TelegramBlue) else if (isGlass) null else BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(
+                if (isGlass && !isSelected) {
+                    Modifier.liquidGlassCard(shape = RoundedCornerShape(14.dp), elevation = 6.dp)
+                } else Modifier
+            )
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
     ) {
         Row(
             modifier = Modifier.padding(12.dp),

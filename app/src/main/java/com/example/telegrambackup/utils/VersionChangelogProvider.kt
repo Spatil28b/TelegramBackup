@@ -28,6 +28,42 @@ object VersionChangelogProvider {
 
     private val releases = listOf(
         VersionRelease(
+            versionName = "2.6.6",
+            versionCode = 144,
+            releaseDate = "October 2026",
+            highlights = "Refined Liquid Glass Material Aesthetics, Zero-Occlusion Spatial Illumination, Translucent Drive & Settings Cards & Silver Specular Highlights",
+            entries = listOf(
+                ChangelogEntry(
+                    Icons.Default.AutoAwesome,
+                    Color(0xFF7DD3FC),
+                    "Liquid Glass Material System v2",
+                    "Redesigned Liquid Glass theme with 5-tier fluid spatial illumination, rich indigo-black obsidian depth, and visible frosted glass cards across all screens.",
+                    "DESIGN"
+                ),
+                ChangelogEntry(
+                    Icons.Default.BlurOn,
+                    Color(0xFF818CF8),
+                    "Zero-Occlusion Ambient Canvas",
+                    "Resolved root background occlusion bug where Scaffold and container surfaces covered animated light orbs, allowing caustics to dynamically shine through translucent cards.",
+                    "FIX"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Settings,
+                    Color(0xFF38BDF8),
+                    "Glassmorphic Settings & Drive Explorer",
+                    "Extended liquid glass styling to Settings group cards, Drive Explorer storage overview, file grid/list items, and breadcrumb navigation bars.",
+                    "POLISH"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Palette,
+                    Color(0xFFC4B5FD),
+                    "Refined Specular Silver Bevels",
+                    "Replaced harsh neon cyan border glows with authentic beveled specular silver-to-white light refraction gradients and soft ambient indigo drop shadows.",
+                    "AESTHETICS"
+                )
+            )
+        ),
+        VersionRelease(
             versionName = "2.6.5",
             versionCode = 143,
             releaseDate = "October 2026",

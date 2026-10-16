@@ -52,15 +52,21 @@ fun StorageStatsCard(
     val audioFraction = (audioBytes / safeTotal).coerceIn(0f, 1f)
     val docsFraction = (docsBytes / safeTotal).coerceIn(0f, 1f)
 
+    val isGlass = MaterialTheme.isLiquidGlass
     Card(
         modifier = modifier
             .fillMaxWidth()
+            .then(
+                if (isGlass) {
+                    Modifier.liquidGlassCard(shape = RoundedCornerShape(16.dp), elevation = 8.dp)
+                } else Modifier
+            )
             .clickable { isExpanded = !isExpanded },
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+            containerColor = if (isGlass) Color.Transparent else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
         ),
-        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+        border = if (isGlass) null else androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
     ) {
         Column(
             modifier = Modifier.padding(horizontal = 14.dp, vertical = if (isExpanded) 14.dp else 10.dp)

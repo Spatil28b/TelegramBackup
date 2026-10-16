@@ -38,6 +38,8 @@ import com.example.telegrambackup.data.AppDatabase
 import com.example.telegrambackup.data.UploadedFile
 import com.example.telegrambackup.theme.TelegramBlue
 import com.example.telegrambackup.theme.TelegramEmerald
+import com.example.telegrambackup.theme.isLiquidGlass
+import com.example.telegrambackup.theme.liquidGlassCard
 import com.example.telegrambackup.utils.AppPrefs
 import com.example.telegrambackup.utils.FileViewerHelper
 import com.example.telegrambackup.ui.common.OsFolderIcon
@@ -678,10 +680,15 @@ private fun CategoryWiseView(
             item(key = "header_${categoryName.hashCode()}") {
                 Surface(
                     shape = RoundedCornerShape(16.dp),
-                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
+                    color = if (MaterialTheme.isLiquidGlass) Color.Transparent else MaterialTheme.colorScheme.surfaceContainerHigh,
+                    border = if (MaterialTheme.isLiquidGlass) null else androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
                     modifier = Modifier
                         .fillMaxWidth()
+                        .then(
+                            if (MaterialTheme.isLiquidGlass) {
+                                Modifier.liquidGlassCard(shape = RoundedCornerShape(16.dp), elevation = 8.dp)
+                            } else Modifier
+                        )
                         .clickable { expandedCategories[categoryName] = !isExpanded }
                 ) {
                     Row(
@@ -927,9 +934,14 @@ private fun FolderWiseView(
                 val unbackedCountInSub = files.count { it.path.startsWith(subDir.absolutePath) }
                 Surface(
                     shape = RoundedCornerShape(12.dp),
-                    color = MaterialTheme.colorScheme.surface,
+                    color = if (MaterialTheme.isLiquidGlass) Color.Transparent else MaterialTheme.colorScheme.surface,
                     modifier = Modifier
                         .fillMaxWidth()
+                        .then(
+                            if (MaterialTheme.isLiquidGlass) {
+                                Modifier.liquidGlassCard(shape = RoundedCornerShape(12.dp), elevation = 6.dp)
+                            } else Modifier
+                        )
                         .combinedClickable(
                             onClick = { onNavigateToSubfolder(subDir) },
                             onLongClick = { onFolderMoreOptions(subDir) }

@@ -145,33 +145,46 @@ val MochaOutline = Color(0xFF523D35)
 val MochaTextPrimary = Color(0xFFFEF3C7)
 val MochaTextSecondary = Color(0xFFFDE68A)
 
-// 12. Liquid Glass Material Palette (iOS 26 / VisionOS Spatial Aesthetics)
-val LiquidGlassPrimary = Color(0xFF00E5FF)            // High-refraction Crystal Cyan
-val LiquidGlassOnPrimary = Color(0xFF001F2E)          // Deep obsidian contrast
-val LiquidGlassPrimaryContainer = Color(0x3D00E5FF)   // 24% translucent luminous cyan container
-val LiquidGlassOnPrimaryContainer = Color(0xFFBAF7FF)
-val LiquidGlassSecondary = Color(0xFFA78BFA)          // Prismatic Radiant Violet
-val LiquidGlassOnSecondary = Color(0xFF1F0D42)
-val LiquidGlassSecondaryContainer = Color(0x388B5CF6) // 22% translucent violet container
-val LiquidGlassOnSecondaryContainer = Color(0xFFE9D5FF)
-val LiquidGlassTertiary = Color(0xFF38BDF8)           // Luminous Electric Sky
-val LiquidGlassOnTertiary = Color(0xFF002238)
-val LiquidGlassTertiaryContainer = Color(0x330284C7)
-val LiquidGlassOnTertiaryContainer = Color(0xFFBAE6FD)
+// =====================================================================================
+// 12. Liquid Glass Material Palette (iOS 26 / VisionOS Spatial Glassmorphism) — v2
+// =====================================================================================
+// v2 tuning: deeper indigo-black background, higher surface alphas for visible frosted
+// layers, warmer specular glow, neutral silver borders instead of neon cyan.
 
-// Spatial Dark Canvas & Authentic Translucent Frosted Glass Surfaces
-val LiquidGlassBackground = Color(0xFF050811)         // Deepest Obsidian Night Canvas
-val LiquidGlassOnBackground = Color(0xFFF8FAFC)       // Crisp Diamond White
-val LiquidGlassSurface = Color(0x36101E36)            // ~21% Translucent Frosted Glass Base
-val LiquidGlassOnSurface = Color(0xFFF8FAFC)          // Diamond White
-val LiquidGlassSurfaceVariant = Color(0x4015284B)      // ~25% Translucent Floating Slab
-val LiquidGlassOnSurfaceVariant = Color(0xFF94A3B8)   // Crystalline Silver Frost
-val LiquidGlassSurfaceContainerLowest = Color(0x1F071120) // ~12% Ultra-Sheer Glass Floor
-val LiquidGlassSurfaceContainerLow = Color(0x2B0D1B33)    // ~17% Translucent Base Card Glass
-val LiquidGlassSurfaceContainer = Color(0x3B132444)       // ~23% Standard Translucent Glass Card
-val LiquidGlassSurfaceContainerHigh = Color(0x501A2F59)   // ~31% Elevated Translucent Modal / Pill
-val LiquidGlassSurfaceContainerHighest = Color(0x66223E74)// ~40% High-Contrast Glass Surface
-val LiquidGlassOutline = Color(0x5900E5FF)            // 35% Specular Cyan Edge Reflection
-val LiquidGlassOutlineVariant = Color(0x2E60A5FA)      // 18% Frosted Refraction Bevel
-val LiquidGlassSpecularHighlight = Color(0x99FFFFFF)   // 60% Diamond-White Rim Glow
+val LiquidGlassPrimary = Color(0xFF7DD3FC)            // Sky-cyan — luminous, not neon
+val LiquidGlassOnPrimary = Color(0xFF00131F)           // Deep ocean contrast
+val LiquidGlassPrimaryContainer = Color(0x4D0EA5E9)    // 30% translucent sky container (was 25%)
+val LiquidGlassOnPrimaryContainer = Color(0xFFE0F7FF)
+val LiquidGlassSecondary = Color(0xFFC4B5FD)           // Wisteria lavender
+val LiquidGlassOnSecondary = Color(0xFF1A0B30)
+val LiquidGlassSecondaryContainer = Color(0x4D7C3AED)  // 30% translucent violet (was 24%)
+val LiquidGlassOnSecondaryContainer = Color(0xFFF3EEFF)
+val LiquidGlassTertiary = Color(0xFF67E8F9)            // Cyan-300: crystalline accent
+val LiquidGlassOnTertiary = Color(0xFF001B24)
+val LiquidGlassTertiaryContainer = Color(0x400891B2)   // 25% (was 20%)
+val LiquidGlassOnTertiaryContainer = Color(0xFFA5F3FC)
 
+// Background & Surface — richer indigo-black base; glass layers use higher alpha
+val LiquidGlassBackground = Color(0xFF080E1E)          // Deeper indigo-black (richer blue undertone)
+val LiquidGlassOnBackground = Color(0xFFEFF4F8)        // Slightly warmer than pure white
+val LiquidGlassSurface = Color(0x591E2D55)             // 35% frosted navy glass (was 30%)
+val LiquidGlassOnSurface = Color(0xFFF8FAFC)
+val LiquidGlassSurfaceVariant = Color(0x662A3E6B)      // 40% elevated slab (was 35%)
+val LiquidGlassOnSurfaceVariant = Color(0xFFCBD5E1)
+val LiquidGlassSurfaceContainerLowest = Color(0x330F1A33) // 20% deepest glass floor (was 15%)
+val LiquidGlassSurfaceContainerLow = Color(0x4D1A2D52)    // 30% frosted card (was 24%)
+val LiquidGlassSurfaceContainer = Color(0x591E3461)        // 35% standard glass card (was 30%)
+val LiquidGlassSurfaceContainerHigh = Color(0x66253F72)    // 40% elevated modal (was 36%)
+val LiquidGlassSurfaceContainerHighest = Color(0x80304D85) // 50% high-contrast glass (was 45%)
+val LiquidGlassOutline = Color(0x66CBD5E1)              // 40% cool silver edge (was 48% cyan — too colored)
+val LiquidGlassOutlineVariant = Color(0x59C4D6ED)       // 35% silver glass bevel (was 40%)
+val LiquidGlassSpecularHighlight = Color(0xEBFFFFFF)    // 92% white rim glow — brighter but narrow (was 80%)
+
+// Error & inverse tokens
+val LiquidGlassError = Color(0xFFFDA4AF)
+val LiquidGlassOnError = Color(0xFF3B0D0D)
+val LiquidGlassErrorContainer = Color(0x40F43F5E)
+val LiquidGlassOnErrorContainer = Color(0xFFFECDD3)
+val LiquidGlassInverseSurface = Color(0xFFE2E8F0)
+val LiquidGlassInverseOnSurface = Color(0xFF1E293B)
+val LiquidGlassInversePrimary = Color(0xFF0369A1)

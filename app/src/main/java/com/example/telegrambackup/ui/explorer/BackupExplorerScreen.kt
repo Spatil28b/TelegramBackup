@@ -56,6 +56,8 @@ import coil.compose.AsyncImage
 import com.example.telegrambackup.data.AppDatabase
 import com.example.telegrambackup.data.UploadedFile
 import com.example.telegrambackup.theme.TelegramBlue
+import com.example.telegrambackup.theme.isLiquidGlass
+import com.example.telegrambackup.theme.liquidGlassCard
 import com.example.telegrambackup.utils.FileViewerHelper
 import com.example.telegrambackup.theme.TelegramEmerald
 import com.example.telegrambackup.utils.AppPrefs
@@ -1925,10 +1927,15 @@ fun RecentFileGoogleCard(
 ) {
     Surface(
         shape = RoundedCornerShape(16.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
+        color = if (MaterialTheme.isLiquidGlass) Color.Transparent else MaterialTheme.colorScheme.surfaceContainerLow,
+        border = if (MaterialTheme.isLiquidGlass) null else BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
         modifier = Modifier
             .width(118.dp)
+            .then(
+                if (MaterialTheme.isLiquidGlass) {
+                    Modifier.liquidGlassCard(shape = RoundedCornerShape(16.dp), elevation = 6.dp)
+                } else Modifier
+            )
             .combinedClickable(onClick = onClick, onLongClick = onMoreOptions)
     ) {
         Column(modifier = Modifier.padding(8.dp)) {
@@ -1990,10 +1997,15 @@ fun GoogleCategoryCard(
 ) {
     Surface(
         shape = RoundedCornerShape(18.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
+        color = if (MaterialTheme.isLiquidGlass) Color.Transparent else MaterialTheme.colorScheme.surfaceContainerLow,
+        border = if (MaterialTheme.isLiquidGlass) null else BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
         modifier = modifier
             .fillMaxWidth()
+            .then(
+                if (MaterialTheme.isLiquidGlass) {
+                    Modifier.liquidGlassCard(shape = RoundedCornerShape(18.dp), elevation = 8.dp)
+                } else Modifier
+            )
             .clickable(onClick = onClick)
     ) {
         Row(
@@ -2049,10 +2061,15 @@ fun GoogleCollectionItemCard(
 ) {
     Surface(
         shape = RoundedCornerShape(18.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
+        color = if (MaterialTheme.isLiquidGlass) Color.Transparent else MaterialTheme.colorScheme.surfaceContainerLow,
+        border = if (MaterialTheme.isLiquidGlass) null else BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
         modifier = Modifier
             .fillMaxWidth()
+            .then(
+                if (MaterialTheme.isLiquidGlass) {
+                    Modifier.liquidGlassCard(shape = RoundedCornerShape(18.dp), elevation = 8.dp)
+                } else Modifier
+            )
             .clickable(onClick = onClick)
     ) {
         Row(
@@ -2106,10 +2123,15 @@ fun GoogleStorageDeviceCard(
 ) {
     Surface(
         shape = RoundedCornerShape(18.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
+        color = if (MaterialTheme.isLiquidGlass) Color.Transparent else MaterialTheme.colorScheme.surfaceContainerLow,
+        border = if (MaterialTheme.isLiquidGlass) null else BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
         modifier = Modifier
             .fillMaxWidth()
+            .then(
+                if (MaterialTheme.isLiquidGlass) {
+                    Modifier.liquidGlassCard(shape = RoundedCornerShape(18.dp), elevation = 10.dp)
+                } else Modifier
+            )
             .clickable(onClick = onClick)
     ) {
         Column(modifier = Modifier.padding(14.dp)) {

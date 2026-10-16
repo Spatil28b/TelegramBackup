@@ -78,33 +78,37 @@ fun <T> MacDockBottomBar(
             .padding(horizontal = 16.dp, vertical = 8.dp),
         contentAlignment = Alignment.Center
     ) {
+        val isGlass = com.example.telegrambackup.theme.LocalIsLiquidGlass.current
+
         // macOS Dock Glass Capsule Container
         Box(
             modifier = Modifier
                 .shadow(
-                    elevation = 16.dp,
+                    elevation = if (isGlass) 14.dp else 16.dp,
                     shape = RoundedCornerShape(32.dp),
-                    spotColor = Color.Black.copy(alpha = 0.35f),
-                    ambientColor = Color.Black.copy(alpha = 0.15f)
+                    spotColor = if (isGlass) Color(0xFF6366F1).copy(alpha = 0.14f) else Color.Black.copy(alpha = 0.35f),
+                    ambientColor = if (isGlass) Color(0xFF818CF8).copy(alpha = 0.08f) else Color.Black.copy(alpha = 0.15f)
                 )
                 .clip(RoundedCornerShape(32.dp))
                 .background(
-                    Brush.verticalGradient(
-                        colors = listOf(
-                            MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.95f),
-                            MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.90f)
+                    if (isGlass) {
+                        com.example.telegrambackup.theme.liquidGlassSurfaceBrush(16.dp)
+                    } else {
+                        Brush.verticalGradient(
+                            colors = listOf(
+                                MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.95f),
+                                MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.90f)
+                            )
                         )
-                    )
+                    }
                 )
                 .border(
-                    width = 1.dp,
-                    brush = if (com.example.telegrambackup.theme.LocalIsLiquidGlass.current) {
-                        Brush.linearGradient(
-                            listOf(
-                                Color(0xFFE0F7FF).copy(alpha = 0.50f),
-                                MaterialTheme.colorScheme.primary.copy(alpha = 0.35f),
-                                MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.15f)
-                            )
+                    width = if (isGlass) 0.6.dp else 1.dp,
+                    brush = if (isGlass) {
+                        com.example.telegrambackup.theme.liquidGlassBorderBrush(
+                            highlightAlpha = 0.45f,
+                            accentAlpha = 0.18f,
+                            baseAlpha = 0.08f
                         )
                     } else {
                         androidx.compose.ui.graphics.SolidColor(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.30f))
@@ -127,6 +131,7 @@ fun <T> MacDockBottomBar(
                         item = item,
                         isSelected = isSelected,
                         labelMode = labelMode,
+                        isGlass = isGlass,
                         onClick = {
                             if (hapticFeedbackEnabled) {
                                 triggerDockHaptic(context, haptic)
@@ -145,6 +150,7 @@ private fun <T> MacDockItem(
     item: MacDockItemData<T>,
     isSelected: Boolean,
     labelMode: Int,
+    isGlass: Boolean = false,
     onClick: () -> Unit
 ) {
     // macOS Dock Bouncy Spring Physics Scale
@@ -174,16 +180,18 @@ private fun <T> MacDockItem(
     }
 
     val tileBgColor = if (isSelected) {
-        TelegramBlue.copy(alpha = 0.16f)
+        if (isGlass) Color(0xFF7DD3FC).copy(alpha = 0.14f) else TelegramBlue.copy(alpha = 0.16f)
     } else {
         Color.Transparent
     }
 
     val iconTint = if (isSelected) {
-        TelegramBlue
+        if (isGlass) Color(0xFF7DD3FC) else TelegramBlue
     } else {
         MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.78f)
     }
+
+    val indicatorColor = if (isGlass) Color(0xFF7DD3FC) else TelegramBlue
 
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -240,7 +248,7 @@ private fun <T> MacDockItem(
                 .width(indicatorWidth)
                 .clip(CircleShape)
                 .background(
-                    if (isSelected) TelegramBlue else Color.Transparent
+                    if (isSelected) indicatorColor else Color.Transparent
                 )
         )
     }

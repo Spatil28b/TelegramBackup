@@ -17,6 +17,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
@@ -55,6 +56,11 @@ import com.example.telegrambackup.data.AuthRepository
 import com.example.telegrambackup.data.UploadedFile
 import com.example.telegrambackup.theme.TelegramBackupTheme
 import com.example.telegrambackup.theme.TelegramBlue
+import com.example.telegrambackup.theme.isLiquidGlass
+import com.example.telegrambackup.theme.liquidGlassCard
+import com.example.telegrambackup.theme.liquidGlassPill
+import com.example.telegrambackup.theme.liquidGlassSurfaceBrush
+import com.example.telegrambackup.theme.liquidGlassBorderBrush
 import androidx.compose.animation.*
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
@@ -538,8 +544,18 @@ fun MainApp(
             drawerState = drawerState,
             drawerContent = {
                 ModalDrawerSheet(
-                    drawerContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-                    modifier = Modifier.width(320.dp)
+                    drawerContainerColor = if (MaterialTheme.isLiquidGlass) Color.Transparent else MaterialTheme.colorScheme.surfaceContainerLow,
+                    modifier = Modifier
+                        .width(320.dp)
+                        .then(
+                            if (MaterialTheme.isLiquidGlass) {
+                                Modifier.liquidGlassCard(
+                                    shape = RoundedCornerShape(topEnd = 28.dp, bottomEnd = 28.dp),
+                                    elevation = 16.dp,
+                                    highlightAlpha = 0.45f
+                                )
+                            } else Modifier
+                        )
                 ) {
                     Spacer(modifier = Modifier.height(24.dp))
 
@@ -845,19 +861,25 @@ fun MainApp(
                 modifier = Modifier
                     .fillMaxSize()
                     .nestedScroll(scrollNavBarConnection),
+                containerColor = if (MaterialTheme.isLiquidGlass) Color.Transparent else MaterialTheme.colorScheme.background,
                 topBar = {
                     val isCleanOrBrowseRoot = (selectedTab == MainTab.HOME || selectedTab == MainTab.FILES) && targetCategoryTitle == null
 
                     if (isCleanOrBrowseRoot) {
                         Surface(
                             shape = CircleShape,
-                            color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                            shadowElevation = 2.dp,
+                            color = if (MaterialTheme.isLiquidGlass) Color.Transparent else MaterialTheme.colorScheme.surfaceContainerHigh,
+                            shadowElevation = if (MaterialTheme.isLiquidGlass) 0.dp else 2.dp,
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(horizontal = 16.dp, vertical = 8.dp)
                                 .statusBarsPadding()
                                 .height(52.dp)
+                                .then(
+                                    if (MaterialTheme.isLiquidGlass) {
+                                        Modifier.liquidGlassPill(elevation = 10.dp)
+                                    } else Modifier
+                                )
                         ) {
                             Row(
                                 modifier = Modifier

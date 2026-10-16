@@ -23,6 +23,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.telegrambackup.theme.TelegramBlue
 import com.example.telegrambackup.theme.TelegramEmerald
+import com.example.telegrambackup.theme.isLiquidGlass
+import com.example.telegrambackup.theme.liquidGlassCard
+import com.example.telegrambackup.theme.liquidGlassPill
 
 /**
  * Computes Google Material 3 surface elevation token for card backgrounds:
@@ -30,24 +33,32 @@ import com.example.telegrambackup.theme.TelegramEmerald
  */
 @Composable
 fun spotiGroupCardColor(): Color {
-    return MaterialTheme.colorScheme.surfaceContainerLow
+    return if (MaterialTheme.isLiquidGlass) Color.Transparent else MaterialTheme.colorScheme.surfaceContainerLow
 }
 
 /**
  * Settings Group Card Container
- * Encloses related settings in a unified, beautifully rounded Material 3 surfaceContainerLow card.
+ * Encloses related settings in a unified, beautifully rounded Material 3 surfaceContainerLow card,
+ * or translucent liquid glass card with specular refraction when Liquid Glass is active.
  */
 @Composable
 fun SpotiSettingsGroup(
     modifier: Modifier = Modifier,
     children: @Composable ColumnScope.() -> Unit
 ) {
+    val isGlass = MaterialTheme.isLiquidGlass
     val borderColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)
     Surface(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier
+            .fillMaxWidth()
+            .then(
+                if (isGlass) {
+                    Modifier.liquidGlassCard(shape = RoundedCornerShape(20.dp), elevation = 8.dp)
+                } else Modifier
+            ),
         shape = RoundedCornerShape(20.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
-        border = BorderStroke(1.dp, borderColor)
+        color = if (isGlass) Color.Transparent else MaterialTheme.colorScheme.surfaceContainerLow,
+        border = if (isGlass) null else BorderStroke(1.dp, borderColor)
     ) {
         Column(
             modifier = Modifier.fillMaxWidth(),
@@ -429,11 +440,18 @@ fun SpotiSearchField(
     modifier: Modifier = Modifier,
     placeholder: String = "Search settings, rules, features..."
 ) {
+    val isGlass = MaterialTheme.isLiquidGlass
     Surface(
         shape = CircleShape,
-        color = MaterialTheme.colorScheme.surfaceContainerHigh,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.30f)),
-        modifier = modifier.fillMaxWidth()
+        color = if (isGlass) Color.Transparent else MaterialTheme.colorScheme.surfaceContainerHigh,
+        border = if (isGlass) null else BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.30f)),
+        modifier = modifier
+            .fillMaxWidth()
+            .then(
+                if (isGlass) {
+                    Modifier.liquidGlassPill(elevation = 6.dp)
+                } else Modifier
+            )
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
