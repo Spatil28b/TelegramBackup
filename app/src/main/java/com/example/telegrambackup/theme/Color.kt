@@ -146,39 +146,39 @@ val MochaTextPrimary = Color(0xFFFEF3C7)
 val MochaTextSecondary = Color(0xFFFDE68A)
 
 // =====================================================================================
-// 12. Liquid Glass Material Palette (iOS 26 / VisionOS Spatial Glassmorphism) — v2
+// 12. Liquid Glass Material Palette (iOS 26 / VisionOS Spatial Glassmorphism) — v2.1
 // =====================================================================================
-// v2 tuning: deeper indigo-black background, higher surface alphas for visible frosted
-// layers, warmer specular glow, neutral silver borders instead of neon cyan.
+// Enhanced: Crystal-clear text contrast, crisp opaque outline for metadata/icons,
+// high-opacity frosted glass layers that prevent orb wash-out while preserving fluid glow.
 
-val LiquidGlassPrimary = Color(0xFF7DD3FC)            // Sky-cyan — luminous, not neon
-val LiquidGlassOnPrimary = Color(0xFF00131F)           // Deep ocean contrast
-val LiquidGlassPrimaryContainer = Color(0x4D0EA5E9)    // 30% translucent sky container (was 25%)
-val LiquidGlassOnPrimaryContainer = Color(0xFFE0F7FF)
-val LiquidGlassSecondary = Color(0xFFC4B5FD)           // Wisteria lavender
-val LiquidGlassOnSecondary = Color(0xFF1A0B30)
-val LiquidGlassSecondaryContainer = Color(0x4D7C3AED)  // 30% translucent violet (was 24%)
-val LiquidGlassOnSecondaryContainer = Color(0xFFF3EEFF)
-val LiquidGlassTertiary = Color(0xFF67E8F9)            // Cyan-300: crystalline accent
-val LiquidGlassOnTertiary = Color(0xFF001B24)
-val LiquidGlassTertiaryContainer = Color(0x400891B2)   // 25% (was 20%)
-val LiquidGlassOnTertiaryContainer = Color(0xFFA5F3FC)
+val LiquidGlassPrimary = Color(0xFF38BDF8)            // Sky-cyan — luminous, crisp
+val LiquidGlassOnPrimary = Color(0xFF001E2B)           // High-contrast deep navy
+val LiquidGlassPrimaryContainer = Color(0x590284C7)    // 35% translucent azure container
+val LiquidGlassOnPrimaryContainer = Color(0xFFF0F9FF)
+val LiquidGlassSecondary = Color(0xFFA78BFA)           // Lavender violet
+val LiquidGlassOnSecondary = Color(0xFF1E1138)
+val LiquidGlassSecondaryContainer = Color(0x597C3AED)  // 35% translucent violet
+val LiquidGlassOnSecondaryContainer = Color(0xFFFAF5FF)
+val LiquidGlassTertiary = Color(0xFF2DD4BF)            // Crisp crystalline teal
+val LiquidGlassOnTertiary = Color(0xFF00201A)
+val LiquidGlassTertiaryContainer = Color(0x4D0D9488)   // 30% teal container
+val LiquidGlassOnTertiaryContainer = Color(0xFFCCFBF1)
 
-// Background & Surface — richer indigo-black base; glass layers use higher alpha
-val LiquidGlassBackground = Color(0xFF080E1E)          // Deeper indigo-black (richer blue undertone)
-val LiquidGlassOnBackground = Color(0xFFEFF4F8)        // Slightly warmer than pure white
-val LiquidGlassSurface = Color(0x591E2D55)             // 35% frosted navy glass (was 30%)
-val LiquidGlassOnSurface = Color(0xFFF8FAFC)
-val LiquidGlassSurfaceVariant = Color(0x662A3E6B)      // 40% elevated slab (was 35%)
-val LiquidGlassOnSurfaceVariant = Color(0xFFCBD5E1)
-val LiquidGlassSurfaceContainerLowest = Color(0x330F1A33) // 20% deepest glass floor (was 15%)
-val LiquidGlassSurfaceContainerLow = Color(0x4D1A2D52)    // 30% frosted card (was 24%)
-val LiquidGlassSurfaceContainer = Color(0x591E3461)        // 35% standard glass card (was 30%)
-val LiquidGlassSurfaceContainerHigh = Color(0x66253F72)    // 40% elevated modal (was 36%)
-val LiquidGlassSurfaceContainerHighest = Color(0x80304D85) // 50% high-contrast glass (was 45%)
-val LiquidGlassOutline = Color(0x66CBD5E1)              // 40% cool silver edge (was 48% cyan — too colored)
-val LiquidGlassOutlineVariant = Color(0x59C4D6ED)       // 35% silver glass bevel (was 40%)
-val LiquidGlassSpecularHighlight = Color(0xEBFFFFFF)    // 92% white rim glow — brighter but narrow (was 80%)
+// Background & Surface — deep obsidian crystal base; frosted glass with high opacity (65-80%)
+val LiquidGlassBackground = Color(0xFF050914)          // Deep obsidian crystal indigo-black
+val LiquidGlassOnBackground = Color(0xFFFFFFFF)        // 100% pure crisp white
+val LiquidGlassSurface = Color(0xB8111D38)             // ~72% frosted obsidian-navy glass
+val LiquidGlassOnSurface = Color(0xFFFFFFFF)           // 100% pure crisp white (maximum contrast)
+val LiquidGlassSurfaceVariant = Color(0xC4172545)      // ~77% elevated slab
+val LiquidGlassOnSurfaceVariant = Color(0xFFE2E8F0)    // High contrast slate-100 (razor-sharp text)
+val LiquidGlassSurfaceContainerLowest = Color(0x800A1224) // 50% deepest glass floor
+val LiquidGlassSurfaceContainerLow = Color(0xA60E1A33)    // 65% frosted card
+val LiquidGlassSurfaceContainer = Color(0xB8132242)        // 72% standard glass card
+val LiquidGlassSurfaceContainerHigh = Color(0xCC1A2C52)    // 80% elevated modal
+val LiquidGlassSurfaceContainerHighest = Color(0xE6223766) // 90% top modal/sheet
+val LiquidGlassOutline = Color(0xFF94A3B8)              // 100% opaque cool silver slate (for icons/labels/sizes!)
+val LiquidGlassOutlineVariant = Color(0x59CBD5E1)       // 35% silver glass bevel (for borders)
+val LiquidGlassSpecularHighlight = Color(0xFFFFFFFF)    // 100% pure white specular rim catch
 
 // Error & inverse tokens
 val LiquidGlassError = Color(0xFFFDA4AF)
@@ -188,3 +188,4 @@ val LiquidGlassOnErrorContainer = Color(0xFFFECDD3)
 val LiquidGlassInverseSurface = Color(0xFFE2E8F0)
 val LiquidGlassInverseOnSurface = Color(0xFF1E293B)
 val LiquidGlassInversePrimary = Color(0xFF0369A1)
+

@@ -31,35 +31,35 @@ object VersionChangelogProvider {
             versionName = "2.6.6",
             versionCode = 144,
             releaseDate = "October 2026",
-            highlights = "Refined Liquid Glass Material Aesthetics, Zero-Occlusion Spatial Illumination, Translucent Drive & Settings Cards & Silver Specular Highlights",
+            highlights = "GPU-Accelerated 120 FPS Fluid Engine, Hardware Gaussian Blur, Crystal-Clear Text Contrast & Organic Liquid Caustics",
             entries = listOf(
                 ChangelogEntry(
-                    Icons.Default.AutoAwesome,
-                    Color(0xFF7DD3FC),
-                    "Liquid Glass Material System v2",
-                    "Redesigned Liquid Glass theme with 5-tier fluid spatial illumination, rich indigo-black obsidian depth, and visible frosted glass cards across all screens.",
-                    "DESIGN"
+                    Icons.Default.Speed,
+                    Color(0xFF38BDF8),
+                    "120 FPS GPU-Accelerated Fluid Engine",
+                    "Re-engineered ambient liquid canvas using RenderNode transforms and memoized gradient shaders, eliminating per-frame allocations for buttery smooth scrolling.",
+                    "PERFORMANCE"
                 ),
                 ChangelogEntry(
                     Icons.Default.BlurOn,
                     Color(0xFF818CF8),
-                    "Zero-Occlusion Ambient Canvas",
-                    "Resolved root background occlusion bug where Scaffold and container surfaces covered animated light orbs, allowing caustics to dynamically shine through translucent cards.",
-                    "FIX"
+                    "Hardware Gaussian Blur (Android 12+)",
+                    "Applied native RenderEffect Gaussian blur on ambient fluid pools, melting caustics into a seamless, organic glowing liquid plasma.",
+                    "VISUAL"
                 ),
                 ChangelogEntry(
-                    Icons.Default.Settings,
-                    Color(0xFF38BDF8),
-                    "Glassmorphic Settings & Drive Explorer",
-                    "Extended liquid glass styling to Settings group cards, Drive Explorer storage overview, file grid/list items, and breadcrumb navigation bars.",
-                    "POLISH"
+                    Icons.Default.Visibility,
+                    Color(0xFF2DD4BF),
+                    "Crystal-Clear Contrast & Readability",
+                    "Tuned frosted glass surfaces to 68-78% opacity with pure white typography, guaranteeing razor-sharp text visibility without background orb wash-out.",
+                    "ACCESSIBILITY"
                 ),
                 ChangelogEntry(
                     Icons.Default.Palette,
-                    Color(0xFFC4B5FD),
-                    "Refined Specular Silver Bevels",
-                    "Replaced harsh neon cyan border glows with authentic beveled specular silver-to-white light refraction gradients and soft ambient indigo drop shadows.",
-                    "AESTHETICS"
+                    Color(0xFFA78BFA),
+                    "Crisp Metadata & Silver Bevels",
+                    "Restored full opacity to file size labels, search icons, and options chevrons with cool slate-silver outlines and directional specular bevel borders.",
+                    "POLISH"
                 )
             )
         ),
