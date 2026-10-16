@@ -28,6 +28,49 @@ object VersionChangelogProvider {
 
     private val releases = listOf(
         VersionRelease(
+            versionName = "2.6.7",
+            versionCode = 145,
+            releaseDate = "October 2026",
+            highlights = "Liquid Glass 120 FPS Fluid Engine, Hardware Gaussian Blur, High-Contrast Frosted Surfaces & In-App Dynamic Updater Sync",
+            entries = listOf(
+                ChangelogEntry(
+                    Icons.Default.Speed,
+                    Color(0xFF38BDF8),
+                    "120 FPS GPU-Accelerated Fluid Engine",
+                    "Re-engineered ambient liquid canvas using RenderNode transforms and memoized gradient shaders, eliminating per-frame allocations for buttery smooth scrolling.",
+                    "PERFORMANCE"
+                ),
+                ChangelogEntry(
+                    Icons.Default.BlurOn,
+                    Color(0xFF818CF8),
+                    "Hardware Gaussian Blur (Android 12+)",
+                    "Applied native RenderEffect Gaussian blur on ambient fluid pools, melting caustics into a seamless, organic glowing liquid plasma.",
+                    "VISUAL"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Visibility,
+                    Color(0xFF2DD4BF),
+                    "Crystal-Clear Contrast & Readability",
+                    "Tuned frosted glass surfaces to 68-78% opacity with pure white typography, guaranteeing razor-sharp text visibility without background orb wash-out.",
+                    "ACCESSIBILITY"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Palette,
+                    Color(0xFFA78BFA),
+                    "Crisp Metadata & Silver Bevels",
+                    "Restored full opacity to file size labels, search icons, and options chevrons with cool slate-silver outlines and directional specular bevel borders.",
+                    "POLISH"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Sync,
+                    Color(0xFF34D399),
+                    "Dynamic In-App Updater Sync",
+                    "Synchronized the in-app update channel with the latest v2.6.7 binaries and instant prompt delivery.",
+                    "UPDATER"
+                )
+            )
+        ),
+        VersionRelease(
             versionName = "2.6.6",
             versionCode = 144,
             releaseDate = "October 2026",
