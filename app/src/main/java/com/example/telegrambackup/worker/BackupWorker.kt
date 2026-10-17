@@ -29,6 +29,8 @@ import com.example.telegrambackup.utils.TelegramApiConfig
 import com.example.telegrambackup.utils.TelegramFileVerifier
 import com.example.telegrambackup.utils.SettingsDbManager
 import com.example.telegrambackup.utils.UploadItemProgress
+import com.example.telegrambackup.utils.VideoCompressor
+import com.example.telegrambackup.worker.OcrIndexingWorker
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
@@ -442,28 +444,43 @@ class BackupWorker(
                                 val targetChannel = BotFleetManager.resolveDestinationChannel(applicationContext, fileCategory)
                                 val destinationChatId = targetChannel.chatId.ifBlank { chatId }
 
-                                // Step 8a: Optionally encrypt file before splitting into chunks
-                                val isEncrypted = prefs.encryptionEnabled
-                                val fileToUpload: File
-                                if (isEncrypted) {
-                                    val freeSpace = tempDir.usableSpace
-                                    val neededSpace = (file.length() * 1.1).toLong()
-                                    if (freeSpace in 1 until neededSpace) {
-                                        Log.w(TAG, "Storage guard: insufficient space in cacheDir for ${file.name}. Usable: $freeSpace, Needed: $neededSpace. Skipping to prevent crash.")
-                                        failCount.incrementAndGet()
-                                        return@withPermit
+                                // Step 8a: Hardware-Accelerated Video Compression (P3)
+                                var effectiveSourceFile = file
+                                var compressedVideoFile: File? = null
+                                if (fileCategory == "VIDEOS" && prefs.compressVideosBeforeUpload && file.length() > 5 * 1024 * 1024) {
+                                    val safeCompId = System.currentTimeMillis() + (file.hashCode().toLong() and 0x7FFFFFFF)
+                                    val compTarget = File(tempDir, "${safeCompId}_comp.mp4")
+                                    val compSuccess = VideoCompressor.compressVideo(file, compTarget)
+                                    if (compSuccess && compTarget.exists() && compTarget.length() < file.length()) {
+                                        compressedVideoFile = compTarget
+                                        effectiveSourceFile = compTarget
+                                        Log.d(TAG, "Hardware video compression active: ${file.name} compressed to ${formatFileSize(compTarget.length())}")
                                     }
-                                    val safeId = System.currentTimeMillis() + (file.hashCode().toLong() and 0x7FFFFFFF)
-                                    val encryptedFile = File(tempDir, "${safeId}_${file.name}.enc")
-                                    FileEncryptor.encryptFile(file, encryptedFile, prefs.encryptionKey)
-                                    encryptedTempFile = encryptedFile
-                                    fileToUpload = encryptedFile
-                                } else {
-                                    fileToUpload = file
                                 }
 
-                                // Step 8b: Calculate total 4 MB chunks required
-                                val totalChunks = FileChunker.getChunkCount(fileToUpload)
+                                // Step 8b: Zero-Disk Streaming AES-256-GCM / CTR Nonce derivation (P0)
+                                val isEncrypted = prefs.encryptionEnabled
+                                val encryptionNonce = if (isEncrypted) {
+                                    FileEncryptor.generateDeterministicNonce(effectiveSourceFile, prefs.encryptionKey)
+                                } else {
+                                    null
+                                }
+
+                                // Storage guard: Only needs 20 MB buffer for active transient 4 MB chunks!
+                                val freeSpace = tempDir.usableSpace
+                                if (freeSpace in 1 until (20 * 1024 * 1024L)) {
+                                    Log.w(TAG, "Storage guard: insufficient space in cacheDir for ${file.name}. Usable: $freeSpace. Skipping to prevent crash.")
+                                    failCount.incrementAndGet()
+                                    compressedVideoFile?.delete()
+                                    return@withPermit
+                                }
+
+                                // Step 8c: Calculate total 4 MB chunks required (zero-disk streaming)
+                                val totalChunks = if (isEncrypted) {
+                                    FileEncryptor.getEncryptedChunkCount(effectiveSourceFile.length())
+                                } else {
+                                    FileChunker.getChunkCount(effectiveSourceFile)
+                                }
                                 val isChunked = totalChunks > 1
 
                                 // Acquire size-tiered rotating bot pool for parallel chunk distribution
@@ -523,7 +540,17 @@ class BackupWorker(
                                                 BotFleetManager.acquireBot(botTokenToUse)
                                                 BackupProgressTracker.onBotStartedWork(botTokenToUse, allBotsCount)
                                                 try {
-                                                    FileChunker.extractSingleChunk(fileToUpload, chunkIdx, chunkTempFile)
+                                                    if (isEncrypted && encryptionNonce != null) {
+                                                        FileEncryptor.extractEncryptedChunk(
+                                                            sourceFile = effectiveSourceFile,
+                                                            chunkIndex = chunkIdx,
+                                                            outputChunkFile = chunkTempFile,
+                                                            secretKey = prefs.encryptionKey,
+                                                            nonce = encryptionNonce
+                                                        )
+                                                    } else {
+                                                        FileChunker.extractSingleChunk(effectiveSourceFile, chunkIdx, chunkTempFile)
+                                                    }
 
                                                     val caption = if (isChunked) {
                                                         "📦 ${file.name} [Part $chunkIdx/$totalChunks]"
@@ -540,7 +567,7 @@ class BackupWorker(
                                                         totalChunks = totalChunks,
                                                         sourceFilePath = file.absolutePath,
                                                         sourceFileName = file.name,
-                                                        sourceFileSize = file.length(),
+                                                        sourceFileSize = effectiveSourceFile.length(),
                                                         completedFiles = successCount.get(),
                                                         totalFiles = unbackedFiles.size,
                                                         secretKey = prefs.encryptionKey
@@ -584,6 +611,9 @@ class BackupWorker(
                                     workers.joinAll()
                                 }
 
+                                compressedVideoFile?.let {
+                                    if (it.exists()) it.delete()
+                                }
                                 encryptedTempFile?.let {
                                     if (it.exists()) it.delete()
                                 }
@@ -638,6 +668,11 @@ class BackupWorker(
                                     }
                                 }
                                 uploadedDao.insert(entity)
+                                try {
+                                    if (fileCategory == "PHOTOS" || fileCategory == "DOCUMENTS") {
+                                        OcrIndexingWorker.indexSingleFile(applicationContext, file)
+                                    }
+                                } catch (_: Exception) {}
                                 // Retain chunk records in chunk_upload_progress so multi-part files can be downloaded/streamed complete
 
                                 if (userEmail.isNotEmpty()) {

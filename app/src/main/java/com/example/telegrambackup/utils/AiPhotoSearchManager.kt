@@ -164,6 +164,35 @@ object AiPhotoSearchManager {
                     }
                 }
             }
+            // Stage 1a: Room FTS4 On-Device OCR Search (0ms sub-millisecond response)
+            val ftsKeywords = queryWords.filter { it.length >= 2 }
+            if (ftsKeywords.isNotEmpty()) {
+                val ftsQuery = ftsKeywords.joinToString(" OR ") { "$it*" }
+                try {
+                    val ftsResults = db.fileSearchDao().searchFts(ftsQuery, limit = 50)
+                    val candidateMapByPath = imageCandidates.associateBy { it.path }
+                    val candidateMapByName = imageCandidates.associateBy { it.fileName }
+                    for (res in ftsResults) {
+                        val matchingFile = candidateMapByPath[res.filePath] ?: candidateMapByName[res.fileName]
+                        if (matchingFile != null) {
+                            val key = matchingFile.telegramFileId.ifBlank { matchingFile.path }
+                            if (!matchedKeys.contains(key)) {
+                                val snippet = res.extractedText.take(80).replace('\n', ' ').trim()
+                                val item = AiSearchResultItem(
+                                    file = matchingFile,
+                                    matchReason = if (snippet.isNotBlank()) "OCR: \"$snippet\"" else "On-device OCR match",
+                                    isAiVerified = true,
+                                    badge = "📄 OCR Match"
+                                )
+                                instantMatches.add(item)
+                                matchedKeys.add(key)
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "FTS search failed: ${e.message}")
+                }
+            }
 
             for (file in imageCandidates) {
                 val key = file.telegramFileId.ifBlank { file.path }

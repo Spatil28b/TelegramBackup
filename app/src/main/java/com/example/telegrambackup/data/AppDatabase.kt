@@ -15,9 +15,10 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         ChunkProgressEntity::class,
         TelegramBotEntity::class,
         TelegramChannelEntity::class,
-        NetworkAnalysisEntity::class
+        NetworkAnalysisEntity::class,
+        FileSearchIndex::class
     ],
-    version = 12,
+    version = 13,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -27,6 +28,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun telegramBotDao(): TelegramBotDao
     abstract fun telegramChannelDao(): TelegramChannelDao
     abstract fun networkAnalysisDao(): NetworkAnalysisDao
+    abstract fun fileSearchDao(): FileSearchDao
 
     companion object {
         private const val TAG = "AppDatabase"
@@ -151,6 +153,25 @@ abstract class AppDatabase : RoomDatabase() {
                     db.execSQL("ALTER TABLE `uploaded_files` ADD COLUMN `chunksJson` TEXT NOT NULL DEFAULT ''")
                 } catch (e: Exception) {
                     Log.w(TAG, "Column chunksJson already exists or failed: ${e.message}")
+                }
+            }
+        }
+
+        private val MIGRATION_12_13 = object : Migration(12, 13) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                try {
+                    db.execSQL("""
+                        CREATE VIRTUAL TABLE IF NOT EXISTS `file_search_index` USING FTS4(
+                            `filePath` TEXT NOT NULL,
+                            `fileName` TEXT NOT NULL,
+                            `extractedText` TEXT NOT NULL,
+                            `tags` TEXT NOT NULL,
+                            `category` TEXT NOT NULL,
+                            `indexedAt` INTEGER NOT NULL
+                        )
+                    """.trimIndent())
+                } catch (e: Exception) {
+                    Log.w(TAG, "FTS table migration failed: ${e.message}")
                 }
             }
         }
@@ -280,6 +301,20 @@ abstract class AppDatabase : RoomDatabase() {
                 try { db.execSQL("CREATE INDEX IF NOT EXISTS `index_uploaded_files_fileName` ON `uploaded_files` (`fileName`)") } catch (e: Exception) { Log.w(TAG, "Index failed: ${e.message}") }
                 try { db.execSQL("CREATE INDEX IF NOT EXISTS `index_uploaded_files_deletedAt` ON `uploaded_files` (`deletedAt`)") } catch (e: Exception) { Log.w(TAG, "Index failed: ${e.message}") }
                 try { db.execSQL("CREATE INDEX IF NOT EXISTS `index_uploaded_files_telegramFileId` ON `uploaded_files` (`telegramFileId`)") } catch (e: Exception) { Log.w(TAG, "Index failed: ${e.message}") }
+                try {
+                    db.execSQL("""
+                        CREATE VIRTUAL TABLE IF NOT EXISTS `file_search_index` USING FTS4(
+                            `filePath` TEXT NOT NULL,
+                            `fileName` TEXT NOT NULL,
+                            `extractedText` TEXT NOT NULL,
+                            `tags` TEXT NOT NULL,
+                            `category` TEXT NOT NULL,
+                            `indexedAt` INTEGER NOT NULL
+                        )
+                    """.trimIndent())
+                } catch (e: Exception) {
+                    Log.w(TAG, "FTS table creation failed: ${e.message}")
+                }
             } catch (e: Exception) {
                 Log.w(TAG, "createAllTablesAndIndexes failed: ${e.message}")
             }
@@ -371,8 +406,10 @@ abstract class AppDatabase : RoomDatabase() {
                     MIGRATION_8_9,
                     MIGRATION_9_10,
                     MIGRATION_10_11,
-                    MIGRATION_11_12
+                    MIGRATION_11_12,
+                    MIGRATION_12_13
                 )
+                .fallbackToDestructiveMigrationOnDowngrade()
                 .addCallback(object : RoomDatabase.Callback() {
                     override fun onOpen(db: SupportSQLiteDatabase) {
                         super.onOpen(db)

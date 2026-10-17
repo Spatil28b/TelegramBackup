@@ -149,6 +149,9 @@ class MainActivity : FragmentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        try {
+            com.example.telegrambackup.worker.OcrIndexingWorker.schedulePeriodicOcrIndexing(this)
+        } catch (_: Exception) {}
 
         setContent {
             val context = LocalContext.current

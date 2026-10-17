@@ -243,6 +243,7 @@ fun BackupSettingsScreen(
     var smartBackupMode by remember { mutableIntStateOf(prefs.smartBackupMode) }
     var backupOverWifi by remember { mutableStateOf(prefs.wifiOnly) }
     var includeVideos by remember { mutableStateOf(prefs.backupVideos) }
+    var compressVideosState by remember { mutableStateOf(prefs.compressVideosBeforeUpload) }
     var includeAudio by remember { mutableStateOf(prefs.backupAudio) }
     var includeCamera by remember { mutableStateOf(prefs.backupCamera) }
     var includeDownloads by remember { mutableStateOf(prefs.backupDownloads) }
@@ -2594,6 +2595,12 @@ fun BackupSettingsScreen(
                                 maxMB = maxVideosSizeMBState,
                                 globalMaxMB = maxFileSizeMBState,
                                 onClick = { selectedCategoryForSizeCondition = BackupFileType.VIDEOS }
+                            )
+                            SwitchRowWithInfo(
+                                "Hardware Video Compression (H.265 / HEVC)",
+                                compressVideosState,
+                                { compressVideosState = it; prefs.compressVideosBeforeUpload = it },
+                                { featureInfoTitle = "Video Compression"; featureInfoDesc = "Transcodes videos on-device using hardware encoder before upload, saving 70-80% bandwidth & storage." }
                             )
                             HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
                             

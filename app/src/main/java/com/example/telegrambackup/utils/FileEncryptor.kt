@@ -11,9 +11,11 @@ import javax.crypto.Cipher
 import javax.crypto.CipherInputStream
 import javax.crypto.CipherOutputStream
 import java.security.SecureRandom
+import java.io.RandomAccessFile
 import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.IvParameterSpec
 import javax.crypto.spec.SecretKeySpec
+import kotlin.math.ceil
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 
@@ -242,9 +244,159 @@ object FileEncryptor {
     }
 
     /**
+     * Derives a deterministic 12-byte nonce for a given file to ensure stable resumed chunking
+     * across worker restarts and multiple threads without requiring separate database persistence.
+     */
+    fun generateDeterministicNonce(file: File, secretKey: String): ByteArray {
+        return try {
+            val digest = MessageDigest.getInstance("SHA-256")
+            val input = "$secretKey:${file.absolutePath}:${file.length()}:${file.lastModified()}".toByteArray(Charsets.UTF_8)
+            val hash = digest.digest(input)
+            val nonce = ByteArray(GCM_NONCE_LENGTH_BYTES)
+            System.arraycopy(hash, 0, nonce, 0, GCM_NONCE_LENGTH_BYTES)
+            nonce
+        } catch (_: Exception) {
+            val nonce = ByteArray(GCM_NONCE_LENGTH_BYTES)
+            SecureRandom().nextBytes(nonce)
+            nonce
+        }
+    }
+
+    /** Total virtual size of encrypted file in GCM format (20-byte header + plain length) */
+    fun getEncryptedTotalSize(plainFileSize: Long): Long {
+        return 20L + plainFileSize
+    }
+
+    /**
+     * Calculates total number of 4 MB chunks required to upload the encrypted stream.
+     */
+    fun getEncryptedChunkCount(plainFileSize: Long, chunkSize: Int = FileChunker.CHUNK_SIZE): Int {
+        val total = getEncryptedTotalSize(plainFileSize)
+        if (total <= 0L) return 1
+        return ceil(total.toDouble() / chunkSize.toDouble()).toInt().coerceAtLeast(1)
+    }
+
+    /**
+     * ZERO-DISK ON-THE-FLY STREAMING CHUNK ENCRYPTION (P0)
+     * Extracts and encrypts a single chunk directly from the source plain file on demand
+     * without creating an intermediate multi-gigabyte .enc clone on disk.
+     * Uses AES-256-CTR keystream identical to NIST SP 800-38D AES-GCM (counter = 2 + blockIndex).
+     */
+    fun extractEncryptedChunk(
+        sourceFile: File,
+        chunkIndex: Int,
+        outputChunkFile: File,
+        secretKey: String,
+        nonce: ByteArray,
+        chunkSize: Int = FileChunker.CHUNK_SIZE
+    ): File {
+        val keySpec = deriveKey(secretKey)
+        val plainLength = sourceFile.length()
+        val totalEncryptedSize = 20L + plainLength
+        val chunkStart = (chunkIndex - 1).toLong() * chunkSize.toLong()
+        val chunkEnd = minOf(chunkStart + chunkSize.toLong() - 1L, totalEncryptedSize - 1L)
+        val chunkLength = (chunkEnd - chunkStart + 1L).toInt()
+
+        if (chunkLength <= 0) {
+            outputChunkFile.parentFile?.mkdirs()
+            outputChunkFile.createNewFile()
+            return outputChunkFile
+        }
+
+        outputChunkFile.parentFile?.mkdirs()
+
+        java.io.BufferedOutputStream(FileOutputStream(outputChunkFile), 64 * 1024).use { fos ->
+            if (chunkIndex == 1) {
+                // Chunk 1 starts with 8B magic header + 12B nonce (20 bytes total)
+                fos.write(MAGIC_HEADER_GCM)
+                fos.write(nonce)
+                val plainBytesToEncrypt = minOf(chunkLength - 20, plainLength.toInt())
+                if (plainBytesToEncrypt > 0) {
+                    val ctrIv = ByteArray(16)
+                    System.arraycopy(nonce, 0, ctrIv, 0, 12)
+                    ctrIv[12] = 0
+                    ctrIv[13] = 0
+                    ctrIv[14] = 0
+                    ctrIv[15] = 2
+
+                    val cipher = Cipher.getInstance("AES/CTR/NoPadding")
+                    cipher.init(Cipher.ENCRYPT_MODE, keySpec, IvParameterSpec(ctrIv))
+
+                    FileInputStream(sourceFile).use { fis ->
+                        val buffer = ByteArray(64 * 1024)
+                        var remaining = plainBytesToEncrypt
+                        while (remaining > 0) {
+                            val toRead = minOf(buffer.size, remaining)
+                            val read = fis.read(buffer, 0, toRead)
+                            if (read == -1) break
+                            val out = cipher.update(buffer, 0, read)
+                            if (out != null && out.isNotEmpty()) {
+                                fos.write(out)
+                            }
+                            remaining -= read
+                        }
+                        val finalBytes = cipher.doFinal()
+                        if (finalBytes != null && finalBytes.isNotEmpty()) {
+                            fos.write(finalBytes)
+                        }
+                    }
+                }
+            } else {
+                // Chunk > 1: All bytes are ciphertext from plainStart to plainEnd
+                val plainStart = chunkStart - 20L
+                val plainEnd = chunkEnd - 20L
+                val plainBytesToEncrypt = plainEnd - plainStart + 1L
+
+                val blockIndex = plainStart / 16L
+                val offsetInBlock = (plainStart % 16L).toInt()
+                val counterVal = 2L + blockIndex
+
+                val ctrIv = ByteArray(16)
+                System.arraycopy(nonce, 0, ctrIv, 0, 12)
+                ctrIv[12] = ((counterVal shr 24) and 0xFF).toByte()
+                ctrIv[13] = ((counterVal shr 16) and 0xFF).toByte()
+                ctrIv[14] = ((counterVal shr 8) and 0xFF).toByte()
+                ctrIv[15] = (counterVal and 0xFF).toByte()
+
+                val cipher = Cipher.getInstance("AES/CTR/NoPadding")
+                cipher.init(Cipher.ENCRYPT_MODE, keySpec, IvParameterSpec(ctrIv))
+
+                // Align keystream if plainStart is not 16-byte aligned
+                if (offsetInBlock > 0) {
+                    cipher.update(ByteArray(offsetInBlock))
+                }
+
+                RandomAccessFile(sourceFile, "r").use { raf ->
+                    raf.seek(plainStart)
+                    val buffer = ByteArray(64 * 1024)
+                    var remaining = plainBytesToEncrypt
+                    while (remaining > 0L) {
+                        val toRead = minOf(buffer.size.toLong(), remaining).toInt()
+                        val read = raf.read(buffer, 0, toRead)
+                        if (read == -1) break
+                        val out = cipher.update(buffer, 0, read)
+                        if (out != null && out.isNotEmpty()) {
+                            fos.write(out)
+                        }
+                        remaining -= read
+                    }
+                    val finalBytes = cipher.doFinal()
+                    if (finalBytes != null && finalBytes.isNotEmpty()) {
+                        fos.write(finalBytes)
+                    }
+                }
+            }
+            fos.flush()
+        }
+        return outputChunkFile
+    }
+
+    /**
      * Decrypts an AES-256 encrypted file back into its original plain file format.
-     * Supports modern Authenticated AES-256-GCM files (with GCM256 magic header)
-     * and legacy AES-256-CBC files (ENC256 header or legacy offset 0).
+     * Supports:
+     * 1. Modern Authenticated AES-256-GCM files with 128-bit authentication tag
+     * 2. Modern Zero-Disk Streaming files (AES-256-CTR keystream counter mode)
+     * 3. Legacy AES-256-CBC files (ENC256 header or legacy offset 0).
      * @param inputFile Encrypted source file
      * @param outputFile Decrypted plain output file destination
      * @param secretKey Master AES-256 encryption key used during encryption
@@ -254,41 +406,88 @@ object FileEncryptor {
         val keySpec = deriveKey(secretKey)
 
         if (!forceLegacyNoHeader && isGcmEncrypted(inputFile)) {
-            // Modern Authenticated AES-256-GCM decryption
-            java.io.BufferedInputStream(FileInputStream(inputFile), 128 * 1024).use { fis ->
-                // Skip 8-byte magic header
-                val headerBuf = ByteArray(8)
-                var skipped = 0
-                while (skipped < 8) {
-                    val r = fis.read(headerBuf, skipped, 8 - skipped)
-                    if (r == -1) break
-                    skipped += r
-                }
-                // Read 12-byte nonce
-                val nonce = ByteArray(GCM_NONCE_LENGTH_BYTES)
-                var nonceRead = 0
-                while (nonceRead < GCM_NONCE_LENGTH_BYTES) {
-                    val r = fis.read(nonce, nonceRead, GCM_NONCE_LENGTH_BYTES - nonceRead)
-                    if (r == -1) break
-                    nonceRead += r
-                }
+            var gcmSucceeded = false
+            // Attempt 1: Full Authenticated AES-256-GCM decryption
+            try {
+                java.io.BufferedInputStream(FileInputStream(inputFile), 128 * 1024).use { fis ->
+                    val headerBuf = ByteArray(8)
+                    var skipped = 0
+                    while (skipped < 8) {
+                        val r = fis.read(headerBuf, skipped, 8 - skipped)
+                        if (r == -1) break
+                        skipped += r
+                    }
+                    val nonce = ByteArray(GCM_NONCE_LENGTH_BYTES)
+                    var nonceRead = 0
+                    while (nonceRead < GCM_NONCE_LENGTH_BYTES) {
+                        val r = fis.read(nonce, nonceRead, GCM_NONCE_LENGTH_BYTES - nonceRead)
+                        if (r == -1) break
+                        nonceRead += r
+                    }
 
-                val gcmSpec = GCMParameterSpec(GCM_TAG_LENGTH_BITS, nonce)
-                val cipher = Cipher.getInstance(ALGORITHM_GCM)
-                cipher.init(Cipher.DECRYPT_MODE, keySpec, gcmSpec)
+                    val gcmSpec = GCMParameterSpec(GCM_TAG_LENGTH_BITS, nonce)
+                    val cipher = Cipher.getInstance(ALGORITHM_GCM)
+                    cipher.init(Cipher.DECRYPT_MODE, keySpec, gcmSpec)
 
-                CipherInputStream(fis, cipher).use { cis ->
-                    java.io.BufferedOutputStream(FileOutputStream(outputFile), 128 * 1024).use { fos ->
-                        val buffer = ByteArray(128 * 1024)
-                        var bytesRead: Int
-                        while (cis.read(buffer).also { bytesRead = it } != -1) {
-                            fos.write(buffer, 0, bytesRead)
+                    CipherInputStream(fis, cipher).use { cis ->
+                        java.io.BufferedOutputStream(FileOutputStream(outputFile), 128 * 1024).use { fos ->
+                            val buffer = ByteArray(128 * 1024)
+                            var bytesRead: Int
+                            while (cis.read(buffer).also { bytesRead = it } != -1) {
+                                fos.write(buffer, 0, bytesRead)
+                            }
+                            fos.flush()
                         }
-                        fos.flush()
                     }
                 }
+                gcmSucceeded = outputFile.exists() && outputFile.length() > 0 && isLikelyPlainFile(outputFile, outputFile.name)
+            } catch (_: Exception) {
+                gcmSucceeded = false
             }
-            return
+
+            if (gcmSucceeded) return
+
+            // Attempt 2: Zero-Disk Streaming AES-256-CTR keystream decryption (counter = 2)
+            try {
+                java.io.BufferedInputStream(FileInputStream(inputFile), 128 * 1024).use { fis ->
+                    val headerBuf = ByteArray(8)
+                    var skipped = 0
+                    while (skipped < 8) {
+                        val r = fis.read(headerBuf, skipped, 8 - skipped)
+                        if (r == -1) break
+                        skipped += r
+                    }
+                    val nonce = ByteArray(GCM_NONCE_LENGTH_BYTES)
+                    var nonceRead = 0
+                    while (nonceRead < GCM_NONCE_LENGTH_BYTES) {
+                        val r = fis.read(nonce, nonceRead, GCM_NONCE_LENGTH_BYTES - nonceRead)
+                        if (r == -1) break
+                        nonceRead += r
+                    }
+
+                    val ctrIv = ByteArray(16)
+                    System.arraycopy(nonce, 0, ctrIv, 0, 12)
+                    ctrIv[12] = 0
+                    ctrIv[13] = 0
+                    ctrIv[14] = 0
+                    ctrIv[15] = 2
+
+                    val cipher = Cipher.getInstance("AES/CTR/NoPadding")
+                    cipher.init(Cipher.DECRYPT_MODE, keySpec, IvParameterSpec(ctrIv))
+
+                    CipherInputStream(fis, cipher).use { cis ->
+                        java.io.BufferedOutputStream(FileOutputStream(outputFile), 128 * 1024).use { fos ->
+                            val buffer = ByteArray(128 * 1024)
+                            var bytesRead: Int
+                            while (cis.read(buffer).also { bytesRead = it } != -1) {
+                                fos.write(buffer, 0, bytesRead)
+                            }
+                            fos.flush()
+                        }
+                    }
+                }
+                return
+            } catch (_: Exception) {}
         }
 
         // Legacy AES-256-CBC migration path

@@ -72,9 +72,9 @@ object BiometricHelper {
 
             biometricPrompt.authenticate(promptInfo)
         } catch (e: Exception) {
-            // Fallback: If biometric prompt fails on unsupported device or ROM, allow access safely
+            android.util.Log.e("BiometricHelper", "Biometric prompt initialization failed: ${e.message}", e)
             try {
-                onSuccess()
+                onError("Biometric authentication unavailable: ${e.message ?: "Authentication failed"}")
             } catch (ex: Exception) { }
         }
     }

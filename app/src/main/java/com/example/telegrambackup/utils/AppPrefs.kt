@@ -4,7 +4,19 @@ import android.content.Context
 import android.content.SharedPreferences
 import java.util.UUID
 
+enum class SafeFolderUnlockResult {
+    UNLOCKED_PRIMARY,
+    UNLOCKED_DECOY,
+    INVALID_PIN,
+    NOT_CONFIGURED
+}
+
 class AppPrefs(private val context: Context) {
+    companion object {
+        @Volatile
+        var isDecoyVaultActive: Boolean = false
+    }
+
     private val prefs: SharedPreferences = context.getSharedPreferences("telegram_backup_prefs", Context.MODE_PRIVATE)
     private val authPrefs: SharedPreferences = context.getSharedPreferences("auth_prefs", Context.MODE_PRIVATE)
 
@@ -673,9 +685,77 @@ class AppPrefs(private val context: Context) {
         return isNowSafe
     }
 
-    fun isSafeVaultFile(filePath: String): Boolean {
+    var safeFolderPin: String
+        get() {
+            val enc = KeystoreVault.retrieveEncryptedString(context, "safe_folder_pin")
+            if (!enc.isNullOrBlank()) return enc
+            val plain = prefs.getString("safe_folder_pin", "") ?: ""
+            if (plain.isNotBlank()) {
+                KeystoreVault.storeEncryptedString(context, "safe_folder_pin", plain)
+                prefs.edit().remove("safe_folder_pin").apply()
+            }
+            return plain
+        }
+        set(value) {
+            val trimmed = value.trim()
+            KeystoreVault.storeEncryptedString(context, "safe_folder_pin", trimmed)
+            prefs.edit().remove("safe_folder_pin").apply()
+        }
+
+    var safeFolderDecoyPin: String
+        get() {
+            val enc = KeystoreVault.retrieveEncryptedString(context, "safe_folder_decoy_pin")
+            if (!enc.isNullOrBlank()) return enc
+            val plain = prefs.getString("safe_folder_decoy_pin", "") ?: ""
+            if (plain.isNotBlank()) {
+                KeystoreVault.storeEncryptedString(context, "safe_folder_decoy_pin", plain)
+                prefs.edit().remove("safe_folder_decoy_pin").apply()
+            }
+            return plain
+        }
+        set(value) {
+            val trimmed = value.trim()
+            KeystoreVault.storeEncryptedString(context, "safe_folder_decoy_pin", trimmed)
+            prefs.edit().remove("safe_folder_decoy_pin").apply()
+        }
+
+    var decoyVaultFilePaths: Set<String>
+        get() = prefs.getStringSet("decoy_vault_file_paths", emptySet())?.toSet() ?: emptySet()
+        set(value) = prefs.edit().putStringSet("decoy_vault_file_paths", value).apply()
+
+    fun isRealSafeVaultFile(filePath: String): Boolean {
         return safeVaultFilePaths.contains(filePath)
     }
+
+    fun isSafeVaultFile(filePath: String): Boolean {
+        if (isDecoyVaultActive) {
+            return decoyVaultFilePaths.contains(filePath)
+        }
+        return safeVaultFilePaths.contains(filePath)
+    }
+
+    fun verifySafeFolderPin(enteredPin: String): SafeFolderUnlockResult {
+        val master = safeFolderPin.trim()
+        val decoy = safeFolderDecoyPin.trim()
+        val candidate = enteredPin.trim()
+
+        if (master.isBlank() && decoy.isBlank()) {
+            return SafeFolderUnlockResult.NOT_CONFIGURED
+        }
+        if (master.isNotBlank() && candidate == master) {
+            isDecoyVaultActive = false
+            return SafeFolderUnlockResult.UNLOCKED_PRIMARY
+        }
+        if (decoy.isNotBlank() && candidate == decoy) {
+            isDecoyVaultActive = true
+            return SafeFolderUnlockResult.UNLOCKED_DECOY
+        }
+        return SafeFolderUnlockResult.INVALID_PIN
+    }
+
+    var compressVideosBeforeUpload: Boolean
+        get() = prefs.getBoolean("compress_videos_before_upload", false)
+        set(value) = prefs.edit().putBoolean("compress_videos_before_upload", value).apply()
 
     var geminiApiKeys: String
         get() {

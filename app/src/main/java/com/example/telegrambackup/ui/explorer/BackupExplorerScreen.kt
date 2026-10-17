@@ -61,6 +61,7 @@ import com.example.telegrambackup.theme.liquidGlassCard
 import com.example.telegrambackup.utils.FileViewerHelper
 import com.example.telegrambackup.theme.TelegramEmerald
 import com.example.telegrambackup.utils.AppPrefs
+import com.example.telegrambackup.utils.SafeFolderUnlockResult
 import com.example.telegrambackup.utils.DuplicateFileManager
 import com.example.telegrambackup.utils.FolderZipDownloader
 import com.example.telegrambackup.utils.SettingsDbManager
@@ -206,6 +207,11 @@ fun BackupExplorerScreen(
     var shareModalFile by remember { mutableStateOf<UploadedFile?>(null) }
     var actionMenuFile by remember { mutableStateOf<UploadedFile?>(null) }
     var isZippingFolder by remember { mutableStateOf(false) }
+    var showSafeVaultAuthDialog by remember { mutableStateOf(false) }
+    var safeVaultPinInput by remember { mutableStateOf("") }
+    var safeVaultDecoyPinInput by remember { mutableStateOf("") }
+    var isConfiguringPins by remember { mutableStateOf(false) }
+    var safeVaultAuthError by remember { mutableStateOf<String?>(null) }
 
     val database = remember { AppDatabase.getDatabase(context) }
     val roomFiles by database.uploadedFileDao().getAllFilesFlow().collectAsState(initial = emptyList())
@@ -345,8 +351,189 @@ fun BackupExplorerScreen(
         )
     }
 
+    if (showSafeVaultAuthDialog) {
+        val hasConfiguredPin = prefs.safeFolderPin.isNotBlank()
+        AlertDialog(
+            onDismissRequest = {
+                showSafeVaultAuthDialog = false
+                safeVaultPinInput = ""
+                safeVaultDecoyPinInput = ""
+                safeVaultAuthError = null
+                isConfiguringPins = false
+            },
+            icon = {
+                Icon(
+                    Icons.Default.Lock,
+                    contentDescription = null,
+                    tint = TelegramBlue,
+                    modifier = Modifier.size(36.dp)
+                )
+            },
+            title = {
+                Text(
+                    text = if (!hasConfiguredPin || isConfiguringPins) "Setup Safe Folder PIN" else "Unlock Safe Folder",
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(
+                        text = if (!hasConfiguredPin || isConfiguringPins) {
+                            "Set a 4-digit Master PIN to secure your Private Vault in hardware TEE, plus an optional Decoy PIN for duress safety."
+                        } else {
+                            "Enter your 4-digit vault PIN or verify your biometrics to access private safe files."
+                        },
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    OutlinedTextField(
+                        value = safeVaultPinInput,
+                        onValueChange = { if (it.length <= 8) safeVaultPinInput = it },
+                        label = { Text(if (!hasConfiguredPin || isConfiguringPins) "Master PIN (4-8 digits)" else "Enter Vault PIN") },
+                        singleLine = true,
+                        visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                            keyboardType = androidx.compose.ui.text.input.KeyboardType.NumberPassword
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    if (!hasConfiguredPin || isConfiguringPins) {
+                        OutlinedTextField(
+                            value = safeVaultDecoyPinInput,
+                            onValueChange = { if (it.length <= 8) safeVaultDecoyPinInput = it },
+                            label = { Text("Decoy PIN (Optional Duress Mode)") },
+                            singleLine = true,
+                            visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                                keyboardType = androidx.compose.ui.text.input.KeyboardType.NumberPassword
+                            ),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+
+                    if (safeVaultAuthError != null) {
+                        Text(
+                            text = safeVaultAuthError!!,
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+
+                    if (hasConfiguredPin && !isConfiguringPins && BiometricHelper.isBiometricAvailable(context)) {
+                        TextButton(
+                            onClick = {
+                                val activity = context as? FragmentActivity
+                                if (activity != null) {
+                                    BiometricHelper.showBiometricPrompt(
+                                        activity = activity,
+                                        title = "Unlock Safe Folder",
+                                        subtitle = "Verify identity with fingerprint or face",
+                                        onSuccess = {
+                                            AppPrefs.isDecoyVaultActive = false
+                                            showSafeVaultAuthDialog = false
+                                            safeVaultPinInput = ""
+                                            safeVaultAuthError = null
+                                            selectedCategoryTitle = "Safe folder"
+                                            currentFolderDirectoryPath = "Internal Storage/Private Safe Vault"
+                                            folderPathHistory.add("Internal Storage/Private Safe Vault")
+                                            onCategorySelected("Safe folder")
+                                        },
+                                        onError = { err ->
+                                            safeVaultAuthError = err
+                                        }
+                                    )
+                                }
+                            },
+                            modifier = Modifier.align(Alignment.CenterHorizontally)
+                        ) {
+                            Icon(Icons.Default.Fingerprint, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("Use Biometrics")
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (!hasConfiguredPin || isConfiguringPins) {
+                            if (safeVaultPinInput.length < 4) {
+                                safeVaultAuthError = "Master PIN must be at least 4 digits"
+                                return@Button
+                            }
+                            if (safeVaultDecoyPinInput.isNotBlank() && safeVaultDecoyPinInput == safeVaultPinInput) {
+                                safeVaultAuthError = "Decoy PIN must be different from Master PIN"
+                                return@Button
+                            }
+                            prefs.safeFolderPin = safeVaultPinInput
+                            if (safeVaultDecoyPinInput.isNotBlank()) {
+                                prefs.safeFolderDecoyPin = safeVaultDecoyPinInput
+                            }
+                            AppPrefs.isDecoyVaultActive = false
+                            showSafeVaultAuthDialog = false
+                            safeVaultPinInput = ""
+                            safeVaultDecoyPinInput = ""
+                            safeVaultAuthError = null
+                            isConfiguringPins = false
+                            selectedCategoryTitle = "Safe folder"
+                            currentFolderDirectoryPath = "Internal Storage/Private Safe Vault"
+                            folderPathHistory.add("Internal Storage/Private Safe Vault")
+                            onCategorySelected("Safe folder")
+                        } else {
+                            val result = prefs.verifySafeFolderPin(safeVaultPinInput)
+                            when (result) {
+                                SafeFolderUnlockResult.UNLOCKED_PRIMARY -> {
+                                    AppPrefs.isDecoyVaultActive = false
+                                    showSafeVaultAuthDialog = false
+                                    safeVaultPinInput = ""
+                                    safeVaultAuthError = null
+                                    selectedCategoryTitle = "Safe folder"
+                                    currentFolderDirectoryPath = "Internal Storage/Private Safe Vault"
+                                    folderPathHistory.add("Internal Storage/Private Safe Vault")
+                                    onCategorySelected("Safe folder")
+                                }
+                                SafeFolderUnlockResult.UNLOCKED_DECOY -> {
+                                    AppPrefs.isDecoyVaultActive = true
+                                    showSafeVaultAuthDialog = false
+                                    safeVaultPinInput = ""
+                                    safeVaultAuthError = null
+                                    Toast.makeText(context, "Safe folder unlocked", Toast.LENGTH_SHORT).show()
+                                    selectedCategoryTitle = "Safe folder"
+                                    currentFolderDirectoryPath = "Internal Storage/Private Safe Vault"
+                                    folderPathHistory.add("Internal Storage/Private Safe Vault")
+                                    onCategorySelected("Safe folder")
+                                }
+                                SafeFolderUnlockResult.NOT_CONFIGURED -> {
+                                    isConfiguringPins = true
+                                }
+                                SafeFolderUnlockResult.INVALID_PIN -> {
+                                    safeVaultAuthError = "Incorrect PIN. Try again."
+                                }
+                            }
+                        }
+                    }
+                ) {
+                    Text(if (!hasConfiguredPin || isConfiguringPins) "Save & Unlock" else "Unlock")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    showSafeVaultAuthDialog = false
+                    safeVaultPinInput = ""
+                    safeVaultDecoyPinInput = ""
+                    safeVaultAuthError = null
+                    isConfiguringPins = false
+                }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
     fun isFileMatchingCategory(f: UploadedFile, title: String): Boolean {
-        if (title != "Safe folder" && title != "Safe Folder" && title != "Private Safe Vault" && prefs.isSafeVaultFile(f.path)) {
+        if (title != "Safe folder" && title != "Safe Folder" && title != "Private Safe Vault" && prefs.isRealSafeVaultFile(f.path)) {
             return false
         }
         val name = f.fileName.lowercase()
@@ -874,27 +1061,35 @@ fun BackupExplorerScreen(
                             iconBg = TelegramBlue.copy(alpha = 0.12f),
                             onClick = {
                                 triggerHapticFeedback(context, haptic)
+                                val hasPin = prefs.safeFolderPin.isNotBlank()
                                 val activity = context as? FragmentActivity
-                                if (activity != null) {
+                                if (!hasPin) {
+                                    safeVaultPinInput = ""
+                                    safeVaultDecoyPinInput = ""
+                                    safeVaultAuthError = null
+                                    showSafeVaultAuthDialog = true
+                                } else if (activity != null && BiometricHelper.isBiometricAvailable(context)) {
                                     BiometricHelper.showBiometricPrompt(
                                         activity = activity,
                                         title = "Unlock Safe Folder",
-                                        subtitle = "Verify your identity to access private safe",
+                                        subtitle = "Verify your identity or use PIN",
                                         onSuccess = {
+                                            AppPrefs.isDecoyVaultActive = false
                                             selectedCategoryTitle = "Safe folder"
                                             currentFolderDirectoryPath = "Internal Storage/Private Safe Vault"
                                             folderPathHistory.add("Internal Storage/Private Safe Vault")
                                             onCategorySelected("Safe folder")
                                         },
-                                        onError = { err ->
-                                            Toast.makeText(context, "Authentication failed: $err", Toast.LENGTH_SHORT).show()
+                                        onError = {
+                                            safeVaultPinInput = ""
+                                            safeVaultAuthError = null
+                                            showSafeVaultAuthDialog = true
                                         }
                                     )
                                 } else {
-                                    selectedCategoryTitle = "Safe folder"
-                                    currentFolderDirectoryPath = "Internal Storage/Private Safe Vault"
-                                    folderPathHistory.add("Internal Storage/Private Safe Vault")
-                                    onCategorySelected("Safe folder")
+                                    safeVaultPinInput = ""
+                                    safeVaultAuthError = null
+                                    showSafeVaultAuthDialog = true
                                 }
                             }
                         )

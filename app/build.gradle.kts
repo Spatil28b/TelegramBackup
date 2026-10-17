@@ -12,8 +12,8 @@ android {
         applicationId = "com.example.telegrambackup"
         minSdk = 24
         targetSdk = 36
-        versionCode = 146
-        versionName = "2.6.8"
+        versionCode = 147
+        versionName = "2.6.9"
     }
 
     signingConfigs {
