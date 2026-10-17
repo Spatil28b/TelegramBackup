@@ -28,6 +28,35 @@ object VersionChangelogProvider {
 
     private val releases = listOf(
         VersionRelease(
+            versionName = "2.7.7",
+            versionCode = 155,
+            releaseDate = "October 2026",
+            highlights = "Liquid Glass v2.2 Design System Overhaul: Apple VisionOS Dark Obsidian Frosted Glass",
+            entries = listOf(
+                ChangelogEntry(
+                    Icons.Default.AutoAwesome,
+                    Color(0xFF38BDF8),
+                    "Apple VisionOS Dark Obsidian Frosted Glass",
+                    "Eliminated murky navy plastic tint; introduced neutral dark obsidian frosted slate surfaces (Slate-800 to Slate-900) providing 100% crisp text readability and natural glass diffusion.",
+                    "DESIGN"
+                ),
+                ChangelogEntry(
+                    Icons.Default.CloudQueue,
+                    Color(0xFF6366F1),
+                    "Feathered Celestial Ambient Caustics",
+                    "Replaced clashing rainbow discs with 3 organic celestial light fields (Sapphire, Indigo, Azure) with wide multi-stop radial gradient decay ensuring zero hard disc edges across all Android versions.",
+                    "AESTHETICS"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Tune,
+                    Color(0xFF2DD4BF),
+                    "Precision Specular Crystalline Bevels",
+                    "Subtle hairline crystalline borders with calibrated 0.28f specular rim highlights replace harsh white chalk outlines for an authentic milled spatial glass aesthetic.",
+                    "UI/UX"
+                )
+            )
+        ),
+        VersionRelease(
             versionName = "2.7.6",
             versionCode = 154,
             releaseDate = "October 2026",

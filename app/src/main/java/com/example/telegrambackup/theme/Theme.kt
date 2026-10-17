@@ -199,7 +199,7 @@ enum class AppThemeMode(
     EMERALD(4, "Emerald Forest", "Deep jade slate with lush mint & botanical emerald", Color(0xFF10B981), Color(0xFF34D399), Color(0xFF03140D), Color(0xFF0F3A27)),
     SUNSET(5, "Sunset Amber", "Obsidian espresso with warm golden amber & copper", Color(0xFFF59E0B), Color(0xFFFB923C), Color(0xFF100A05), Color(0xFF301F10)),
     DYNAMIC_WALLPAPER(6, "Material You Dynamic", "Adaptive palette extracted live from your device wallpaper (Android 12+)", Color(0xFF8B5CF6), Color(0xFFEC4899), Color(0xFF0F172A), Color(0xFF1E293B)),
-    LIQUID_GLASS(7, "Liquid Glass", "Frosted spatial glass with GPU-accelerated liquid caustics, hardware blur & crystalline specular bevels", Color(0xFF38BDF8), Color(0xFFA78BFA), Color(0xFF050914), Color(0xB8111D38));
+    LIQUID_GLASS(7, "Liquid Glass", "Frosted spatial glass with GPU-accelerated liquid caustics, hardware blur & crystalline specular bevels", Color(0xFF38BDF8), Color(0xFFA78BFA), Color(0xFF070B14), Color(0x9E141D2E));
 
     companion object {
         fun fromId(id: Int): AppThemeMode = entries.firstOrNull { it.id == id } ?: SYSTEM
