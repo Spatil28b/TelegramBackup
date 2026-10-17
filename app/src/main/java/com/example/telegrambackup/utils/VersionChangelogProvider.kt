@@ -28,10 +28,10 @@ object VersionChangelogProvider {
 
     private val releases = listOf(
         VersionRelease(
-            versionName = "2.6.7",
-            versionCode = 145,
+            versionName = "2.6.8",
+            versionCode = 146,
             releaseDate = "October 2026",
-            highlights = "Multi-Bot Verification Safeguards, MediaStore ContentObserver Live Sync, Leak-Proof Storage Guard, Trash Auto-Purge & Liquid Glass 120 FPS Fluid Engine",
+            highlights = "Multi-Bot Verification Safeguards, MediaStore ContentObserver Live Sync, Leak-Proof Storage Guard & Cloud Trash Purge",
             entries = listOf(
                 ChangelogEntry(
                     Icons.Default.VerifiedUser,
@@ -69,11 +69,47 @@ object VersionChangelogProvider {
                     "PERFORMANCE"
                 ),
                 ChangelogEntry(
+                    Icons.Default.SettingsSuggest,
+                    Color(0xFF10B981),
+                    "Custom Bot API Health Diagnostics",
+                    "Resolved diagnostic checks to use TelegramApiConfig method URLs, fully supporting custom and local Bot API server endpoints.",
+                    "DIAGNOSTICS"
+                )
+            )
+        ),
+        VersionRelease(
+            versionName = "2.6.7",
+            versionCode = 145,
+            releaseDate = "October 2026",
+            highlights = "120 FPS GPU Fluid Engine, Native Hardware Gaussian Blur, Crystal-Clear Text Contrast & Updater Sync",
+            entries = listOf(
+                ChangelogEntry(
                     Icons.Default.Speed,
                     Color(0xFF38BDF8),
                     "120 FPS Liquid Glass Fluid Engine",
                     "Re-engineered ambient liquid canvas using RenderNode transforms and memoized gradient shaders, eliminating per-frame allocations for buttery smooth scrolling.",
-                    "UI"
+                    "PERFORMANCE"
+                ),
+                ChangelogEntry(
+                    Icons.Default.BlurOn,
+                    Color(0xFF818CF8),
+                    "Hardware Gaussian Blur Caustics",
+                    "RenderEffect blur pools smoothly melt caustics into organic glowing liquid plasma on Android 12+ devices.",
+                    "AESTHETICS"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Visibility,
+                    Color(0xFF34D399),
+                    "Crystal-Clear Visibility & Contrast",
+                    "Frosted glass surface opacity calibrated to 68-78% with pure white typography, ensuring WCAG AAA readability.",
+                    "CONTRAST"
+                ),
+                ChangelogEntry(
+                    Icons.Default.SystemUpdate,
+                    Color(0xFF38BDF8),
+                    "In-App Updater Live Sync",
+                    "Instant in-app update prompt delivery and one-click download verification across cloud endpoints.",
+                    "UPDATER"
                 )
             )
         ),
