@@ -90,15 +90,11 @@ object VideoCompressor {
             val origWidth = inputFormat.getInteger(MediaFormat.KEY_WIDTH)
             val origHeight = inputFormat.getInteger(MediaFormat.KEY_HEIGHT)
 
-            // Calculate scaled dimensions maintaining aspect ratio
-            val scale = if (origWidth > targetWidth) targetWidth.toFloat() / origWidth.toFloat() else 1.0f
-            var outWidth = (origWidth * scale).toInt()
-            var outHeight = (origHeight * scale).toInt()
-            // Dimensions must be even for video codecs
-            outWidth = if (outWidth % 2 != 0) outWidth - 1 else outWidth
-            outHeight = if (outHeight % 2 != 0) outHeight - 1 else outHeight
+            // Direct byte-buffer transcoding requires matching dimensions to prevent planar YUV stride corruption
+            val outWidth = if (origWidth % 2 != 0) origWidth - 1 else origWidth
+            val outHeight = if (origHeight % 2 != 0) origHeight - 1 else origHeight
 
-            val chosenMime = if (isHevcEncoderAvailable()) MIME_HEVC else MIME_AVC
+            var chosenMime = if (isHevcEncoderAvailable()) MIME_HEVC else MIME_AVC
             val outFormat = MediaFormat.createVideoFormat(chosenMime, outWidth, outHeight).apply {
                 setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420Flexible)
                 setInteger(MediaFormat.KEY_BIT_RATE, targetBitrate)
@@ -106,8 +102,20 @@ object VideoCompressor {
                 setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 2)
             }
 
-            encoder = MediaCodec.createEncoderByType(chosenMime)
-            encoder.configure(outFormat, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
+            try {
+                encoder = MediaCodec.createEncoderByType(chosenMime)
+                encoder.configure(outFormat, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
+            } catch (e: Exception) {
+                if (chosenMime == MIME_HEVC) {
+                    Log.w(TAG, "HEVC encoder configuration failed, falling back to AVC", e)
+                    chosenMime = MIME_AVC
+                    outFormat.setString(MediaFormat.KEY_MIME, chosenMime)
+                    encoder = MediaCodec.createEncoderByType(chosenMime)
+                    encoder.configure(outFormat, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
+                } else {
+                    throw e
+                }
+            }
             encoder.start()
 
             val decoderMime = inputFormat.getString(MediaFormat.KEY_MIME) ?: ""
@@ -230,9 +238,14 @@ object VideoCompressor {
 
             val sourceSize = source.length()
             val destSize = destination.length()
-            val savedRatio = (sourceSize - destSize).toDouble() / sourceSize.toDouble()
+            val savedRatio = if (sourceSize > 0) (sourceSize - destSize).toDouble() / sourceSize.toDouble() else 0.0
             Log.d(TAG, "Video compressed: ${source.name} ($sourceSize -> $destSize bytes, ${(savedRatio * 100).toInt()}% saved)")
-            return@withContext destSize in 1024 until sourceSize
+            val isWorthwhile = destSize in 1024 until (sourceSize * 0.90).toLong()
+            if (!isWorthwhile) {
+                if (destination.exists()) destination.delete()
+                return@withContext false
+            }
+            return@withContext true
         } catch (e: Exception) {
             Log.w(TAG, "Hardware video compression failed for ${source.name}: ${e.message}")
             if (destination.exists()) destination.delete()

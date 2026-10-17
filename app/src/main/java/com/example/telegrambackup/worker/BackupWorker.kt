@@ -494,6 +494,8 @@ class BackupWorker(
                             if (!checkDailyDataAllowed(prefs, file.length())) return@withPermit
 
                             var encryptedTempFile: File? = null
+                            var compressedVideoFile: File? = null
+                            var uploadSucceeded = false
                             try {
                                 BackupProgressTracker.setCurrentUploadingFile(file.name, file.absolutePath, 0.05f)
 
@@ -510,15 +512,21 @@ class BackupWorker(
 
                                 // Step 8a: Hardware-Accelerated Video Compression (P3)
                                 var effectiveSourceFile = file
-                                var compressedVideoFile: File? = null
                                 if (fileCategory == "VIDEOS" && prefs.compressVideosBeforeUpload && file.length() > 5 * 1024 * 1024) {
-                                    val safeCompId = System.currentTimeMillis() + (file.hashCode().toLong() and 0x7FFFFFFF)
-                                    val compTarget = File(tempDir, "${safeCompId}_comp.mp4")
-                                    val compSuccess = VideoCompressor.compressVideo(file, compTarget)
-                                    if (compSuccess && compTarget.exists() && compTarget.length() < file.length()) {
+                                    val safeNameHash = (file.name.hashCode().toLong() and 0xFFFFFFFFL).toString()
+                                    val compFileName = "vcomp_${safeNameHash}_${file.length()}.mp4"
+                                    val compTarget = File(tempDir, compFileName)
+                                    if (compTarget.exists() && compTarget.length() in 1024 until file.length()) {
                                         compressedVideoFile = compTarget
                                         effectiveSourceFile = compTarget
-                                        Log.d(TAG, "Hardware video compression active: ${file.name} compressed to ${formatFileSize(compTarget.length())}")
+                                        Log.d(TAG, "Reusing cached compressed video: ${file.name} (${formatFileSize(compTarget.length())})")
+                                    } else {
+                                        val compSuccess = VideoCompressor.compressVideo(file, compTarget)
+                                        if (compSuccess && compTarget.exists() && compTarget.length() < file.length()) {
+                                            compressedVideoFile = compTarget
+                                            effectiveSourceFile = compTarget
+                                            Log.d(TAG, "Hardware video compression active: ${file.name} compressed to ${formatFileSize(compTarget.length())}")
+                                        }
                                     }
                                 }
 
@@ -772,6 +780,7 @@ class BackupWorker(
 
                                 recordDailyDataUsage(prefs, file.length())
                                 val curSuccess = successCount.incrementAndGet()
+                                uploadSucceeded = true
                                 BackupProgressTracker.markFileCompleted(file.name, file.absolutePath, file.length())
                                 Log.d(TAG, "✅ Fully Backed Up ($curSuccess): ${file.name} to channel $destinationChatId ($totalChunks chunks)")
 
@@ -782,6 +791,11 @@ class BackupWorker(
                                 BackupProgressTracker.removeActiveUpload(file.absolutePath)
                                 encryptedTempFile?.let {
                                     if (it.exists()) it.delete()
+                                }
+                                if (uploadSucceeded) {
+                                    compressedVideoFile?.let {
+                                        if (it.exists()) it.delete()
+                                    }
                                 }
                             }
                         }

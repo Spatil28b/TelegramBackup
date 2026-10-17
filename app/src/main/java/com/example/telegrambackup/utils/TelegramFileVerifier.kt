@@ -144,64 +144,128 @@ object TelegramFileVerifier {
 
         for (file in filesToVerify) {
             try {
-                // Determine tokens to test: priority to the token that actually uploaded this file
-                val tokensToTry = mutableListOf<String>()
-                if (file.botTokenUsed.isNotBlank() && !tokensToTry.contains(file.botTokenUsed.trim())) {
-                    tokensToTry.add(file.botTokenUsed.trim())
-                }
-                candidateTokens.forEach { if (!tokensToTry.contains(it)) tokensToTry.add(it) }
+                val isMultiChunk = file.totalChunks > 1
+                val chunks = if (isMultiChunk) file.parseChunkInfos() else emptyList()
 
-                var fileConfirmedExists = false
-                var allTokensConfirmedInvalid = true
-                var hadNetworkError = false
-
-                // Candidate file IDs to check (main file ID and any multi-chunk IDs)
-                val fileIdsToCheck = mutableListOf<String>()
-                if (file.telegramFileId.isNotBlank()) fileIdsToCheck.add(file.telegramFileId)
-                if (file.totalChunks > 1) {
-                    val chunks = file.parseChunkInfos()
-                    chunks.forEach { c ->
-                        if (c.telegramFileId.isNotBlank() && !fileIdsToCheck.contains(c.telegramFileId)) {
-                            fileIdsToCheck.add(c.telegramFileId)
-                        }
-                    }
-                }
-
-                for (token in tokensToTry) {
-                    for (fId in fileIdsToCheck) {
-                        val status = checkFileStatus(context, token, fId)
-                        when (status) {
-                            FileCheckStatus.EXISTS -> {
-                                fileConfirmedExists = true
-                                allTokensConfirmedInvalid = false
-                                break
-                            }
-                            FileCheckStatus.NETWORK_OR_RATE_LIMIT -> {
-                                allTokensConfirmedInvalid = false
-                                hadNetworkError = true
-                                break
-                            }
-                            FileCheckStatus.NOT_FOUND -> {
-                                // Continue checking remaining candidate bots and chunks
-                            }
-                        }
-                    }
-                    if (fileConfirmedExists || hadNetworkError) break
-                }
-
-                if (fileConfirmedExists) {
-                    verifiedOk++
-                } else if (allTokensConfirmedInvalid && !hadNetworkError) {
-                    // Confirmed missing across all available bot accounts: purge from DB and chunk cache
+                if (isMultiChunk && (chunks.isEmpty() || chunks.size < file.totalChunks)) {
+                    // Chunks metadata is missing or incomplete in DB
+                    Log.w(TAG, "Multi-part file ${file.fileName} has incomplete chunk metadata (${chunks.size}/${file.totalChunks}). Purging corrupted record.")
                     dao.deleteByPath(file.path)
                     try {
                         AppDatabase.getDatabase(context).chunkProgressDao().deleteChunksForFile(file.path)
                     } catch (_: Exception) {}
                     deletedFromTelegram++
-                    Log.w(TAG, "File confirmed deleted from Telegram, purged: ${file.fileName} (id=${file.telegramFileId})")
+                    continue
+                }
+
+                if (!isMultiChunk) {
+                    // Single chunk verification
+                    val tokensToTry = mutableListOf<String>()
+                    if (file.botTokenUsed.isNotBlank() && !tokensToTry.contains(file.botTokenUsed.trim())) {
+                        tokensToTry.add(file.botTokenUsed.trim())
+                    }
+                    candidateTokens.forEach { if (!tokensToTry.contains(it)) tokensToTry.add(it) }
+
+                    var exists = false
+                    var networkError = false
+                    var allInvalid = true
+
+                    for (token in tokensToTry) {
+                        when (checkFileStatus(context, token, file.telegramFileId)) {
+                            FileCheckStatus.EXISTS -> {
+                                exists = true
+                                allInvalid = false
+                                break
+                            }
+                            FileCheckStatus.NETWORK_OR_RATE_LIMIT -> {
+                                allInvalid = false
+                                networkError = true
+                                break
+                            }
+                            FileCheckStatus.NOT_FOUND -> {
+                                // continue trying other candidate bot tokens
+                            }
+                        }
+                    }
+
+                    if (exists) {
+                        verifiedOk++
+                    } else if (allInvalid && !networkError) {
+                        dao.deleteByPath(file.path)
+                        try {
+                            AppDatabase.getDatabase(context).chunkProgressDao().deleteChunksForFile(file.path)
+                        } catch (_: Exception) {}
+                        deletedFromTelegram++
+                        Log.w(TAG, "Single-part file confirmed deleted from Telegram, purged: ${file.fileName}")
+                    } else {
+                        errors++
+                    }
                 } else {
-                    // Retain safely if ambiguous / network glitch / rate limit
-                    errors++
+                    // Multi-chunk verification: Every chunk must be individually verified!
+                    var allChunksExist = true
+                    var anyChunkConfirmedMissing = false
+                    var hadNetworkError = false
+                    var chunksMissingCount = 0
+
+                    for (chunk in chunks) {
+                        val tokensToTry = mutableListOf<String>()
+                        if (chunk.botTokenUsed.isNotBlank() && !tokensToTry.contains(chunk.botTokenUsed.trim())) {
+                            tokensToTry.add(chunk.botTokenUsed.trim())
+                        }
+                        if (file.botTokenUsed.isNotBlank() && !tokensToTry.contains(file.botTokenUsed.trim())) {
+                            tokensToTry.add(file.botTokenUsed.trim())
+                        }
+                        candidateTokens.forEach { if (!tokensToTry.contains(it)) tokensToTry.add(it) }
+
+                        var chunkExists = false
+                        var chunkNetworkError = false
+                        var chunkAllInvalid = true
+
+                        for (token in tokensToTry) {
+                            when (checkFileStatus(context, token, chunk.telegramFileId)) {
+                                FileCheckStatus.EXISTS -> {
+                                    chunkExists = true
+                                    chunkAllInvalid = false
+                                    break
+                                }
+                                FileCheckStatus.NETWORK_OR_RATE_LIMIT -> {
+                                    chunkAllInvalid = false
+                                    chunkNetworkError = true
+                                    break
+                                }
+                                FileCheckStatus.NOT_FOUND -> {
+                                    // continue trying other candidate bot tokens
+                                }
+                            }
+                        }
+
+                        if (chunkExists) {
+                            // This chunk is verified in cloud
+                        } else if (chunkNetworkError) {
+                            hadNetworkError = true
+                            allChunksExist = false
+                            break // Stop checking further chunks to save API quota
+                        } else if (chunkAllInvalid) {
+                            anyChunkConfirmedMissing = true
+                            allChunksExist = false
+                            chunksMissingCount++
+                        }
+                    }
+
+                    if (allChunksExist && !hadNetworkError) {
+                        verifiedOk++
+                    } else if (anyChunkConfirmedMissing && !hadNetworkError) {
+                        // Multi-part file has confirmed missing/deleted chunk(s) on Telegram:
+                        // Purge corrupted record so BackupWorker re-uploads it cleanly
+                        dao.deleteByPath(file.path)
+                        try {
+                            AppDatabase.getDatabase(context).chunkProgressDao().deleteChunksForFile(file.path)
+                        } catch (_: Exception) {}
+                        deletedFromTelegram++
+                        Log.w(TAG, "Multi-part file confirmed damaged on Telegram ($chunksMissingCount/${chunks.size} chunks missing), purged: ${file.fileName}")
+                    } else {
+                        errors++
+                    }
                 }
             } catch (e: Exception) {
                 errors++

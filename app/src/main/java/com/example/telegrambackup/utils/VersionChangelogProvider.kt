@@ -28,6 +28,35 @@ object VersionChangelogProvider {
 
     private val releases = listOf(
         VersionRelease(
+            versionName = "2.7.5",
+            versionCode = 153,
+            releaseDate = "October 2026",
+            highlights = "100% Multi-Chunk Cloud Verification, HEVC Stride Hardening & Resumable Video Compression",
+            entries = listOf(
+                ChangelogEntry(
+                    Icons.Default.VerifiedUser,
+                    Color(0xFF10B981),
+                    "Strict 100% Multi-Chunk Cloud Verification",
+                    "Eliminates false-positive verification by individually verifying every chunk in multi-part files across the bot fleet. Damaged or partially deleted cloud files are purged for automatic clean re-upload.",
+                    "SECURITY"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Movie,
+                    Color(0xFF38BDF8),
+                    "HEVC Stride Alignment & Green Artifact Fix",
+                    "Direct byte-buffer video transcoding preserves native source geometry, eliminating planar YUV stride mismatches and green screen corruption while delivering 70-80% file size reduction.",
+                    "VIDEO"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Sync,
+                    Color(0xFFF59E0B),
+                    "Resumable Video Compression Cache",
+                    "Deterministic hash-based video cache allows interrupted video uploads to resume seamlessly across worker restarts without re-encoding, auto-purging upon successful backup.",
+                    "STABILITY"
+                )
+            )
+        ),
+        VersionRelease(
             versionName = "2.7.4",
             versionCode = 152,
             releaseDate = "October 2026",
