@@ -161,7 +161,7 @@ class BackupWorker(
 
             // Step 4: PRE-BACKUP VERIFICATION — Purge ghost records before scanning
             try {
-                val verifyResult = TelegramFileVerifier.verifyAllFiles(botToken, uploadedDao)
+                val verifyResult = TelegramFileVerifier.verifyAllFiles(applicationContext, botToken, uploadedDao)
                 if (verifyResult.fakePurged > 0 || verifyResult.deletedFromTelegram > 0) {
                     Log.d(TAG, "Pre-backup verification: purged ${verifyResult.fakePurged} fake, " +
                         "${verifyResult.deletedFromTelegram} deleted from Telegram")
@@ -427,6 +427,7 @@ class BackupWorker(
                             if (prefs.stopAllBackups) return@withPermit
                             if (!checkDailyDataAllowed(prefs, file.length())) return@withPermit
 
+                            var encryptedTempFile: File? = null
                             try {
                                 BackupProgressTracker.setCurrentUploadingFile(file.name, file.absolutePath, 0.05f)
 
@@ -442,12 +443,20 @@ class BackupWorker(
                                 val destinationChatId = targetChannel.chatId.ifBlank { chatId }
 
                                 // Step 8a: Optionally encrypt file before splitting into chunks
-                                val fileToUpload: File
                                 val isEncrypted = prefs.encryptionEnabled
+                                val fileToUpload: File
                                 if (isEncrypted) {
+                                    val freeSpace = tempDir.usableSpace
+                                    val neededSpace = (file.length() * 1.1).toLong()
+                                    if (freeSpace in 1 until neededSpace) {
+                                        Log.w(TAG, "Storage guard: insufficient space in cacheDir for ${file.name}. Usable: $freeSpace, Needed: $neededSpace. Skipping to prevent crash.")
+                                        failCount.incrementAndGet()
+                                        return@withPermit
+                                    }
                                     val safeId = System.currentTimeMillis() + (file.hashCode().toLong() and 0x7FFFFFFF)
                                     val encryptedFile = File(tempDir, "${safeId}_${file.name}.enc")
                                     FileEncryptor.encryptFile(file, encryptedFile, prefs.encryptionKey)
+                                    encryptedTempFile = encryptedFile
                                     fileToUpload = encryptedFile
                                 } else {
                                     fileToUpload = file
@@ -575,9 +584,8 @@ class BackupWorker(
                                     workers.joinAll()
                                 }
 
-                                BackupProgressTracker.removeActiveUpload(file.absolutePath)
-                                if (isEncrypted && fileToUpload.exists() && fileToUpload.parentFile == tempDir) {
-                                    fileToUpload.delete()
+                                encryptedTempFile?.let {
+                                    if (it.exists()) it.delete()
                                 }
 
                                 val allChunksValid = (1..totalChunks).all { idx ->
@@ -667,6 +675,11 @@ class BackupWorker(
                             } catch (e: Exception) {
                                 failCount.incrementAndGet()
                                 Log.e(TAG, "Error backing up ${file.name}", e)
+                            } finally {
+                                BackupProgressTracker.removeActiveUpload(file.absolutePath)
+                                encryptedTempFile?.let {
+                                    if (it.exists()) it.delete()
+                                }
                             }
                         }
                     }

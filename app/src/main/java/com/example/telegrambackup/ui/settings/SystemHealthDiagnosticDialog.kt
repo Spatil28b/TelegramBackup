@@ -75,7 +75,8 @@ fun SystemHealthDiagnosticDialog(
                 botTokenResult = DiagnosticItemResult("Telegram Bot Token", "❌ No Bot Token Configured in Settings", false, false)
             } else {
                 try {
-                    val req = Request.Builder().url("https://api.telegram.org/bot$token/getMe").build()
+                    val getMeUrl = com.example.telegrambackup.utils.TelegramApiConfig.getMethodUrl(context, token, "getMe")
+                    val req = Request.Builder().url(getMeUrl).build()
                     val res = client.newCall(req).execute()
                     val body = res.body?.string() ?: ""
                     if (res.isSuccessful && body.contains("\"ok\":true")) {
@@ -94,8 +95,7 @@ fun SystemHealthDiagnosticDialog(
                 chatIdResult = DiagnosticItemResult("Telegram Chat Access", "❌ No Chat ID Configured", false, false)
             } else {
                 try {
-                    val numericChatId = chat.toLongOrNull()
-                    val url = "https://api.telegram.org/bot$token/getChat?chat_id=$chat"
+                    val url = com.example.telegrambackup.utils.TelegramApiConfig.getMethodUrl(context, token, "getChat?chat_id=$chat")
                     val req = Request.Builder().url(url).build()
                     val res = client.newCall(req).execute()
                     val body = res.body?.string() ?: ""

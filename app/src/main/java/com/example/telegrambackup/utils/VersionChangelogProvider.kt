@@ -31,42 +31,49 @@ object VersionChangelogProvider {
             versionName = "2.6.7",
             versionCode = 145,
             releaseDate = "October 2026",
-            highlights = "Liquid Glass 120 FPS Fluid Engine, Hardware Gaussian Blur, High-Contrast Frosted Surfaces & In-App Dynamic Updater Sync",
+            highlights = "Multi-Bot Verification Safeguards, MediaStore ContentObserver Live Sync, Leak-Proof Storage Guard, Trash Auto-Purge & Liquid Glass 120 FPS Fluid Engine",
             entries = listOf(
                 ChangelogEntry(
-                    Icons.Default.Speed,
+                    Icons.Default.VerifiedUser,
                     Color(0xFF38BDF8),
-                    "120 FPS GPU-Accelerated Fluid Engine",
-                    "Re-engineered ambient liquid canvas using RenderNode transforms and memoized gradient shaders, eliminating per-frame allocations for buttery smooth scrolling.",
+                    "Multi-Bot Fleet Cloud Verification",
+                    "Eliminated false-ghost deletions by verifying cloud files against the exact bot token that uploaded them, with automatic candidate fallback across all fleet bots.",
+                    "ACCURACY"
+                ),
+                ChangelogEntry(
+                    Icons.Default.CameraAlt,
+                    Color(0xFF34D399),
+                    "MediaStore ContentObserver Live Watcher",
+                    "Added Android MediaStore image and video observers with IS_PENDING write completion checks, ensuring 100% reliable instant camera backup across Android 11 to 15.",
+                    "CAMERA"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Storage,
+                    Color(0xFFFBBF24),
+                    "Leak-Proof Storage & Headroom Guard",
+                    "Added usableSpace disk checks before large file encryption and wrapped uploads in atomic finally blocks, preventing cache leakage and out-of-storage crashes.",
+                    "STABILITY"
+                ),
+                ChangelogEntry(
+                    Icons.Default.DeleteForever,
+                    Color(0xFFF43F5E),
+                    "Cloud Trash Retention Purge",
+                    "Synchronized auto-clean retention expiry with Telegram channel message deletion, preventing ghost messages from building up in backup channels.",
+                    "PRIVACY"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Bolt,
+                    Color(0xFFA78BFA),
+                    "Debounced AI Search Tag Cache",
+                    "Replaced synchronous JSON disk writes with debounced background serialization, eliminating micro-stutters during batch OCR image searches.",
                     "PERFORMANCE"
                 ),
                 ChangelogEntry(
-                    Icons.Default.BlurOn,
-                    Color(0xFF818CF8),
-                    "Hardware Gaussian Blur (Android 12+)",
-                    "Applied native RenderEffect Gaussian blur on ambient fluid pools, melting caustics into a seamless, organic glowing liquid plasma.",
-                    "VISUAL"
-                ),
-                ChangelogEntry(
-                    Icons.Default.Visibility,
-                    Color(0xFF2DD4BF),
-                    "Crystal-Clear Contrast & Readability",
-                    "Tuned frosted glass surfaces to 68-78% opacity with pure white typography, guaranteeing razor-sharp text visibility without background orb wash-out.",
-                    "ACCESSIBILITY"
-                ),
-                ChangelogEntry(
-                    Icons.Default.Palette,
-                    Color(0xFFA78BFA),
-                    "Crisp Metadata & Silver Bevels",
-                    "Restored full opacity to file size labels, search icons, and options chevrons with cool slate-silver outlines and directional specular bevel borders.",
-                    "POLISH"
-                ),
-                ChangelogEntry(
-                    Icons.Default.Sync,
-                    Color(0xFF34D399),
-                    "Dynamic In-App Updater Sync",
-                    "Synchronized the in-app update channel with the latest v2.6.7 binaries and instant prompt delivery.",
-                    "UPDATER"
+                    Icons.Default.Speed,
+                    Color(0xFF38BDF8),
+                    "120 FPS Liquid Glass Fluid Engine",
+                    "Re-engineered ambient liquid canvas using RenderNode transforms and memoized gradient shaders, eliminating per-frame allocations for buttery smooth scrolling.",
+                    "UI"
                 )
             )
         ),

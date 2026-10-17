@@ -89,6 +89,17 @@ fun TrashBinScreen() {
                         val userEmail = authPrefs.getString("user_email", "") ?: prefs.recoveryEmail
 
                         expired.forEach { expFile ->
+                            // 1. Purge from Telegram Cloud Chat so messages don't remain as ghosts in the channel
+                            try {
+                                serverApi.purgeFileCompleteFromTelegram(
+                                    context = context,
+                                    botToken = prefs.botToken,
+                                    chatId = prefs.chatId,
+                                    file = expFile,
+                                    forceLocalDelete = true
+                                )
+                            } catch (_: Exception) {}
+
                             try { db.chunkProgressDao().deleteChunksForFile(expFile.path) } catch (_: Exception) {}
                             if (userEmail.isNotEmpty()) {
                                 try { serverApi.deleteFile(prefs.serverUrl, userEmail, expFile.telegramFileId, expFile.path) } catch (_: Exception) {}

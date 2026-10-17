@@ -2,6 +2,8 @@ package com.example.telegrambackup.utils
 
 import android.content.Context
 import android.util.Log
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -75,6 +77,9 @@ object AiSearchTagCache {
         }
     }
 
+    private val persistScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO + kotlinx.coroutines.SupervisorJob())
+    private var persistJob: kotlinx.coroutines.Job? = null
+
     fun getTagEntry(context: Context, key: String): TagEntry? {
         ensureLoaded(context)
         return inMemoryMap[key]
@@ -87,6 +92,17 @@ object AiSearchTagCache {
         val current = inMemoryMap[cleanKey]
         val mergedTags = (current?.tags.orEmpty() + tags).distinct()
         inMemoryMap[cleanKey] = TagEntry(cleanKey, mergedTags, summary.ifBlank { current?.summary.orEmpty() })
+        
+        // Debounce disk serialization by 500ms so rapid OCR scans don't stutter flash I/O
+        persistJob?.cancel()
+        persistJob = persistScope.launch {
+            kotlinx.coroutines.delay(500)
+            persist(context)
+        }
+    }
+
+    fun flush(context: Context) {
+        persistJob?.cancel()
         persist(context)
     }
 

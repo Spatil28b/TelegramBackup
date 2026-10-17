@@ -59,6 +59,7 @@ class LiveCameraObserverService : Service() {
     }
 
     private val observers = mutableListOf<FileObserver>()
+    private var mediaContentObserver: android.database.ContentObserver? = null
     private var lastTriggerTimeMs = 0L
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -67,6 +68,7 @@ class LiveCameraObserverService : Service() {
         super.onCreate()
         startForegroundNotification()
         setupFileObservers()
+        setupMediaContentObserver()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -123,6 +125,49 @@ class LiveCameraObserverService : Service() {
         }
     }
 
+    private fun setupMediaContentObserver() {
+        val handler = android.os.Handler(android.os.Looper.getMainLooper())
+        mediaContentObserver = object : android.database.ContentObserver(handler) {
+            override fun onChange(selfChange: Boolean, uri: android.net.Uri?) {
+                super.onChange(selfChange, uri)
+                handleMediaContentChange(uri)
+            }
+        }
+        try {
+            contentResolver.registerContentObserver(
+                android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                true,
+                mediaContentObserver!!
+            )
+            contentResolver.registerContentObserver(
+                android.provider.MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
+                true,
+                mediaContentObserver!!
+            )
+            Log.d(TAG, "Watching MediaStore Images & Video for camera saves")
+        } catch (e: Exception) {
+            Log.w(TAG, "Could not register MediaStore ContentObserver: ${e.message}")
+        }
+    }
+
+    private fun handleMediaContentChange(uri: android.net.Uri?) {
+        // If Android Q+, ensure media file is completely written (IS_PENDING == 0)
+        if (uri != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            try {
+                contentResolver.query(uri, arrayOf(android.provider.MediaStore.MediaColumns.IS_PENDING), null, null, null)?.use { cursor ->
+                    if (cursor.moveToFirst()) {
+                        val pendingCol = cursor.getColumnIndex(android.provider.MediaStore.MediaColumns.IS_PENDING)
+                        if (pendingCol != -1 && cursor.getInt(pendingCol) != 0) {
+                            // Camera is still actively writing the image/video
+                            return
+                        }
+                    }
+                }
+            } catch (_: Exception) {}
+        }
+        triggerSync("MediaStore: ${uri?.lastPathSegment ?: "new media"}")
+    }
+
     @Suppress("DEPRECATION")
     private fun createFileObserver(dir: File): FileObserver {
         val mask = FileObserver.CLOSE_WRITE or FileObserver.MOVED_TO
@@ -143,12 +188,16 @@ class LiveCameraObserverService : Service() {
 
     private fun handleFileEvent(parentDir: File, fileName: String?) {
         if (fileName.isNullOrBlank() || fileName.startsWith(".")) return
+        triggerSync("$fileName in ${parentDir.name}")
+    }
+
+    private fun triggerSync(sourceDesc: String) {
         val now = System.currentTimeMillis()
         // Debounce triggers by at least 4 seconds to allow multi-shot camera saves
         if (now - lastTriggerTimeMs < 4000) return
         lastTriggerTimeMs = now
 
-        Log.d(TAG, "⚡ Live change detected: $fileName in ${parentDir.name}. Scheduling Instant Sync...")
+        Log.d(TAG, "⚡ Live change detected: $sourceDesc. Scheduling Instant Sync...")
         val prefs = AppPrefs(applicationContext)
         if (prefs.autoBackupEnabled && !prefs.stopAllBackups && prefs.liveCameraObserverEnabled) {
             try {
@@ -171,6 +220,10 @@ class LiveCameraObserverService : Service() {
             try { it.stopWatching() } catch (_: Exception) {}
         }
         observers.clear()
+        mediaContentObserver?.let {
+            try { contentResolver.unregisterContentObserver(it) } catch (_: Exception) {}
+        }
+        mediaContentObserver = null
         super.onDestroy()
     }
 }

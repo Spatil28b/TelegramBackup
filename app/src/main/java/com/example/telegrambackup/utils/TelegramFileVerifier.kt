@@ -1,6 +1,8 @@
 package com.example.telegrambackup.utils
 
+import android.content.Context
 import android.util.Log
+import com.example.telegrambackup.data.AppDatabase
 import com.example.telegrambackup.data.UploadedFile
 import com.example.telegrambackup.data.UploadedFileDao
 import com.example.telegrambackup.network.HttpClientProvider
@@ -11,27 +13,18 @@ import org.json.JSONObject
 
 /**
  * =====================================================================================
- * TELEGRAM CLOUD FILE VERIFIER
+ * TELEGRAM CLOUD FILE VERIFIER (MULTI-BOT FLEET AWARE)
  * =====================================================================================
  * Verifies that files listed as "backed up" in the local Room database actually exist
- * on Telegram's servers. This solves the critical ghost-record problem where:
+ * on Telegram's servers.
  *
- * 1. Old BackupWorker bug saved fake telegramFileIds (tg_backup_...) without uploading.
- * 2. Files uploaded to Telegram can be manually deleted from the chat/channel,
- *    but the app still shows them as "backed up".
- *
- * Verification Flow:
- * - Step 1: PURGE all records with fake IDs (tg_backup_*) — these were never uploaded.
- * - Step 2: For records with real Telegram file_ids, call the Bot API `getFile` endpoint
- *           to confirm the file still exists on Telegram servers.
- * - Step 3: Remove records that fail verification (file deleted from Telegram).
- * - Step 4: Files without valid DB records will be re-uploaded by BackupWorker
- *           on the next scheduled backup cycle.
- *
- * Rate Limiting:
- * - Telegram Bot API allows ~30 requests/second.
- * - Verifier checks files in batches with a configurable batch size.
- * - Only verifies up to MAX_VERIFY_PER_SESSION files per call to avoid API abuse.
+ * Safeguards:
+ * 1. Multi-Bot Fleet Awareness: Checks files against the exact bot that uploaded them
+ *    (file.botTokenUsed), plus rotating candidate bots, eliminating false-deletion bugs
+ *    where Bot A checks a file uploaded by Bot B.
+ * 2. Custom Bot API Endpoint Support: Uses TelegramApiConfig to respect local Bot API servers.
+ * 3. Rate-Limit Immunity: HTTP 429 and temporary server 5xx errors NEVER delete records.
+ * 4. Two-Way Integrity: Purges orphaned chunk records when a file is confirmed deleted.
  * =====================================================================================
  */
 object TelegramFileVerifier {
@@ -41,13 +34,14 @@ object TelegramFileVerifier {
     /** Maximum files to verify per session to respect Telegram rate limits */
     private const val MAX_VERIFY_PER_SESSION = 100
 
+    enum class FileCheckStatus {
+        EXISTS,
+        NOT_FOUND,
+        NETWORK_OR_RATE_LIMIT
+    }
+
     /**
      * Data class holding the complete results of a verification session.
-     * @param totalChecked Total files inspected
-     * @param fakePurged Number of fake (never-uploaded) records removed
-     * @param deletedFromTelegram Number of records removed because file no longer exists on Telegram
-     * @param verifiedOk Number of files confirmed to exist on Telegram
-     * @param errors Number of files that could not be checked (network errors)
      */
     data class VerificationResult(
         val totalChecked: Int = 0,
@@ -69,29 +63,13 @@ object TelegramFileVerifier {
     }
 
     /**
-     * Main entry point: Runs full verification of all "backed up" files.
-     *
-     * Step 1: Purges all fake records (tg_backup_* IDs that were never uploaded).
-     * Step 2: Verifies real Telegram file_ids via Bot API getFile.
-     * Step 3: Removes records for files that no longer exist on Telegram.
-     *
-     * After this runs, BackupWorker will automatically re-upload any files
-     * that lost their DB records on the next backup cycle.
-     *
-     * @param botToken Telegram Bot API token
-     * @param dao Room database DAO for uploaded files
-     * @return VerificationResult with counts of purged, verified, and failed files
+     * Main entry point with full Context and multi-bot fleet awareness.
      */
     suspend fun verifyAllFiles(
+        context: Context,
         botToken: String,
         dao: UploadedFileDao
     ): VerificationResult = withContext(Dispatchers.IO) {
-
-        if (botToken.isEmpty()) {
-            Log.w(TAG, "Bot token is empty, skipping verification")
-            return@withContext VerificationResult()
-        }
-
         val allFiles = try {
             dao.getAllFiles()
         } catch (e: Exception) {
@@ -111,12 +89,13 @@ object TelegramFileVerifier {
         // =========================================================================
         // STEP 1: Purge all fake/placeholder records that were never uploaded
         // =========================================================================
-        // Old BackupWorker bug created records with IDs like "tg_backup_1234_0"
-        // instead of real Telegram file_ids (which look like "BQACAgIAAxk...")
         val fakeFiles = allFiles.filter { isFakeFileId(it.telegramFileId) }
         for (fake in fakeFiles) {
             try {
                 dao.deleteByPath(fake.path)
+                try {
+                    AppDatabase.getDatabase(context).chunkProgressDao().deleteChunksForFile(fake.path)
+                } catch (_: Exception) {}
                 fakePurged++
                 Log.d(TAG, "Purged fake record: ${fake.fileName} (id=${fake.telegramFileId})")
             } catch (e: Exception) {
@@ -125,24 +104,78 @@ object TelegramFileVerifier {
         }
 
         // =========================================================================
-        // STEP 2: Verify real file_ids against Telegram Bot API
+        // STEP 2: Collect Candidate Bots from Fleet to prevent false token mismatches
+        // =========================================================================
+        val candidateTokens = mutableListOf<String>()
+        if (botToken.isNotBlank()) candidateTokens.add(botToken.trim())
+        try {
+            val fleetTokens = TelegramMediaResolver.getCandidateBotTokens(context)
+            for (t in fleetTokens) {
+                val clean = t.trim()
+                if (clean.isNotBlank() && !candidateTokens.contains(clean)) {
+                    candidateTokens.add(clean)
+                }
+            }
+        } catch (_: Exception) {}
+
+        if (candidateTokens.isEmpty()) {
+            Log.w(TAG, "No candidate bot tokens available, skipping verification")
+            return@withContext VerificationResult(fakePurged = fakePurged)
+        }
+
+        // =========================================================================
+        // STEP 3: Multi-Bot Cloud Verification Loop
         // =========================================================================
         val realFiles = allFiles.filter { !isFakeFileId(it.telegramFileId) && it.telegramFileId.isNotEmpty() }
         val filesToVerify = realFiles.take(MAX_VERIFY_PER_SESSION)
 
         for (file in filesToVerify) {
             try {
-                val exists = verifyFileExists(botToken, file.telegramFileId)
-                if (exists) {
+                // Determine tokens to test: priority to the token that actually uploaded this file
+                val tokensToTry = mutableListOf<String>()
+                if (file.botTokenUsed.isNotBlank() && !tokensToTry.contains(file.botTokenUsed.trim())) {
+                    tokensToTry.add(file.botTokenUsed.trim())
+                }
+                candidateTokens.forEach { if (!tokensToTry.contains(it)) tokensToTry.add(it) }
+
+                var fileConfirmedExists = false
+                var allTokensConfirmedInvalid = true
+                var hadNetworkError = false
+
+                for (token in tokensToTry) {
+                    val status = checkFileStatus(context, token, file.telegramFileId)
+                    when (status) {
+                        FileCheckStatus.EXISTS -> {
+                            fileConfirmedExists = true
+                            allTokensConfirmedInvalid = false
+                            break
+                        }
+                        FileCheckStatus.NETWORK_OR_RATE_LIMIT -> {
+                            allTokensConfirmedInvalid = false
+                            hadNetworkError = true
+                            break
+                        }
+                        FileCheckStatus.NOT_FOUND -> {
+                            // Continue checking remaining candidate bots
+                        }
+                    }
+                }
+
+                if (fileConfirmedExists) {
                     verifiedOk++
-                } else {
-                    // File was deleted from Telegram — remove the ghost record
+                } else if (allTokensConfirmedInvalid && !hadNetworkError) {
+                    // Confirmed missing across all available bot accounts: purge from DB and chunk cache
                     dao.deleteByPath(file.path)
+                    try {
+                        AppDatabase.getDatabase(context).chunkProgressDao().deleteChunksForFile(file.path)
+                    } catch (_: Exception) {}
                     deletedFromTelegram++
-                    Log.w(TAG, "File deleted from Telegram, purged: ${file.fileName} (id=${file.telegramFileId})")
+                    Log.w(TAG, "File confirmed deleted from Telegram, purged: ${file.fileName} (id=${file.telegramFileId})")
+                } else {
+                    // Retain safely if ambiguous / network glitch / rate limit
+                    errors++
                 }
             } catch (e: Exception) {
-                // Network error — don't delete, just skip
                 errors++
                 Log.e(TAG, "Verification error for ${file.fileName}", e)
             }
@@ -161,32 +194,105 @@ object TelegramFileVerifier {
     }
 
     /**
-     * Checks if a single file still exists on Telegram servers using the Bot API `getFile` endpoint.
-     *
-     * Telegram's getFile API returns:
-     * - 200 OK with { ok: true, result: { file_id, file_path, ... } } if file exists
-     * - 400 Bad Request with { ok: false, description: "Bad Request: invalid file_id" } if deleted
-     *
-     * @param botToken Bot API token
-     * @param fileId Telegram file_id to verify
-     * @return true if file exists, false if deleted/invalid
-     * @throws Exception on network errors (caller should handle)
+     * Backward-compatible overload without Context parameter.
      */
+    suspend fun verifyAllFiles(
+        botToken: String,
+        dao: UploadedFileDao
+    ): VerificationResult = withContext(Dispatchers.IO) {
+        if (botToken.isBlank()) return@withContext VerificationResult()
+        val allFiles = try { dao.getAllFiles() } catch (_: Exception) { emptyList() }
+        if (allFiles.isEmpty()) return@withContext VerificationResult()
+
+        var fakePurged = 0
+        var deletedFromTelegram = 0
+        var verifiedOk = 0
+        var errors = 0
+
+        val fakeFiles = allFiles.filter { isFakeFileId(it.telegramFileId) }
+        for (fake in fakeFiles) {
+            try {
+                dao.deleteByPath(fake.path)
+                fakePurged++
+            } catch (_: Exception) {}
+        }
+
+        val realFiles = allFiles.filter { !isFakeFileId(it.telegramFileId) && it.telegramFileId.isNotEmpty() }
+        val filesToVerify = realFiles.take(MAX_VERIFY_PER_SESSION)
+
+        for (file in filesToVerify) {
+            try {
+                val token = file.botTokenUsed.ifBlank { botToken }
+                val exists = verifyFileExists(token, file.telegramFileId)
+                if (exists) {
+                    verifiedOk++
+                } else {
+                    dao.deleteByPath(file.path)
+                    deletedFromTelegram++
+                }
+            } catch (_: Exception) {
+                errors++
+            }
+        }
+
+        return@withContext VerificationResult(
+            totalChecked = fakeFiles.size + filesToVerify.size,
+            fakePurged = fakePurged,
+            deletedFromTelegram = deletedFromTelegram,
+            verifiedOk = verifiedOk,
+            errors = errors
+        )
+    }
+
     /**
-     * Checks if a single file still exists on Telegram servers using the Bot API `getFile` endpoint.
-     *
-     * Telegram's getFile API returns:
-     * - 200 OK with { ok: true, result: { file_id, file_path, ... } } if file exists
-     * - 400 Bad Request with { ok: false, description: "Bad Request: invalid file_id" } if deleted
-     *
-     * @param botToken Bot API token
-     * @param fileId Telegram file_id to verify
-     * @return true if file exists, false if deleted/invalid
+     * Checks if a single file exists on Telegram servers with full endpoint and error classification.
+     */
+    fun checkFileStatus(context: Context, botToken: String, fileId: String): FileCheckStatus {
+        if (botToken.isBlank() || fileId.isBlank()) return FileCheckStatus.NOT_FOUND
+        return try {
+            val url = TelegramApiConfig.getMethodUrl(context, botToken, "getFile?file_id=$fileId")
+            val request = Request.Builder().url(url).get().build()
+
+            val response = HttpClientProvider.client.newCall(request).execute()
+            val body = response.body?.string() ?: ""
+
+            val json = JSONObject(body)
+            val isOk = json.optBoolean("ok", false)
+            if (isOk) return FileCheckStatus.EXISTS
+
+            val desc = json.optString("description", "").lowercase()
+            val errorCode = json.optInt("error_code", 0)
+
+            // Telegram Bot API getFile returns 400 with "file is too big" for files >20MB.
+            // These files ARE 100% VALID and safely stored on Telegram Cloud!
+            if (desc.contains("file is too big") || desc.contains("too big") || desc.contains("file_id is valid")) {
+                return FileCheckStatus.EXISTS
+            }
+
+            // If Telegram is rate limiting (429) or experiencing temporary errors (500/502/503), do not purge!
+            if (errorCode == 429 || errorCode >= 500 || desc.contains("too many requests") || desc.contains("retry after")) {
+                return FileCheckStatus.NETWORK_OR_RATE_LIMIT
+            }
+
+            // Only mark as missing if Telegram explicitly confirms the file_id is invalid/deleted
+            if (desc.contains("wrong file identifier") || desc.contains("invalid file_id") || desc.contains("file not found")) {
+                return FileCheckStatus.NOT_FOUND
+            }
+
+            // Default safe fallback: retain record
+            FileCheckStatus.NETWORK_OR_RATE_LIMIT
+        } catch (_: Exception) {
+            FileCheckStatus.NETWORK_OR_RATE_LIMIT
+        }
+    }
+
+    /**
+     * Legacy helper checking file existence on official API endpoint.
      */
     fun verifyFileExists(botToken: String, fileId: String): Boolean {
         if (botToken.isBlank() || fileId.isBlank()) return false
         return try {
-            val url = "https://api.telegram.org/bot$botToken/getFile?file_id=$fileId"
+            val url = "https://api.telegram.org/bot${botToken.trim()}/getFile?file_id=$fileId"
             val request = Request.Builder().url(url).get().build()
 
             val response = HttpClientProvider.client.newCall(request).execute()
@@ -199,47 +305,33 @@ object TelegramFileVerifier {
             val desc = json.optString("description", "").lowercase()
             val errorCode = json.optInt("error_code", 0)
 
-            // Telegram Bot API getFile returns 400 with "file is too big" for files >20MB.
-            // These files ARE 100% VALID and safely stored on Telegram Cloud!
             if (desc.contains("file is too big") || desc.contains("too big") || desc.contains("file_id is valid")) {
                 return true
             }
 
-            // If Telegram is rate limiting (429) or experiencing temporary errors (500/502/503), do not purge!
             if (errorCode == 429 || errorCode >= 500 || desc.contains("too many requests") || desc.contains("retry after")) {
                 return true
             }
 
-            // Only mark as missing if Telegram explicitly confirms the file_id is invalid/deleted
             if (desc.contains("wrong file identifier") || desc.contains("invalid file_id") || desc.contains("file not found")) {
                 return false
             }
 
-            // Default safe fallback: retain record to avoid accidental duplicate uploads
             true
-        } catch (e: Exception) {
-            // Network timeout / connection drop: retain record
+        } catch (_: Exception) {
             true
         }
     }
 
     /**
-     * Detects fake/placeholder telegramFileIds that were created by the old
-     * BackupWorker bug (which never actually uploaded files to Telegram).
-     *
-     * Fake IDs follow the pattern: "tg_backup_<timestamp>_<index>"
-     * Real Telegram file_ids are Base64-encoded strings starting with "BQ", "Ag", etc.
-     *
-     * @param fileId The telegramFileId to check
-     * @return true if this is a fake/placeholder ID, false if it looks like a real Telegram file_id
+     * Detects fake/placeholder telegramFileIds that were created by old versions.
      */
     private fun isFakeFileId(fileId: String): Boolean {
         if (fileId.isEmpty()) return true
         if (fileId.startsWith("tg_backup_")) return true
         if (fileId.startsWith("tg_")) return true
-        // Real Telegram file_ids are typically 50+ characters of Base64
-        // Fake ones are short numeric strings
         if (fileId.length < 20 && fileId.all { it.isDigit() || it == '_' }) return true
         return false
     }
 }
+

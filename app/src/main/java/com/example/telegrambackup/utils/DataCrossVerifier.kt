@@ -75,7 +75,7 @@ object DataCrossVerifier {
         //   b) Records for files that were deleted from the Telegram chat/channel
         if (botToken.isNotEmpty()) {
             try {
-                val verifyResult = TelegramFileVerifier.verifyAllFiles(botToken, dao)
+                val verifyResult = TelegramFileVerifier.verifyAllFiles(context, botToken, dao)
                 reportList.add(verifyResult.toSummary())
             } catch (e: Exception) {
                 Log.e(TAG, "Telegram cloud verification failed", e)
