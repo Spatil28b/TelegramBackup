@@ -5,6 +5,7 @@ import android.util.Log
 import com.example.telegrambackup.data.AppDatabase
 import com.example.telegrambackup.data.TelegramBotEntity
 import com.example.telegrambackup.data.TelegramChannelEntity
+import com.example.telegrambackup.utils.AppNotificationHelper
 import com.example.telegrambackup.utils.AppPrefs
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
@@ -277,6 +278,41 @@ object BotFleetManager {
         try {
             AppDatabase.getDatabase(context).telegramBotDao().recordFailure(botToken)
         } catch (_: Exception) {}
+    }
+
+    /**
+     * Quarantines a bot that returned HTTP 401 (Unauthorized / Revoked token)
+     * or HTTP 403 (Forbidden / Bot kicked from channel or blocked).
+     * Deactivates bot from the fleet pool and fires an immediate alert notification.
+     */
+    suspend fun quarantineBot(
+        context: Context,
+        botToken: String,
+        httpCode: Int,
+        reason: String
+    ) = withContext(Dispatchers.IO) {
+        try {
+            val clean = botToken.trim()
+            if (clean.isBlank()) return@withContext
+
+            val db = AppDatabase.getDatabase(context)
+            db.telegramBotDao().setBotActive(clean, false)
+            releaseBot(clean)
+
+            val botEntity = db.telegramBotDao().getBotByToken(clean)
+            val botName = botEntity?.displayName?.ifBlank { botEntity.botUsername }?.ifBlank { "Bot ...${clean.takeLast(6)}" } ?: "Telegram Bot"
+
+            Log.e(TAG, "QUARANTINE ENFORCED: Bot \"$botName\" deactivated from fleet due to HTTP $httpCode ($reason)")
+
+            AppNotificationHelper.showBotQuarantinedNotification(
+                context = context,
+                botName = botName,
+                httpCode = httpCode,
+                reason = reason
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "Error quarantining bot", e)
+        }
     }
 
     /**

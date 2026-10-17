@@ -518,6 +518,8 @@ object AppNotificationHelper {
         safeNotify(context, NOTIFICATION_ID_BACKUP_PAUSED, notification)
     }
 
+    const val NOTIFICATION_ID_BOT_QUARANTINE = 2004
+
     fun showSystemAlertNotification(context: Context, title: String, message: String) {
         initNotificationChannels(context)
         val openAppPendingIntent = createNavPendingIntent(context, "SETTINGS", 420)
@@ -535,6 +537,66 @@ object AppNotificationHelper {
             .build()
 
         safeNotify(context, NOTIFICATION_ID_SYSTEM_ALERT, notification)
+    }
+
+    fun showBotQuarantinedNotification(
+        context: Context,
+        botName: String,
+        httpCode: Int,
+        reason: String
+    ) {
+        initNotificationChannels(context)
+        val openFleetIntent = createNavPendingIntent(context, "SETTINGS", 430)
+
+        val notification = NotificationCompat.Builder(context, CHANNEL_ID_ALERTS)
+            .setSmallIcon(R.drawable.ic_notif_cloud_upload)
+            .apply { getAppLargeIcon(context)?.let { setLargeIcon(it) } }
+            .setColor(COLOR_WARNING)
+            .setSubText("🤖 Bot Quarantined")
+            .setContentTitle("⚠️ Bot Quarantined: $botName")
+            .setContentText("HTTP $httpCode ($reason). Traffic auto-routed to remaining fleet.")
+            .setStyle(
+                NotificationCompat.BigTextStyle().bigText(
+                    "Bot \"$botName\" was deactivated from the fleet due to Telegram error HTTP $httpCode ($reason).\n" +
+                    "Backups are continuing automatically using remaining active bots in the pool."
+                )
+            )
+            .setAutoCancel(true)
+            .setContentIntent(openFleetIntent)
+            .addAction(R.drawable.ic_folder, "Manage Fleet", openFleetIntent)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .build()
+
+        safeNotify(context, NOTIFICATION_ID_BOT_QUARANTINE, notification)
+    }
+
+    fun showWifiPausedNotification(context: Context) {
+        initNotificationChannels(context)
+        safeCancel(context, NOTIFICATION_ID_BACKUP_ACTIVE)
+
+        val openAppPendingIntent = createNavPendingIntent(context, "PROGRESS", 415)
+        val openSettingsIntent = createNavPendingIntent(context, "SETTINGS", 416)
+
+        val notification = NotificationCompat.Builder(context, CHANNEL_ID_ALERTS)
+            .setSmallIcon(R.drawable.ic_notif_pause)
+            .apply { getAppLargeIcon(context)?.let { setLargeIcon(it) } }
+            .setColor(COLOR_WARNING)
+            .setSubText("📶 Wi-Fi Guard")
+            .setContentTitle("⏸️ Backup Paused: Waiting for Wi-Fi")
+            .setContentText("Wi-Fi Only rule is active. Sync will resume once Wi-Fi connects.")
+            .setStyle(
+                NotificationCompat.BigTextStyle().bigText(
+                    "Wi-Fi connection lost while Wi-Fi Only rule is active.\n" +
+                    "To prevent cellular data usage, backup has been paused and will seamlessly resume when Wi-Fi is detected."
+                )
+            )
+            .setOngoing(true)
+            .setContentIntent(openAppPendingIntent)
+            .addAction(R.drawable.ic_folder, "View Settings", openSettingsIntent)
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .build()
+
+        safeNotify(context, NOTIFICATION_ID_BACKUP_PAUSED, notification)
     }
 
     fun showAudioPlaybackNotification(context: Context, trackName: String, isPlaying: Boolean) {

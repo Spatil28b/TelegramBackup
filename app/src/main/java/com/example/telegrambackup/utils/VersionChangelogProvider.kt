@@ -28,6 +28,42 @@ object VersionChangelogProvider {
 
     private val releases = listOf(
         VersionRelease(
+            versionName = "2.7.2",
+            versionCode = 150,
+            releaseDate = "October 2026",
+            highlights = "Bot Fleet Auto-Quarantine & Failover, Active Wi-Fi Sentinel, FTS4 OCR Deep Search Highlighting & Web Portal 4MB Range Clamping",
+            entries = listOf(
+                ChangelogEntry(
+                    Icons.Default.Security,
+                    Color(0xFFEF4444),
+                    "Bot Fleet Auto-Quarantine & Failover",
+                    "Automatically detects revoked bot tokens (HTTP 401/403), isolates compromised bots in Room database, notifies the user, and transparently shifts in-flight chunks to healthy bots in the fleet.",
+                    "SECURITY"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Wifi,
+                    Color(0xFF38BDF8),
+                    "Active Wi-Fi Sentinel & Handover Guard",
+                    "Monitors Wi-Fi connectivity via NetworkCallback during backups. When Wi-Fi is dropped under Wi-Fi Only mode, gracefully suspends chunk uploads without burning cellular data, auto-resuming upon reconnect.",
+                    "NETWORK"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Search,
+                    Color(0xFF34D399),
+                    "FTS4 OCR Deep Search & Term Highlighting",
+                    "Explorer search now leverages Room FTS4 full-text index on scanned image text and document contents, with visual query keyword highlighting in AI image result cards.",
+                    "SEARCH"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Speed,
+                    Color(0xFFFBBF24),
+                    "Web Portal 4MB Byte-Range Clamping",
+                    "Clamps open-ended HTTP 206 byte-range streaming requests on the web share portal to 4MB chunks, preventing serverless memory exhaustion and 504 timeouts on massive video files.",
+                    "PERFORMANCE"
+                )
+            )
+        ),
+        VersionRelease(
             versionName = "2.7.1",
             versionCode = 149,
             releaseDate = "October 2026",

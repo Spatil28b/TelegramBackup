@@ -497,10 +497,11 @@ object DriveUploadManager {
         secretKey: String
     ): Pair<String, Long>? {
         var attempt = 1
+        var currentBotToken = botToken
         while (attempt <= 5) {
             val res = uploadSingleChunk(
                 context = context,
-                botToken = botToken,
+                botToken = currentBotToken,
                 chatId = chatId,
                 file = file,
                 caption = caption,
@@ -514,7 +515,13 @@ object DriveUploadManager {
                 secretKey = secretKey
             )
             if (res != null) return res
-            if (attempt < 5) delay(attempt * 2000L)
+            if (attempt < 5) {
+                val nextBot = BotFleetManager.getNextAvailableBot(context)
+                if (nextBot != null && nextBot.botToken.isNotBlank() && nextBot.botToken != currentBotToken) {
+                    currentBotToken = nextBot.botToken
+                }
+                delay(attempt * 2000L)
+            }
             attempt++
         }
         return null
@@ -604,6 +611,9 @@ object DriveUploadManager {
                 } catch (_: Exception) {
                     BotFleetManager.markBotRateLimited(context, botToken, 30)
                 }
+            } else if (resp.code == 401 || resp.code == 403) {
+                val reason = if (resp.code == 401) "Token Revoked" else "Kicked from Channel"
+                BotFleetManager.quarantineBot(context, botToken, resp.code, reason)
             }
             null
         } catch (e: Exception) {

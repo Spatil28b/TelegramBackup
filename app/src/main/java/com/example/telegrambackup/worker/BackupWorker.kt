@@ -96,6 +96,7 @@ class BackupWorker(
             return@withContext Result.success()
         }
 
+        var activeNetworkCallback: android.net.ConnectivityManager.NetworkCallback? = null
         try {
             val prefs = AppPrefs(applicationContext)
             var botToken = prefs.botToken
@@ -381,6 +382,56 @@ class BackupWorker(
                 return@withContext Result.success()
             }
 
+            // Step 6c: Active Wi-Fi Sentinel & Handover Guard (P1)
+            val connManager = applicationContext.getSystemService(Context.CONNECTIVITY_SERVICE) as? android.net.ConnectivityManager
+            fun isCurrentWifiActive(): Boolean {
+                val activeNet = connManager?.activeNetwork ?: return false
+                val caps = connManager.getNetworkCapabilities(activeNet) ?: return false
+                return caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI)
+            }
+
+            if (prefs.wifiOnly && !isCurrentWifiActive()) {
+                Log.d(TAG, "Wi-Fi Only rule active and device is not on Wi-Fi. Postponing auto-backup.")
+                AppNotificationHelper.showWifiPausedNotification(applicationContext)
+                BackupProgressTracker.finishBackupSession("Paused (Waiting for Wi-Fi)")
+                return@withContext Result.success()
+            }
+
+            val isWifiLost = java.util.concurrent.atomic.AtomicBoolean(false)
+            var networkCallback: android.net.ConnectivityManager.NetworkCallback? = null
+            if (prefs.wifiOnly) {
+                try {
+                    networkCallback = object : android.net.ConnectivityManager.NetworkCallback() {
+                        override fun onLost(network: android.net.Network) {
+                            if (prefs.wifiOnly && !isCurrentWifiActive()) {
+                                isWifiLost.set(true)
+                                Log.w(TAG, "Wi-Fi Sentinel: Wi-Fi connection dropped. Pausing upload pipeline.")
+                                AppNotificationHelper.showWifiPausedNotification(applicationContext)
+                                BackupProgressTracker.updateStatus("Paused: Waiting for Wi-Fi network...")
+                            }
+                        }
+
+                        override fun onCapabilitiesChanged(network: android.net.Network, capabilities: android.net.NetworkCapabilities) {
+                            val hasWifi = capabilities.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI)
+                            if (hasWifi && isWifiLost.get()) {
+                                isWifiLost.set(false)
+                                Log.i(TAG, "Wi-Fi Sentinel: Wi-Fi restored. Resuming upload pipeline.")
+                                AppNotificationHelper.showPersistentControlNotification(
+                                    context = applicationContext,
+                                    isRunning = true,
+                                    statusText = "Syncing ${unbackedFiles.size} files to Telegram Cloud"
+                                )
+                                BackupProgressTracker.updateStatus("Wi-Fi connected. Resuming backup...")
+                            }
+                        }
+                    }
+                    connManager?.registerDefaultNetworkCallback(networkCallback)
+                    activeNetworkCallback = networkCallback
+                } catch (e: Exception) {
+                    Log.w(TAG, "Could not register default network callback", e)
+                }
+            }
+
             // Auto prune cache before starting new batch
             AppCacheManager.autoPruneCache(applicationContext)
 
@@ -425,12 +476,20 @@ class BackupWorker(
                 val jobs = unbackedFiles.map { file ->
                     launch(Dispatchers.IO) {
                         if (prefs.stopAllBackups) return@launch
+                        while (prefs.wifiOnly && isWifiLost.get() && !prefs.stopAllBackups) {
+                            delay(2000L)
+                        }
+                        if (prefs.stopAllBackups) return@launch
                         if (!checkDailyDataAllowed(prefs, file.length())) {
                             Log.d(TAG, "Daily data limit reached (${prefs.dailyDataLimitMB} MB). Skipping ${file.name}")
                             return@launch
                         }
 
                         parallelSemaphore.withPermit {
+                            if (prefs.stopAllBackups) return@withPermit
+                            while (prefs.wifiOnly && isWifiLost.get() && !prefs.stopAllBackups) {
+                                delay(2000L)
+                            }
                             if (prefs.stopAllBackups) return@withPermit
                             if (!checkDailyDataAllowed(prefs, file.length())) return@withPermit
 
@@ -520,6 +579,10 @@ class BackupWorker(
                                     val workers = (1..chunkConcurrency).map {
                                         launch(Dispatchers.IO) {
                                             for (chunkIdx in chunkChannel) {
+                                                if (prefs.stopAllBackups) break
+                                                while (prefs.wifiOnly && isWifiLost.get() && !prefs.stopAllBackups) {
+                                                    delay(2000L)
+                                                }
                                                 if (prefs.stopAllBackups) break
 
                                                 val assignedBot = BotFleetManager.getNextAvailableBot(applicationContext)
@@ -775,6 +838,10 @@ class BackupWorker(
                     }
                 }
                 db.chunkProgressDao().pruneOrphanedChunks()
+                if (activeNetworkCallback != null) {
+                    val cm = applicationContext.getSystemService(Context.CONNECTIVITY_SERVICE) as? android.net.ConnectivityManager
+                    cm?.unregisterNetworkCallback(activeNetworkCallback)
+                }
             } catch (_: Exception) {}
         }
     }
@@ -853,6 +920,7 @@ class BackupWorker(
     ): Pair<String, Long>? {
         var attempt = 1
         val maxAttempts = 5
+        var currentBotToken = botToken
 
         while (attempt <= maxAttempts) {
             val statusText = if (attempt > 1) {
@@ -863,7 +931,7 @@ class BackupWorker(
             BackupProgressTracker.updateStatus(statusText)
 
             val result = uploadToTelegramSingleAttempt(
-                botToken = botToken,
+                botToken = currentBotToken,
                 chatId = chatId,
                 file = file,
                 caption = caption,
@@ -882,7 +950,12 @@ class BackupWorker(
 
             if (attempt < maxAttempts) {
                 val backoffMs = attempt * 2000L // 2s, 4s, 6s, 8s
-                Log.w(TAG, "Chunk $chunkIdx/$totalChunks for $sourceFileName upload attempt $attempt/$maxAttempts failed on low network. Retrying in ${backoffMs}ms...")
+                Log.w(TAG, "Chunk $chunkIdx/$totalChunks for $sourceFileName upload attempt $attempt/$maxAttempts failed. Checking fleet failover...")
+                val nextBot = BotFleetManager.getNextAvailableBot(applicationContext)
+                if (nextBot != null && nextBot.botToken.isNotBlank() && nextBot.botToken != currentBotToken) {
+                    Log.i(TAG, "Failover activated: switching chunk $chunkIdx from old bot to next healthy bot in fleet")
+                    currentBotToken = nextBot.botToken
+                }
                 delay(backoffMs)
             }
             attempt++
@@ -992,6 +1065,9 @@ class BackupWorker(
                 } catch (e: Exception) {
                     BotFleetManager.markBotRateLimited(applicationContext, botToken, 30)
                 }
+            } else if (response.code == 401 || response.code == 403) {
+                val reason = if (response.code == 401) "Token Revoked" else "Kicked from Channel"
+                BotFleetManager.quarantineBot(applicationContext, botToken, response.code, reason)
             }
 
             Log.e(TAG, "Telegram upload failed: HTTP ${response.code}, body: ${body.take(200)}")

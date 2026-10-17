@@ -27,6 +27,8 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
@@ -77,6 +79,55 @@ fun AiPhotoSearchDialog(
     var statusText by remember { mutableStateOf("") }
     var activeJob by remember { mutableStateOf<Job?>(null) }
     var hasSearchedAtLeastOnce by remember { mutableStateOf(false) }
+
+    var selectedCategory by remember { mutableStateOf("ALL") }
+    var selectedDateRange by remember { mutableStateOf("ANYTIME") }
+
+    val filteredSearchResults = remember(searchResults, selectedCategory, selectedDateRange) {
+        val now = System.currentTimeMillis()
+        searchResults.filter { item ->
+            val file = item.file
+            val matchesCategory = when (selectedCategory) {
+                "RECEIPTS" -> {
+                    val n = file.fileName.lowercase()
+                    val r = item.matchReason.lowercase()
+                    n.contains("receipt") || n.contains("bill") || n.contains("invoice") || n.contains("upi") ||
+                    r.contains("receipt") || r.contains("bill") || r.contains("invoice") || r.contains("payment")
+                }
+                "CERTIFICATES" -> {
+                    val n = file.fileName.lowercase()
+                    val r = item.matchReason.lowercase()
+                    n.contains("cert") || n.contains("degree") || n.contains("diploma") || n.contains("mark") ||
+                    r.contains("cert") || r.contains("degree") || r.contains("diploma")
+                }
+                "DOCUMENTS" -> {
+                    val n = file.fileName.lowercase()
+                    val r = item.matchReason.lowercase()
+                    n.endsWith(".pdf") || n.endsWith(".doc") || n.endsWith(".docx") || n.endsWith(".txt") ||
+                    r.contains("document") || r.contains("pdf") || item.badge.contains("OCR")
+                }
+                "PHOTOS" -> {
+                    val n = file.fileName.lowercase()
+                    n.endsWith(".jpg") || n.endsWith(".jpeg") || n.endsWith(".png") || n.endsWith(".webp") || n.endsWith(".heic")
+                }
+                else -> true
+            }
+
+            val matchesDate = when (selectedDateRange) {
+                "7D" -> (now - file.timestamp) <= 7L * 86400000L
+                "30D" -> (now - file.timestamp) <= 30L * 86400000L
+                "THIS_YEAR" -> {
+                    val cal = Calendar.getInstance()
+                    val curYear = cal.get(Calendar.YEAR)
+                    cal.timeInMillis = file.timestamp
+                    cal.get(Calendar.YEAR) == curYear
+                }
+                else -> true
+            }
+
+            matchesCategory && matchesDate
+        }
+    }
 
     // Media viewer & Ask photo modal states
     var viewerInitialIndex by remember { mutableStateOf<Int?>(null) }
@@ -391,10 +442,61 @@ fun AiPhotoSearchDialog(
 
                         if (searchResults.isNotEmpty()) {
                             Text(
-                                "${searchResults.size} matches",
+                                if (filteredSearchResults.size != searchResults.size) "${filteredSearchResults.size} shown (${searchResults.size} total)" else "${searchResults.size} matches",
                                 style = MaterialTheme.typography.labelSmall.copy(
                                     fontWeight = FontWeight.Bold,
                                     color = TelegramEmerald
+                                )
+                            )
+                        }
+                    }
+                }
+
+                // Category & Date Filters Row
+                if (searchResults.isNotEmpty()) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState())
+                            .padding(horizontal = 16.dp, vertical = 2.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        listOf(
+                            "ALL" to "All (${searchResults.size})",
+                            "RECEIPTS" to "🧾 Receipts",
+                            "CERTIFICATES" to "🎓 Certificates",
+                            "PHOTOS" to "🖼️ Photos",
+                            "DOCUMENTS" to "📄 Documents"
+                        ).forEach { (catKey, catLabel) ->
+                            val isSel = selectedCategory == catKey
+                            FilterChip(
+                                selected = isSel,
+                                onClick = { selectedCategory = catKey },
+                                label = { Text(catLabel, style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp, fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal)) },
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = TelegramBlue.copy(alpha = 0.2f),
+                                    selectedLabelColor = TelegramBlue
+                                )
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.width(4.dp))
+
+                        listOf(
+                            "ANYTIME" to "Anytime",
+                            "7D" to "Last 7d",
+                            "30D" to "Last 30d",
+                            "THIS_YEAR" to "This Year"
+                        ).forEach { (dateKey, dateLabel) ->
+                            val isSel = selectedDateRange == dateKey
+                            FilterChip(
+                                selected = isSel,
+                                onClick = { selectedDateRange = dateKey },
+                                label = { Text(dateLabel, style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp, fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal)) },
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = Color(0xFFF59E0B).copy(alpha = 0.2f),
+                                    selectedLabelColor = Color(0xFFF59E0B)
                                 )
                             )
                         }
@@ -414,7 +516,7 @@ fun AiPhotoSearchDialog(
                 ) {
                     when {
                         // Results available: Show 2-column image gallery grid!
-                        searchResults.isNotEmpty() -> {
+                        filteredSearchResults.isNotEmpty() -> {
                             LazyVerticalGrid(
                                 columns = GridCells.Fixed(2),
                                 contentPadding = PaddingValues(bottom = 24.dp, top = 4.dp),
@@ -422,9 +524,10 @@ fun AiPhotoSearchDialog(
                                 verticalArrangement = Arrangement.spacedBy(10.dp),
                                 modifier = Modifier.fillMaxSize()
                             ) {
-                                itemsIndexed(searchResults) { index, item ->
+                                itemsIndexed(filteredSearchResults) { index, item ->
                                     AiImageResultCard(
                                         result = item,
+                                        searchQuery = searchQuery,
                                         onClick = {
                                             viewerInitialIndex = index
                                         },
@@ -636,12 +739,39 @@ private fun SearchSampleRow(
     }
 }
 
+private fun buildHighlightedString(text: String, query: String, highlightBg: Color): AnnotatedString {
+    if (query.isBlank()) return AnnotatedString(text)
+    val tokens = query.lowercase().split(" ", ",", "_", "-").filter { it.length >= 2 }
+    if (tokens.isEmpty()) return AnnotatedString(text)
+    val builder = AnnotatedString.Builder(text)
+    val lowerText = text.lowercase()
+    for (token in tokens) {
+        var startIdx = 0
+        while (startIdx < lowerText.length) {
+            val idx = lowerText.indexOf(token, startIdx)
+            if (idx == -1) break
+            builder.addStyle(
+                SpanStyle(
+                    color = Color.White,
+                    background = highlightBg,
+                    fontWeight = FontWeight.Bold
+                ),
+                idx,
+                idx + token.length
+            )
+            startIdx = idx + token.length
+        }
+    }
+    return builder.toAnnotatedString()
+}
+
 /**
  * Visual card displaying an image result with thumbnail, match badge, and quick actions.
  */
 @Composable
 private fun AiImageResultCard(
     result: AiPhotoSearchManager.AiSearchResultItem,
+    searchQuery: String = "",
     onClick: () -> Unit,
     onAskAi: () -> Unit
 ) {
@@ -649,6 +779,10 @@ private fun AiImageResultCard(
     val dateFormat = remember { SimpleDateFormat("dd MMM yyyy", Locale.getDefault()) }
     val dateStr = remember(file.timestamp) {
         if (file.timestamp > 0) dateFormat.format(Date(file.timestamp)) else "Backed up"
+    }
+
+    val highlightedFileName = remember(file.fileName, searchQuery) {
+        buildHighlightedString(file.fileName, searchQuery, TelegramBlue.copy(alpha = 0.85f))
     }
 
     Surface(
@@ -712,7 +846,7 @@ private fun AiImageResultCard(
             // Info and metadata section
             Column(modifier = Modifier.padding(10.dp)) {
                 Text(
-                    text = file.fileName,
+                    text = highlightedFileName,
                     style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
                     color = MaterialTheme.colorScheme.onSurface,
                     maxLines = 1,

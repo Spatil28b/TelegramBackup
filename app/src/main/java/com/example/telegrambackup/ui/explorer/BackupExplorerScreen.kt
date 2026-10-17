@@ -886,10 +886,34 @@ fun BackupExplorerScreen(
         }
     }
 
-    val activeDisplayFiles = remember(cloudFileList, currentPathFiles, effectiveSearchQuery, sortOption, selectedFilterType) {
+    var ocrMatchedPaths by remember { mutableStateOf<Set<String>>(emptySet()) }
+    LaunchedEffect(effectiveSearchQuery) {
+        val q = effectiveSearchQuery.trim()
+        if (q.length >= 2) {
+            withContext(Dispatchers.IO) {
+                try {
+                    val db = AppDatabase.getDatabase(context)
+                    val tokens = q.split(" ").filter { it.length >= 2 }
+                    val ftsQuery = if (tokens.isNotEmpty()) tokens.joinToString(" OR ") { "$it*" } else "$q*"
+                    val ftsMatches = db.fileSearchDao().searchFts(ftsQuery, limit = 100)
+                    ocrMatchedPaths = ftsMatches.map { it.filePath }.toSet()
+                } catch (_: Exception) {
+                    ocrMatchedPaths = emptySet()
+                }
+            }
+        } else {
+            ocrMatchedPaths = emptySet()
+        }
+    }
+
+    val activeDisplayFiles = remember(cloudFileList, currentPathFiles, effectiveSearchQuery, sortOption, selectedFilterType, ocrMatchedPaths) {
         val q = effectiveSearchQuery.trim()
         var list = if (q.isNotEmpty()) {
-            cloudFileList.filter { it.fileName.contains(q, ignoreCase = true) || it.path.contains(q, ignoreCase = true) }
+            cloudFileList.filter {
+                it.fileName.contains(q, ignoreCase = true) ||
+                it.path.contains(q, ignoreCase = true) ||
+                ocrMatchedPaths.contains(it.path)
+            }
         } else {
             currentPathFiles
         }
