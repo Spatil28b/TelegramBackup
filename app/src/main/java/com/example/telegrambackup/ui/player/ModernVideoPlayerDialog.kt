@@ -2,14 +2,19 @@ package com.example.telegrambackup.ui.player
 
 import android.content.Context
 import android.content.Intent
+import android.media.AudioManager
 import android.media.MediaPlayer
+import android.media.PlaybackParams
 import android.net.Uri
+import android.os.Build
 import android.widget.Toast
 import android.widget.VideoView
 import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -22,6 +27,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -40,10 +46,10 @@ import java.util.Locale
 
 /**
  * =====================================================================================
- * BUILT-IN PREMIUM VIDEO PLAYER MODAL
+ * BUILT-IN PREMIUM VIDEO PLAYER MODAL (v2.7.1 HARDENED)
  * =====================================================================================
- * Full-screen video player with live timeline scrub seekbar, play/pause controls,
- * 10s skip/rewind, time indicators, and external player chooser fallback.
+ * Full-screen video player with live timeline scrub seekbar, gesture brightness/volume
+ * controls, double-tap seek, playback speed selector (0.5x - 2.0x), and HUD indicators.
  * =====================================================================================
  */
 @Composable
@@ -53,14 +59,19 @@ fun ModernVideoPlayerDialog(
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
+    val audioManager = remember { context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager }
 
     var isPlaying by remember { mutableStateOf(true) }
     var currentPositionMs by remember { mutableIntStateOf(0) }
     var durationMs by remember { mutableIntStateOf(1) }
     var showControls by remember { mutableStateOf(true) }
     var isBuffering by remember { mutableStateOf(true) }
+    var playbackSpeed by remember { mutableFloatStateOf(1.0f) }
+    var brightnessLevel by remember { mutableFloatStateOf(1.0f) }
+    var hudText by remember { mutableStateOf<String?>(null) }
 
     var videoViewRef by remember { mutableStateOf<VideoView?>(null) }
+    var mediaPlayerRef by remember { mutableStateOf<MediaPlayer?>(null) }
 
     fun formatTime(ms: Int): String {
         val totalSecs = (ms / 1000).coerceAtLeast(0)
@@ -79,6 +90,14 @@ fun ModernVideoPlayerDialog(
         if (showControls && isPlaying) {
             delay(3500)
             showControls = false
+        }
+    }
+
+    // Auto-hide HUD after 1.2 seconds
+    LaunchedEffect(hudText) {
+        if (hudText != null) {
+            delay(1200)
+            hudText = null
         }
     }
 
@@ -103,6 +122,7 @@ fun ModernVideoPlayerDialog(
                 videoViewRef?.stopPlayback()
                 videoViewRef?.suspend()
                 videoViewRef = null
+                mediaPlayerRef = null
             } catch (_: Throwable) {}
         }
     }
@@ -113,6 +133,7 @@ fun ModernVideoPlayerDialog(
                 videoViewRef?.stopPlayback()
                 videoViewRef?.suspend()
                 videoViewRef = null
+                mediaPlayerRef = null
             } catch (_: Throwable) {}
             onDismiss()
         },
@@ -126,11 +147,54 @@ fun ModernVideoPlayerDialog(
             modifier = Modifier
                 .fillMaxSize()
                 .background(Color.Black)
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null
-                ) {
-                    showControls = !showControls
+                .pointerInput(Unit) {
+                    detectTapGestures(
+                        onTap = {
+                            showControls = !showControls
+                        },
+                        onDoubleTap = { offset ->
+                            val isLeftSide = offset.x < size.width / 2
+                            videoViewRef?.let { vv ->
+                                if (isLeftSide) {
+                                    val newPos = (vv.currentPosition - 10000).coerceAtLeast(0)
+                                    vv.seekTo(newPos)
+                                    currentPositionMs = newPos
+                                    hudText = "⏪ -10s"
+                                } else {
+                                    val newPos = (vv.currentPosition + 10000).coerceAtMost(durationMs)
+                                    vv.seekTo(newPos)
+                                    currentPositionMs = newPos
+                                    hudText = "⏩ +10s"
+                                }
+                            }
+                        }
+                    )
+                }
+                .pointerInput(Unit) {
+                    var isLeft = false
+                    detectVerticalDragGestures(
+                        onDragStart = { offset ->
+                            isLeft = offset.x < size.width / 2
+                        },
+                        onVerticalDrag = { change, dragAmount ->
+                            change.consume()
+                            if (isLeft) {
+                                // Adjust brightness scrim
+                                brightnessLevel = (brightnessLevel - dragAmount / 350f).coerceIn(0.15f, 1.0f)
+                                hudText = "☀️ Brightness ${(brightnessLevel * 100).toInt()}%"
+                            } else {
+                                // Adjust volume
+                                audioManager?.let { am ->
+                                    val maxVol = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC).coerceAtLeast(1)
+                                    val direction = if (dragAmount < 0) AudioManager.ADJUST_RAISE else AudioManager.ADJUST_LOWER
+                                    am.adjustStreamVolume(AudioManager.STREAM_MUSIC, direction, 0)
+                                    val currentVol = am.getStreamVolume(AudioManager.STREAM_MUSIC)
+                                    val pct = (currentVol * 100 / maxVol)
+                                    hudText = "🔊 Volume $pct%"
+                                }
+                            }
+                        }
+                    )
                 }
         ) {
             var activeVideoSource by remember { mutableStateOf<String?>(null) }
@@ -175,10 +239,16 @@ fun ModernVideoPlayerDialog(
                                 }
 
                                 setOnPreparedListener { mp ->
+                                    mediaPlayerRef = mp
                                     isBuffering = false
                                     durationMs = mp.duration.coerceAtLeast(1)
                                     mp.isLooping = true
                                     try {
+                                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && playbackSpeed != 1.0f) {
+                                            val params = mp.playbackParams ?: PlaybackParams()
+                                            params.speed = playbackSpeed
+                                            mp.playbackParams = params
+                                        }
                                         start()
                                         isPlaying = true
                                     } catch (_: Throwable) {
@@ -213,12 +283,46 @@ fun ModernVideoPlayerDialog(
                 }
             }
 
+            // Software Brightness Scrim Overlay
+            if (brightnessLevel < 0.98f) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = (1f - brightnessLevel).coerceIn(0f, 0.82f)))
+                )
+            }
+
             // Buffering Spinner
             if (isBuffering) {
                 CircularProgressIndicator(
                     color = TelegramBlue,
                     modifier = Modifier.align(Alignment.Center)
                 )
+            }
+
+            // HUD Indicator (Volume, Brightness, Seek)
+            AnimatedVisibility(
+                visible = hudText != null,
+                enter = fadeIn(tween(150)) + scaleIn(initialScale = 0.85f),
+                exit = fadeOut(tween(250)),
+                modifier = Modifier.align(Alignment.Center)
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = Color.Black.copy(alpha = 0.75f),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.2f)),
+                    modifier = Modifier.padding(16.dp)
+                ) {
+                    Text(
+                        text = hudText ?: "",
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 18.sp
+                        ),
+                        modifier = Modifier.padding(horizontal = 24.dp, vertical = 14.dp)
+                    )
+                }
             }
 
             // CONTROLS OVERLAY
@@ -260,6 +364,41 @@ fun ModernVideoPlayerDialog(
                                 .weight(1f)
                                 .padding(horizontal = 12.dp)
                         )
+
+                        // Playback Speed Toggle Pill
+                        Surface(
+                            shape = CircleShape,
+                            color = Color.White.copy(alpha = 0.2f),
+                            modifier = Modifier
+                                .clickable {
+                                    playbackSpeed = when (playbackSpeed) {
+                                        0.5f -> 1.0f
+                                        1.0f -> 1.25f
+                                        1.25f -> 1.5f
+                                        1.5f -> 2.0f
+                                        else -> 0.5f
+                                    }
+                                    mediaPlayerRef?.let { mp ->
+                                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                                            try {
+                                                val p = mp.playbackParams ?: PlaybackParams()
+                                                p.speed = playbackSpeed
+                                                mp.playbackParams = p
+                                            } catch (_: Exception) {}
+                                        }
+                                    }
+                                    hudText = "⚡ Speed: ${playbackSpeed}x"
+                                }
+                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                        ) {
+                            Text(
+                                text = "${playbackSpeed}x",
+                                style = MaterialTheme.typography.labelMedium.copy(color = Color.White, fontWeight = FontWeight.Bold),
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.width(6.dp))
 
                         IconButton(
                             onClick = {

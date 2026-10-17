@@ -78,37 +78,11 @@ fun TrashBinScreen() {
                 // Ensure all trashed files have valid deletedAt timestamps
                 dao.fixMissingDeletedAt(System.currentTimeMillis())
 
-                // Execute auto-clean if configured
-                val autoCleanDays = prefs.trashAutoCleanDays
-                if (autoCleanDays > 0) {
-                    val cutoff = System.currentTimeMillis() - (autoCleanDays.toLong() * 86400000L)
-                    val expired = dao.getExpiredTrashFiles(cutoff)
-                    if (expired.isNotEmpty()) {
-                        val serverApi = ServerApi()
-                        val authPrefs = context.getSharedPreferences("auth_prefs", Context.MODE_PRIVATE)
-                        val userEmail = authPrefs.getString("user_email", "") ?: prefs.recoveryEmail
-
-                        expired.forEach { expFile ->
-                            // 1. Purge from Telegram Cloud Chat so messages don't remain as ghosts in the channel
-                            try {
-                                serverApi.purgeFileCompleteFromTelegram(
-                                    context = context,
-                                    botToken = prefs.botToken,
-                                    chatId = prefs.chatId,
-                                    file = expFile,
-                                    forceLocalDelete = true
-                                )
-                            } catch (_: Exception) {}
-
-                            try { db.chunkProgressDao().deleteChunksForFile(expFile.path) } catch (_: Exception) {}
-                            if (userEmail.isNotEmpty()) {
-                                try { serverApi.deleteFile(prefs.serverUrl, userEmail, expFile.telegramFileId, expFile.path) } catch (_: Exception) {}
-                            }
-                        }
-                        dao.deleteExpiredTrash(cutoff)
-                        withContext(Dispatchers.Main) {
-                            autoCleanedCount = expired.size
-                        }
+                // Execute auto-clean if configured (P2)
+                val cleaned = com.example.telegrambackup.utils.TrashRetentionDaemon.sweepExpiredTrash(context)
+                if (cleaned > 0) {
+                    withContext(Dispatchers.Main) {
+                        autoCleanedCount = cleaned
                     }
                 }
             } catch (_: Exception) {}

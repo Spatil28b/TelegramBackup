@@ -29,11 +29,12 @@ import java.io.File
  */
 object AppNotificationHelper {
 
-    // 4 Distinct Notification Channels
+    // 5 Distinct Notification Channels
     const val CHANNEL_ID_CONTROLLER = "telegram_backup_control_v3"
     const val CHANNEL_ID_UPLOADS = "telegram_backup_uploads_v3"
     const val CHANNEL_ID_DOWNLOADS = "telegram_backup_downloads_v3"
     const val CHANNEL_ID_ALERTS = "telegram_backup_alerts_v3"
+    const val CHANNEL_ID_AUDIO = "telegram_backup_audio_v3"
 
     // Distinct Notification IDs
     const val NOTIFICATION_ID_CONTROLLER = 1000
@@ -43,6 +44,7 @@ object AppNotificationHelper {
     const val NOTIFICATION_ID_SYSTEM_ALERT = 2003
     const val NOTIFICATION_ID_DOWNLOAD_ACTIVE = 3001
     const val NOTIFICATION_ID_DOWNLOAD_COMPLETED = 3002
+    const val NOTIFICATION_ID_AUDIO = 4001
 
     const val EXTRA_NAVIGATE_TAB = "extra_navigate_tab"
 
@@ -149,10 +151,23 @@ object AppNotificationHelper {
                     enableLights(true)
                 }
 
+                // 5. Audio Playback (Low importance = silent background playback)
+                val audioChannel = NotificationChannel(
+                    CHANNEL_ID_AUDIO,
+                    "Audio Playback Controls",
+                    NotificationManager.IMPORTANCE_LOW
+                ).apply {
+                    description = "Playback controls and track information for background audio"
+                    setShowBadge(false)
+                    enableLights(false)
+                    enableVibration(false)
+                }
+
                 manager.createNotificationChannel(controllerChannel)
                 manager.createNotificationChannel(uploadsChannel)
                 manager.createNotificationChannel(downloadsChannel)
                 manager.createNotificationChannel(alertsChannel)
+                manager.createNotificationChannel(audioChannel)
             }
         } catch (t: Throwable) {
             android.util.Log.e("AppNotificationHelper", "Error initializing notification channels", t)
@@ -520,5 +535,34 @@ object AppNotificationHelper {
             .build()
 
         safeNotify(context, NOTIFICATION_ID_SYSTEM_ALERT, notification)
+    }
+
+    fun showAudioPlaybackNotification(context: Context, trackName: String, isPlaying: Boolean) {
+        initNotificationChannels(context)
+        val toggleAction = if (isPlaying) "Pause" else "Play"
+        val toggleIcon = if (isPlaying) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play
+        val togglePendingIntent = createControlPendingIntent(context, BackupControlReceiver.ACTION_AUDIO_TOGGLE, 9001)
+        val stopPendingIntent = createControlPendingIntent(context, BackupControlReceiver.ACTION_AUDIO_STOP, 9002)
+        val openAppIntent = createNavPendingIntent(context, "Browse", 9000)
+
+        val notification = NotificationCompat.Builder(context, CHANNEL_ID_AUDIO)
+            .setSmallIcon(R.drawable.ic_notif_download)
+            .apply { getAppLargeIcon(context)?.let { setLargeIcon(it) } }
+            .setContentTitle(trackName)
+            .setContentText(if (isPlaying) "Playing in background • TSpace Player" else "Paused • TSpace Player")
+            .setSubText("Audio Player")
+            .setContentIntent(openAppIntent)
+            .setOngoing(isPlaying)
+            .setColor(COLOR_PRIMARY)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .addAction(toggleIcon, toggleAction, togglePendingIntent)
+            .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Stop", stopPendingIntent)
+            .build()
+
+        safeNotify(context, NOTIFICATION_ID_AUDIO, notification)
+    }
+
+    fun dismissAudioNotification(context: Context) {
+        safeCancel(context, NOTIFICATION_ID_AUDIO)
     }
 }

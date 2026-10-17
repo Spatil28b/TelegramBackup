@@ -1093,6 +1093,24 @@ fun DriveExplorerScreen(
                 }
             },
             onDownload = {
+                val items = selectedDriveItems.toList()
+                selectedDriveItems.clear()
+                isDriveSelectionActive = false
+                scope.launch(Dispatchers.IO) {
+                    var dlCount = 0
+                    val downloadsDir = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS)
+                    val targetDir = java.io.File(downloadsDir, "TelegramBackup").apply { if (!exists()) mkdirs() }
+                    items.filter { it.telegramFileId != "DIR_MARKER" }.forEach { file ->
+                        val targetFile = java.io.File(targetDir, file.fileName)
+                        val ok = TelegramMediaResolver.restoreFileToTarget(context, file, targetFile)
+                        if (ok && targetFile.exists()) dlCount++
+                    }
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(context, "Downloaded $dlCount file(s) to Downloads/TelegramBackup", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            },
+            onDownloadZip = {
                 scope.launch(Dispatchers.IO) {
                     val filesToDl = mutableListOf<UploadedFile>()
                     selectedDriveItems.forEach { item ->

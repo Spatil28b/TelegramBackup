@@ -32,6 +32,7 @@ fun FloatingBulkActionBar(
     onSelectAllToggle: () -> Unit,
     onShare: () -> Unit,
     onDownload: () -> Unit,
+    onDownloadZip: (() -> Unit)? = null,
     onFreeUpSpace: () -> Unit,
     onTrash: () -> Unit,
     onDismiss: () -> Unit,
@@ -119,6 +120,15 @@ fun FloatingBulkActionBar(
                     tint = TelegramEmerald,
                     onClick = onDownload
                 )
+
+                if (onDownloadZip != null && selectedCount > 1) {
+                    BulkActionIconButton(
+                        icon = Icons.Default.FolderZip,
+                        label = "ZIP",
+                        tint = Color(0xFFF59E0B),
+                        onClick = onDownloadZip
+                    )
+                }
 
                 BulkActionIconButton(
                     icon = Icons.Default.CleaningServices,

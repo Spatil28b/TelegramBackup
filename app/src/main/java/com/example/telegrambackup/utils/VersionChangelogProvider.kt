@@ -28,6 +28,49 @@ object VersionChangelogProvider {
 
     private val releases = listOf(
         VersionRelease(
+            versionName = "2.7.1",
+            versionCode = 149,
+            releaseDate = "October 2026",
+            highlights = "True Hash Deduplication Engine, Telegram Cloud Ghost Purge, Video Gestures & Audio Lockscreen Controls, Background Trash Retention Daemon & Multi-Select Batch ZIP Exporter",
+            entries = listOf(
+                ChangelogEntry(
+                    Icons.Default.Fingerprint,
+                    Color(0xFF38BDF8),
+                    "True Content-Hash Deduplication",
+                    "Upgraded duplicate scanner with fast first/last byte-level MD5 fingerprinting and normalized filename matching, catching identical files even when renamed or copied across folders.",
+                    "STORAGE"
+                ),
+                ChangelogEntry(
+                    Icons.Default.DeleteSweep,
+                    Color(0xFFEF4444),
+                    "Telegram Cloud Ghost Purge",
+                    "Cascades duplicate cleanup directly to Telegram channels via multi-bot batch message deletion, permanently freeing cloud storage and preventing phantom orphan chunks.",
+                    "CLEANER"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Gesture,
+                    Color(0xFF34D399),
+                    "Modern Video Player Gestures & Audio Lockscreen",
+                    "Added vertical drag gestures for brightness and volume, double-tap +/-10s seek with HUD overlays, 0.5x-2.0x playback speed selector, and background audio lockscreen notification controls.",
+                    "MEDIA"
+                ),
+                ChangelogEntry(
+                    Icons.Default.AutoDelete,
+                    Color(0xFFFBBF24),
+                    "Background Trash Retention Daemon",
+                    "Enforces 7, 14, and 30-day trash auto-retention policies automatically during background backup worker runs without requiring manual user visits to the trash screen.",
+                    "AUTOMATION"
+                ),
+                ChangelogEntry(
+                    Icons.Default.FolderZip,
+                    Color(0xFFA855F7),
+                    "Multi-Select Batch ZIP Archive Exporter",
+                    "Floating Bulk Action Bar now features a dedicated 'ZIP' action to bundle arbitrary multi-selected files into a clean compressed archive on the fly.",
+                    "EXPORT"
+                )
+            )
+        ),
+        VersionRelease(
             versionName = "2.7.0",
             versionCode = 148,
             releaseDate = "October 2026",

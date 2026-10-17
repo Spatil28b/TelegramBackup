@@ -96,6 +96,8 @@
             <intent-filter>
                 <action android:name="com.example.telegrambackup.ACTION_START_BACKUP" />
                 <action android:name="com.example.telegrambackup.ACTION_STOP_BACKUP" />
+                <action android:name="com.example.telegrambackup.ACTION_AUDIO_TOGGLE" />
+                <action android:name="com.example.telegrambackup.ACTION_AUDIO_STOP" />
             </intent-filter>
         </receiver>
 

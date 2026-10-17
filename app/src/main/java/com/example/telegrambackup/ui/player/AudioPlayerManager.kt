@@ -8,19 +8,22 @@ import android.os.Build
 import android.widget.Toast
 import androidx.compose.runtime.*
 import com.example.telegrambackup.data.AppDatabase
+import com.example.telegrambackup.utils.AppNotificationHelper
 import com.example.telegrambackup.utils.FileViewerHelper
 import com.example.telegrambackup.utils.TelegramMediaResolver
 import kotlinx.coroutines.*
 
 /**
  * Global audio playback manager supporting background playback,
- * speed adjustment, and floating mini-player pill integration.
+ * lockscreen/status-bar notification controls, speed adjustment,
+ * and floating mini-player pill integration.
  */
 object AudioPlayerManager {
     private var mediaPlayer: MediaPlayer? = null
     private var scope = CoroutineScope(Dispatchers.Main + Job())
     private var tickerJob: Job? = null
     private var playJob: Job? = null
+    private var applicationContext: Context? = null
 
     var activeTrackPath by mutableStateOf<String?>(null)
         private set
@@ -46,16 +49,17 @@ object AudioPlayerManager {
         get() = !activeTrackPath.isNullOrBlank()
 
     fun playTrack(context: Context, filePathOrUrl: String, fileName: String) {
+        applicationContext = context.applicationContext
         if (activeTrackPath == filePathOrUrl && mediaPlayer != null) {
             if (!isPlaying) {
-                resume()
+                resume(context)
             }
             isExpandedSheetOpen = true
             return
         }
 
         playJob?.cancel()
-        stop()
+        stop(context)
         activeTrackPath = filePathOrUrl
         activeTrackName = fileName
         isBuffering = true
@@ -121,6 +125,7 @@ object AudioPlayerManager {
                                 mp.start()
                                 isPlaying = true
                                 startProgressTicker()
+                                AppNotificationHelper.showAudioPlaybackNotification(context.applicationContext, fileName, isPlaying = true)
                             } catch (_: Throwable) {
                                 isPlaying = false
                             }
@@ -130,12 +135,14 @@ object AudioPlayerManager {
                             if (!isLooping) {
                                 isPlaying = false
                                 currentPositionMs = totalDurationMs
+                                AppNotificationHelper.dismissAudioNotification(context.applicationContext)
                             }
                         }
 
                         player.setOnErrorListener { _, _, _ ->
                             isBuffering = false
                             isPlaying = false
+                            AppNotificationHelper.dismissAudioNotification(context.applicationContext)
                             try {
                                 Toast.makeText(context.applicationContext, "Error playing audio", Toast.LENGTH_SHORT).show()
                             } catch (_: Throwable) {}
@@ -163,26 +170,34 @@ object AudioPlayerManager {
         }
     }
 
-    fun togglePlayPause() {
+    fun togglePlayPause(context: Context? = null) {
         if (isPlaying) {
-            pause()
+            pause(context)
         } else {
-            resume()
+            resume(context)
         }
     }
 
-    fun pause() {
+    fun pause(context: Context? = null) {
         try {
             mediaPlayer?.pause()
             isPlaying = false
+            val ctx = context?.applicationContext ?: applicationContext
+            if (ctx != null && activeTrackName != null) {
+                AppNotificationHelper.showAudioPlaybackNotification(ctx, activeTrackName!!, isPlaying = false)
+            }
         } catch (_: Exception) { }
     }
 
-    fun resume() {
+    fun resume(context: Context? = null) {
         try {
             mediaPlayer?.start()
             isPlaying = true
             startProgressTicker()
+            val ctx = context?.applicationContext ?: applicationContext
+            if (ctx != null && activeTrackName != null) {
+                AppNotificationHelper.showAudioPlaybackNotification(ctx, activeTrackName!!, isPlaying = true)
+            }
         } catch (_: Exception) { }
     }
 
@@ -223,7 +238,7 @@ object AudioPlayerManager {
         } catch (_: Exception) { }
     }
 
-    fun stop() {
+    fun stop(context: Context? = null) {
         playJob?.cancel()
         playJob = null
         tickerJob?.cancel()
@@ -235,6 +250,10 @@ object AudioPlayerManager {
             mediaPlayer?.release()
         } catch (_: Throwable) { }
         mediaPlayer = null
+        val ctx = context?.applicationContext ?: applicationContext
+        if (ctx != null) {
+            AppNotificationHelper.dismissAudioNotification(ctx)
+        }
         activeTrackPath = null
         activeTrackName = null
         isPlaying = false

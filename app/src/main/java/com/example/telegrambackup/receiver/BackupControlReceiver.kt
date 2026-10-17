@@ -19,6 +19,8 @@ class BackupControlReceiver : BroadcastReceiver() {
     companion object {
         const val ACTION_START_BACKUP = "com.example.telegrambackup.ACTION_START_BACKUP"
         const val ACTION_STOP_BACKUP = "com.example.telegrambackup.ACTION_STOP_BACKUP"
+        const val ACTION_AUDIO_TOGGLE = "com.example.telegrambackup.ACTION_AUDIO_TOGGLE"
+        const val ACTION_AUDIO_STOP = "com.example.telegrambackup.ACTION_AUDIO_STOP"
     }
 
     override fun onReceive(context: Context, intent: Intent?) {
@@ -59,6 +61,12 @@ class BackupControlReceiver : BroadcastReceiver() {
                 AppNotificationHelper.showPersistentControlNotification(context, isRunning = false)
                 AppNotificationHelper.showBackupPausedNotification(context)
                 Toast.makeText(context, "⏸️ Cloud Backup Paused", Toast.LENGTH_SHORT).show()
+            }
+            ACTION_AUDIO_TOGGLE -> {
+                com.example.telegrambackup.ui.player.AudioPlayerManager.togglePlayPause(context)
+            }
+            ACTION_AUDIO_STOP -> {
+                com.example.telegrambackup.ui.player.AudioPlayerManager.stop(context)
             }
         }
     }

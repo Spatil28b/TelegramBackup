@@ -384,6 +384,11 @@ class BackupWorker(
             // Auto prune cache before starting new batch
             AppCacheManager.autoPruneCache(applicationContext)
 
+            // Enforce Trash Retention Policy in Background (P2)
+            try {
+                com.example.telegrambackup.utils.TrashRetentionDaemon.sweepExpiredTrash(applicationContext)
+            } catch (_: Exception) {}
+
             // Step 7: Queue unbacked files and start backup session
             val queueList = unbackedFiles.map { f ->
                 UploadItemProgress(fileName = f.name, filePath = f.absolutePath, fileSize = f.length())
