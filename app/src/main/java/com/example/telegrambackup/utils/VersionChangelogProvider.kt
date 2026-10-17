@@ -28,6 +28,35 @@ object VersionChangelogProvider {
 
     private val releases = listOf(
         VersionRelease(
+            versionName = "2.7.4",
+            versionCode = 152,
+            releaseDate = "October 2026",
+            highlights = "Restored Ultra-Fast In-Built Browser Downloads, Lookahead CDN Prefetching & Universal Content-Length",
+            entries = listOf(
+                ChangelogEntry(
+                    Icons.Default.Speed,
+                    Color(0xFF38BDF8),
+                    "Native 1-Click Browser Downloads",
+                    "Restored ultra-fast native in-built browser download as primary action, eliminating slow client JS fetch loops and dialogs for maximum wire-speed downloads.",
+                    "SPEED"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Bolt,
+                    Color(0xFF10B981),
+                    "Pipelined Lookahead CDN Prefetching",
+                    "Pipelined chunk streaming fetches subsequent chunks in background while currently streaming to browser, eliminating dead-air latency between chunks and saturating client bandwidth.",
+                    "PERFORMANCE"
+                ),
+                ChangelogEntry(
+                    Icons.Default.DownloadDone,
+                    Color(0xFFF59E0B),
+                    "Universal Content-Length & Range Safety",
+                    "Always sends exact Content-Length headers for encrypted and plaintext downloads, enabling browser progress bars and ETAs. Range requests are safely streamed chunk-by-chunk with zero memory exhaustion.",
+                    "STABILITY"
+                )
+            )
+        ),
+        VersionRelease(
             versionName = "2.7.3",
             versionCode = 151,
             releaseDate = "October 2026",
