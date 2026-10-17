@@ -734,6 +734,34 @@ class AppPrefs(private val context: Context) {
         return safeVaultFilePaths.contains(filePath)
     }
 
+    fun ensureDecoyVaultPopulated(context: Context) {
+        if (decoyVaultFilePaths.isNotEmpty()) return
+        try {
+            val decoyDir = java.io.File(context.filesDir, "decoy_vault").apply { if (!exists()) mkdirs() }
+            val paths = mutableSetOf<String>()
+
+            val f1 = java.io.File(decoyDir, "Travel_Packing_List.txt")
+            if (!f1.exists()) {
+                f1.writeText("Passport, Boarding Pass, Charger, Power Bank, Headphones, Toothbrush, Jacket")
+            }
+            paths.add(f1.absolutePath)
+
+            val f2 = java.io.File(decoyDir, "Grocery_Receipt_Sample.txt")
+            if (!f2.exists()) {
+                f2.writeText("SUPERMARKET RECEIPT\nDate: 14-Oct-2026\nApples - $4.50\nMilk 1L - $2.20\nBread - $1.80\nTotal: $8.50\nPAID VIA CASH")
+            }
+            paths.add(f2.absolutePath)
+
+            val f3 = java.io.File(decoyDir, "Apartment_Maintenance_Note.txt")
+            if (!f3.exists()) {
+                f3.writeText("Maintenance society note: Water tank cleaning scheduled for Wednesday 9:00 AM to 1:00 PM.")
+            }
+            paths.add(f3.absolutePath)
+
+            decoyVaultFilePaths = paths
+        } catch (_: Exception) {}
+    }
+
     fun verifySafeFolderPin(enteredPin: String): SafeFolderUnlockResult {
         val master = safeFolderPin.trim()
         val decoy = safeFolderDecoyPin.trim()
@@ -748,6 +776,7 @@ class AppPrefs(private val context: Context) {
         }
         if (decoy.isNotBlank() && candidate == decoy) {
             isDecoyVaultActive = true
+            ensureDecoyVaultPopulated(context)
             return SafeFolderUnlockResult.UNLOCKED_DECOY
         }
         return SafeFolderUnlockResult.INVALID_PIN

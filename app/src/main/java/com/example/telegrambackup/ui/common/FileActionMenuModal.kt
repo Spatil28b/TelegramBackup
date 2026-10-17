@@ -39,6 +39,8 @@ import com.example.telegrambackup.utils.AppPrefs
 import com.example.telegrambackup.utils.FileViewerHelper
 import com.example.telegrambackup.utils.TelegramMediaResolver
 import com.example.telegrambackup.utils.ZipBackupDownloader
+import com.example.telegrambackup.utils.FolderRestoreManager
+import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -287,6 +289,36 @@ fun FileActionMenuModal(
                                 } else {
                                     withContext(Dispatchers.Main) {
                                         Toast.makeText(context, "Folder '${file.fileName}' has no files to download", Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                            }
+                        }
+                    )
+
+                    // 1b. Restore Folder to Device (Direct Tree Diff Sync)
+                    FileActionRow(
+                        icon = Icons.Default.CloudDownload,
+                        iconTint = TelegramBlue,
+                        title = "Restore Folder to Device",
+                        subtitle = "Restores entire folder tree directly to Downloads/TelegramBackup/",
+                        onClick = {
+                            onDismiss()
+                            Toast.makeText(context, "⏳ Restoring folder '${file.fileName}' directly to storage...", Toast.LENGTH_SHORT).show()
+                            scope.launch(Dispatchers.IO) {
+                                val summary = FolderRestoreManager.restoreFolderTree(context, file) { curr, tot, name, _ ->
+                                    if (curr % 10 == 0 || curr == tot) {
+                                        Log.d("FolderRestore", "Restoring $curr/$tot: $name")
+                                    }
+                                }
+                                withContext(Dispatchers.Main) {
+                                    if (summary.totalFiles == 0) {
+                                        Toast.makeText(context, "Folder '${file.fileName}' has no files to restore", Toast.LENGTH_SHORT).show()
+                                    } else {
+                                        Toast.makeText(
+                                            context,
+                                            "✅ Restored ${summary.restoredCount} files (${summary.skippedCount} matched) to Downloads/TelegramBackup/${file.fileName}",
+                                            Toast.LENGTH_LONG
+                                        ).show()
                                     }
                                 }
                             }

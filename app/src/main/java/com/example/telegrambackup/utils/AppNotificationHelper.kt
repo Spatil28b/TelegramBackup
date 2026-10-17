@@ -259,13 +259,31 @@ object AppNotificationHelper {
         val openDrivePendingIntent = createNavPendingIntent(context, "DRIVE", 202)
         val stopPendingIntent = createControlPendingIntent(context, BackupControlReceiver.ACTION_STOP_BACKUP, 201)
 
+        val speedBps = BackupProgressTracker.uploadSpeedBps.value
+        val activeItem = BackupProgressTracker.activeUploadsList.value.firstOrNull()
+        val etaStr = if (speedBps > 1024L && activeItem != null && activeItem.fileSize > 0 && progressPercent in 1..99) {
+            val remainingBytes = ((1f - activeItem.progress.coerceIn(0f, 1f)) * activeItem.fileSize).toLong()
+            val sec = if (remainingBytes > 0) remainingBytes / speedBps else 0L
+            if (sec in 1..86400) {
+                if (sec < 60) "${sec}s left" else "${sec / 60}m ${sec % 60}s left"
+            } else ""
+        } else ""
+
         val displayTitle = if (totalFiles > 0) "Backing Up ($completedFiles of $totalFiles) • $progressPercent%" else "Backing Up • $progressPercent%"
         val cleanName = if (fileName.length > 28) fileName.take(16) + "…" + fileName.takeLast(10) else fileName
         val displayContent = if (fileName.isNotEmpty()) {
-            if (speedStr.isNotBlank()) "$cleanName • $speedStr" else cleanName
+            when {
+                speedStr.isNotBlank() && etaStr.isNotBlank() -> "$cleanName • $speedStr • $etaStr"
+                speedStr.isNotBlank() -> "$cleanName • $speedStr"
+                else -> cleanName
+            }
         } else "Transferring files to vault..."
 
-        val subtextSpeed = if (speedStr.isNotBlank()) "TSpace • $speedStr" else "TSpace Cloud Sync"
+        val subtextSpeed = when {
+            speedStr.isNotBlank() && etaStr.isNotBlank() -> "TSpace • $speedStr • $etaStr"
+            speedStr.isNotBlank() -> "TSpace • $speedStr"
+            else -> "TSpace Cloud Sync"
+        }
 
         val notification = NotificationCompat.Builder(context, CHANNEL_ID_UPLOADS)
             .setSmallIcon(R.drawable.ic_notif_cloud_upload)
@@ -276,7 +294,7 @@ object AppNotificationHelper {
             .setContentText(displayContent)
             .setStyle(
                 NotificationCompat.BigTextStyle().bigText(
-                    "Transferring $fileName\n$completedFiles of $totalFiles files transferred ($progressPercent%)\n${if (speedStr.isNotBlank()) "Transfer Speed: $speedStr" else "Optimizing transfer..."}"
+                    "Transferring $fileName\n$completedFiles of $totalFiles files transferred ($progressPercent%)\n${if (speedStr.isNotBlank()) "Transfer Speed: $speedStr" else "Optimizing transfer..."}${if (etaStr.isNotBlank()) " • $etaStr" else ""}"
                 )
             )
             .setProgress(100, progressPercent.coerceIn(0, 100), progressPercent <= 0)

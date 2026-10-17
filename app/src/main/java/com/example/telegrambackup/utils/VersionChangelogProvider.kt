@@ -28,6 +28,42 @@ object VersionChangelogProvider {
 
     private val releases = listOf(
         VersionRelease(
+            versionName = "2.7.0",
+            versionCode = 148,
+            releaseDate = "October 2026",
+            highlights = "Rolling Cloud File Verification, Live ETA & Speed Notifications, Decoy Safe Vault Auto-Populator, Selective Cloud Folder Restore & Diff Sync",
+            entries = listOf(
+                ChangelogEntry(
+                    Icons.Default.VerifiedUser,
+                    Color(0xFF38BDF8),
+                    "Rolling File Verifier & Chunk Integrity",
+                    "Introduced circular rolling verification cursor ensuring 100% of cloud files are audited incrementally over time, with multi-chunk completeness checks and elimination of destructive single-bot wipes.",
+                    "RELIABILITY"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Speed,
+                    Color(0xFF34D399),
+                    "Live Transfer Metrics & Real-Time ETA",
+                    "Background notifications now display dynamic byte-metered transfer speeds and live remaining time estimates (ETA) alongside active queue progress.",
+                    "OBSERVABILITY"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Shield,
+                    Color(0xFFFBBF24),
+                    "Decoy Vault Auto-Populator",
+                    "Eliminates empty-vault suspicion under duress by automatically generating benign, realistic decoy documents when the decoy PIN is configured.",
+                    "SECURITY"
+                ),
+                ChangelogEntry(
+                    Icons.Default.FolderZip,
+                    Color(0xFFA855F7),
+                    "Selective Cloud Folder Restore & Diff Sync",
+                    "Directly reconstructs cloud folder trees into local storage with intelligent diff synchronization that skips identical files and restores corrupted ones without ZIP wrapping.",
+                    "RESTORE"
+                )
+            )
+        ),
+        VersionRelease(
             versionName = "2.6.9",
             versionCode = 147,
             releaseDate = "October 2026",

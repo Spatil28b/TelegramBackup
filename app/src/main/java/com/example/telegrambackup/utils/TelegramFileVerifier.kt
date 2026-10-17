@@ -124,10 +124,23 @@ object TelegramFileVerifier {
         }
 
         // =========================================================================
-        // STEP 3: Multi-Bot Cloud Verification Loop
+        // STEP 3: Multi-Bot Cloud Verification Loop (Circular Rolling Cursor)
         // =========================================================================
         val realFiles = allFiles.filter { !isFakeFileId(it.telegramFileId) && it.telegramFileId.isNotEmpty() }
-        val filesToVerify = realFiles.take(MAX_VERIFY_PER_SESSION)
+        val prefs = context.getSharedPreferences("telegram_file_verifier", Context.MODE_PRIVATE)
+        val offset = prefs.getInt("verify_cursor_offset", 0)
+        val filesToVerify = if (realFiles.isNotEmpty()) {
+            val startIdx = offset % realFiles.size
+            val count = minOf(MAX_VERIFY_PER_SESSION, realFiles.size)
+            val batch = mutableListOf<UploadedFile>()
+            for (i in 0 until count) {
+                batch.add(realFiles[(startIdx + i) % realFiles.size])
+            }
+            prefs.edit().putInt("verify_cursor_offset", (startIdx + count) % realFiles.size).apply()
+            batch
+        } else {
+            emptyList()
+        }
 
         for (file in filesToVerify) {
             try {
@@ -142,23 +155,38 @@ object TelegramFileVerifier {
                 var allTokensConfirmedInvalid = true
                 var hadNetworkError = false
 
-                for (token in tokensToTry) {
-                    val status = checkFileStatus(context, token, file.telegramFileId)
-                    when (status) {
-                        FileCheckStatus.EXISTS -> {
-                            fileConfirmedExists = true
-                            allTokensConfirmedInvalid = false
-                            break
-                        }
-                        FileCheckStatus.NETWORK_OR_RATE_LIMIT -> {
-                            allTokensConfirmedInvalid = false
-                            hadNetworkError = true
-                            break
-                        }
-                        FileCheckStatus.NOT_FOUND -> {
-                            // Continue checking remaining candidate bots
+                // Candidate file IDs to check (main file ID and any multi-chunk IDs)
+                val fileIdsToCheck = mutableListOf<String>()
+                if (file.telegramFileId.isNotBlank()) fileIdsToCheck.add(file.telegramFileId)
+                if (file.totalChunks > 1) {
+                    val chunks = file.parseChunkInfos()
+                    chunks.forEach { c ->
+                        if (c.telegramFileId.isNotBlank() && !fileIdsToCheck.contains(c.telegramFileId)) {
+                            fileIdsToCheck.add(c.telegramFileId)
                         }
                     }
+                }
+
+                for (token in tokensToTry) {
+                    for (fId in fileIdsToCheck) {
+                        val status = checkFileStatus(context, token, fId)
+                        when (status) {
+                            FileCheckStatus.EXISTS -> {
+                                fileConfirmedExists = true
+                                allTokensConfirmedInvalid = false
+                                break
+                            }
+                            FileCheckStatus.NETWORK_OR_RATE_LIMIT -> {
+                                allTokensConfirmedInvalid = false
+                                hadNetworkError = true
+                                break
+                            }
+                            FileCheckStatus.NOT_FOUND -> {
+                                // Continue checking remaining candidate bots and chunks
+                            }
+                        }
+                    }
+                    if (fileConfirmedExists || hadNetworkError) break
                 }
 
                 if (fileConfirmedExists) {
@@ -195,53 +223,14 @@ object TelegramFileVerifier {
 
     /**
      * Backward-compatible overload without Context parameter.
+     * Safely no-ops to prevent uncoordinated single-bot record purges.
      */
     suspend fun verifyAllFiles(
         botToken: String,
         dao: UploadedFileDao
     ): VerificationResult = withContext(Dispatchers.IO) {
-        if (botToken.isBlank()) return@withContext VerificationResult()
-        val allFiles = try { dao.getAllFiles() } catch (_: Exception) { emptyList() }
-        if (allFiles.isEmpty()) return@withContext VerificationResult()
-
-        var fakePurged = 0
-        var deletedFromTelegram = 0
-        var verifiedOk = 0
-        var errors = 0
-
-        val fakeFiles = allFiles.filter { isFakeFileId(it.telegramFileId) }
-        for (fake in fakeFiles) {
-            try {
-                dao.deleteByPath(fake.path)
-                fakePurged++
-            } catch (_: Exception) {}
-        }
-
-        val realFiles = allFiles.filter { !isFakeFileId(it.telegramFileId) && it.telegramFileId.isNotEmpty() }
-        val filesToVerify = realFiles.take(MAX_VERIFY_PER_SESSION)
-
-        for (file in filesToVerify) {
-            try {
-                val token = file.botTokenUsed.ifBlank { botToken }
-                val exists = verifyFileExists(token, file.telegramFileId)
-                if (exists) {
-                    verifiedOk++
-                } else {
-                    dao.deleteByPath(file.path)
-                    deletedFromTelegram++
-                }
-            } catch (_: Exception) {
-                errors++
-            }
-        }
-
-        return@withContext VerificationResult(
-            totalChecked = fakeFiles.size + filesToVerify.size,
-            fakePurged = fakePurged,
-            deletedFromTelegram = deletedFromTelegram,
-            verifiedOk = verifiedOk,
-            errors = errors
-        )
+        Log.w(TAG, "Unsafe verifyAllFiles(botToken, dao) called without Context. Bypassing destructive delete to prevent data loss.")
+        VerificationResult()
     }
 
     /**

@@ -470,6 +470,7 @@ fun BackupExplorerScreen(
                             prefs.safeFolderPin = safeVaultPinInput
                             if (safeVaultDecoyPinInput.isNotBlank()) {
                                 prefs.safeFolderDecoyPin = safeVaultDecoyPinInput
+                                prefs.ensureDecoyVaultPopulated(context)
                             }
                             AppPrefs.isDecoyVaultActive = false
                             showSafeVaultAuthDialog = false
