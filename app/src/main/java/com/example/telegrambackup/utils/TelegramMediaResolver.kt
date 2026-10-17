@@ -562,10 +562,17 @@ object TelegramMediaResolver {
                         for ((chunkIdx, chunkFileId, chunkBotToken) in chunkChannel) {
                             if (downloadFailed) break
                             val partFile = File(parentDir, "${targetFile.name}.part%03d.tmp".format(chunkIdx))
-                            if (partFile.exists() && partFile.length() > 0) {
-                                synchronized(partFiles) { partFiles.add(Pair(chunkIdx, partFile)) }
-                                downloadedBytes.addAndGet(partFile.length())
-                                continue
+                            val isIntermediateChunk = chunkIdx < chunkCount
+                            val expectedMinBytes = if (isIntermediateChunk) FileChunker.CHUNK_SIZE.toLong() else 1L
+                            if (partFile.exists()) {
+                                if (partFile.length() >= expectedMinBytes) {
+                                    synchronized(partFiles) { partFiles.add(Pair(chunkIdx, partFile)) }
+                                    downloadedBytes.addAndGet(partFile.length())
+                                    continue
+                                } else {
+                                    Log.w(TAG, "Purging truncated partial chunk ${partFile.name} (length: ${partFile.length()} < expected $expectedMinBytes)")
+                                    partFile.delete()
+                                }
                             }
 
                             // Retry each chunk up to 4 times with exponential backoff
@@ -766,11 +773,11 @@ object TelegramMediaResolver {
             if (!response.isSuccessful) return false
             val body = response.body ?: return false
             val contentLength = body.contentLength()
+            var totalRead = 0L
             body.byteStream().use { input ->
                 BufferedOutputStream(FileOutputStream(targetFile), 128 * 1024).use { output ->
                     val buffer = ByteArray(64 * 1024)
                     var bytesRead: Int
-                    var totalRead = 0L
                     var lastProgressTime = 0L
                     while (input.read(buffer).also { bytesRead = it } != -1) {
                         output.write(buffer, 0, bytesRead)
@@ -788,9 +795,15 @@ object TelegramMediaResolver {
                     output.flush()
                 }
             }
+            if (contentLength > 0 && totalRead < contentLength) {
+                Log.w(TAG, "Download interrupted: expected $contentLength bytes, received $totalRead. Purging truncated file.")
+                if (targetFile.exists()) targetFile.delete()
+                return false
+            }
             targetFile.exists() && targetFile.length() > 0L
         } catch (e: Exception) {
             Log.e(TAG, "Error downloading stream from $url", e)
+            if (targetFile.exists()) targetFile.delete()
             false
         }
     }

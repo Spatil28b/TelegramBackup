@@ -28,6 +28,42 @@ object VersionChangelogProvider {
 
     private val releases = listOf(
         VersionRelease(
+            versionName = "2.7.3",
+            versionCode = 151,
+            releaseDate = "October 2026",
+            highlights = "Turbo Parallel Browser Downloader, O(1) Bounded Chunk Slicing, Universal PIN Auth & Android Partial Download Guard",
+            entries = listOf(
+                ChangelogEntry(
+                    Icons.Default.Bolt,
+                    Color(0xFF38BDF8),
+                    "Turbo In-Browser Parallel Downloader",
+                    "Streams large multi-part cloud files directly to local storage using the File System Access API or multi-worker Blob streamer with concurrent 4MB chunk fetching, live MB/s speedometer, ETA countdown, and progress HUD.",
+                    "PERFORMANCE"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Speed,
+                    Color(0xFF10B981),
+                    "Targeted O(1) Bounded Slicing",
+                    "Eliminates sequential Telegram CDN chunk floods by calculating exact bounding chunk indices [firstIdx, lastIdx] and concurrently retrieving only required byte ranges, eliminating Vercel 504 timeouts.",
+                    "SPEED"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Key,
+                    Color(0xFFF59E0B),
+                    "Universal Cookie-Free PIN & Session Auth",
+                    "Validates authenticated PIN sessions across cookies, custom headers, and direct ?auth=<token> query parameters, eliminating lockouts in video players, Safari, and external download managers.",
+                    "SECURITY"
+                ),
+                ChangelogEntry(
+                    Icons.Default.DownloadDone,
+                    Color(0xFF8B5CF6),
+                    "Android Corrupt Chunk Reuse Guard",
+                    "Validates intermediate chunk file sizes against FileChunker.CHUNK_SIZE and purges partial downloads upon cancellation or failure, ensuring 100% byte integrity during multi-chunk assembly.",
+                    "INTEGRITY"
+                )
+            )
+        ),
+        VersionRelease(
             versionName = "2.7.2",
             versionCode = 150,
             releaseDate = "October 2026",
