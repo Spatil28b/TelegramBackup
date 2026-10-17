@@ -28,6 +28,35 @@ object VersionChangelogProvider {
 
     private val releases = listOf(
         VersionRelease(
+            versionName = "2.7.6",
+            versionCode = 154,
+            releaseDate = "October 2026",
+            highlights = "Spatial Spring Page Navigation & Liquid Glass App Opening Reveal Animation",
+            entries = listOf(
+                ChangelogEntry(
+                    Icons.Default.AutoAwesome,
+                    Color(0xFF38BDF8),
+                    "Direction-Aware Spatial Spring Page Transitions",
+                    "Elevated main tab navigation with tactile VisionOS/Liquid Glass physics: directional slide, scale-depth recede/ascend (0.95x - 1.0x), and smooth cross-fade across all screens with zero jerk.",
+                    "UI/UX"
+                ),
+                ChangelogEntry(
+                    Icons.Default.CloudQueue,
+                    Color(0xFF10B981),
+                    "Kinetic Brand Reveal App Opening Animation",
+                    "Cold-start illuminated glass capsule reveal with glowing ambient aura, kinetic spring shield entrance, zero-knowledge security badge, and smooth dissolve into the main dashboard.",
+                    "ANIMATION"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Storage,
+                    Color(0xFFF59E0B),
+                    "Animated Storage & Micro-Interactions",
+                    "Fluid spring-animated segmented storage bar on dashboard entry, tactile bouncy tab switching, and elevated M3 Expressive card polish.",
+                    "DESIGN"
+                )
+            )
+        ),
+        VersionRelease(
             versionName = "2.7.5",
             versionCode = 153,
             releaseDate = "October 2026",

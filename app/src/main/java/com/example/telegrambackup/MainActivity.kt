@@ -92,6 +92,7 @@ import com.example.telegrambackup.ui.player.AudioPlayerManager
 import com.example.telegrambackup.ui.player.ModernAudioPlayerSheet
 import com.example.telegrambackup.ui.player.ModernMiniPlayerCapsule
 import com.example.telegrambackup.utils.AppPrefs
+import com.example.telegrambackup.ui.splash.AppOpeningSplashScreen
 import com.example.telegrambackup.utils.BackupProgressTracker
 import com.example.telegrambackup.utils.BiometricHelper
 import com.example.telegrambackup.utils.FileViewerHelper
@@ -205,6 +206,7 @@ fun MainApp(
 ) {
     val session by authRepository.session.collectAsState()
     var selectedTab by remember { mutableStateOf(MainTab.HOME) }
+    var showSplashOverlay by remember { mutableStateOf(true) }
     val (isNavBarVisibleState, scrollNavBarConnection) = rememberSmartScrollNavBarConnection()
     var explorerInitialTab by remember { mutableStateOf(0) }
     var targetCategoryTitle by remember { mutableStateOf<String?>(null) }
@@ -1198,8 +1200,41 @@ fun MainApp(
                     AnimatedContent(
                         targetState = selectedTab,
                         transitionSpec = {
-                            fadeIn(animationSpec = tween(120, easing = LinearOutSlowInEasing)).togetherWith(
-                                fadeOut(animationSpec = tween(90, easing = FastOutLinearInEasing))
+                            val initialIdx = getTabNavigationIndex(initialState)
+                            val targetIdx = getTabNavigationIndex(targetState)
+                            val isForward = targetIdx >= initialIdx
+                            val slideOffset = if (isForward) 260 else -260
+
+                            (slideInHorizontally(
+                                animationSpec = spring(
+                                    dampingRatio = 0.86f,
+                                    stiffness = Spring.StiffnessMediumLow
+                                ),
+                                initialOffsetX = { slideOffset }
+                            ) + fadeIn(
+                                animationSpec = tween(220, easing = LinearOutSlowInEasing)
+                            ) + scaleIn(
+                                animationSpec = spring(
+                                    dampingRatio = 0.88f,
+                                    stiffness = Spring.StiffnessMediumLow
+                                ),
+                                initialScale = 0.95f
+                            )).togetherWith(
+                                slideOutHorizontally(
+                                    animationSpec = spring(
+                                        dampingRatio = 0.86f,
+                                        stiffness = Spring.StiffnessMediumLow
+                                    ),
+                                    targetOffsetX = { -slideOffset }
+                                ) + fadeOut(
+                                    animationSpec = tween(180, easing = FastOutLinearInEasing)
+                                ) + scaleOut(
+                                    animationSpec = spring(
+                                        dampingRatio = 0.88f,
+                                        stiffness = Spring.StiffnessMediumLow
+                                    ),
+                                    targetScale = 0.95f
+                                )
                             )
                         },
                         label = "MainTabAnimatedContent",
@@ -1321,6 +1356,12 @@ fun MainApp(
                 showAiSearchDialog = false
                 selectedTab = MainTab.SETTINGS
             }
+        )
+    }
+
+    if (showSplashOverlay) {
+        AppOpeningSplashScreen(
+            onDismiss = { showSplashOverlay = false }
         )
     }
 }

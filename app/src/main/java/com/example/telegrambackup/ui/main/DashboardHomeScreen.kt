@@ -10,6 +10,7 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -77,6 +78,15 @@ fun DashboardHomeScreen(
     var showLargeFilesDialog by remember { mutableStateOf(false) }
 
     val storageGranted = remember { com.example.telegrambackup.ui.auth.isStoragePermissionGranted(context) }
+    var startBarAnim by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        startBarAnim = true
+    }
+    val barProgress by animateFloatAsState(
+        targetValue = if (startBarAnim) 1f else 0.05f,
+        animationSpec = spring(dampingRatio = 0.82f, stiffness = Spring.StiffnessLow),
+        label = "BarProgress"
+    )
 
     val manageStorageLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
@@ -311,7 +321,7 @@ fun DashboardHomeScreen(
                             .clip(RoundedCornerShape(6.dp))
                             .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
                     ) {
-                        val usedRatio = storageInfo.usedPercentage.coerceIn(0.01f, 1f)
+                        val usedRatio = (storageInfo.usedPercentage.coerceIn(0.01f, 1f) * barProgress).coerceAtLeast(0.01f)
                         val imgRatio = (categoryUsage.imagesBytes.toFloat() / storageInfo.totalBytes.toFloat()).coerceIn(0.02f, 0.35f) * usedRatio
                         val vidRatio = (categoryUsage.videosBytes.toFloat() / storageInfo.totalBytes.toFloat()).coerceIn(0.03f, 0.40f) * usedRatio
                         val audRatio = (categoryUsage.audioBytes.toFloat() / storageInfo.totalBytes.toFloat()).coerceIn(0.01f, 0.15f) * usedRatio
