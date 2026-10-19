@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.ui.graphics.asImageBitmap
 import com.example.telegrambackup.utils.KeyRecoveryManager
+import com.example.telegrambackup.utils.LocalConfigVaultManager
 import com.example.telegrambackup.utils.TelegramApiConfig
 import android.content.ClipData
 import android.content.ClipboardManager
@@ -834,6 +835,8 @@ fun BackupSettingsScreen(
     var showCustomDailyLimitDialog by remember { mutableStateOf(false) }
     var customDailyLimitInput by remember { mutableStateOf("") }
 
+    var isInitialSettingsMount by remember { mutableStateOf(true) }
+
     // AUTO-SAVE SETTINGS ENGINE: Instantly persists any change to AppPrefs and Room Database
     LaunchedEffect(
         autoBackup, smartBackupMode, smartScanInterval, nightBackupHour,
@@ -846,6 +849,10 @@ fun BackupSettingsScreen(
         maxArchivesSizeMBState, minArchivesSizeMBState, maxApksSizeMBState, minApksSizeMBState,
         maxOtherSizeMBState, minOtherSizeMBState
     ) {
+        if (isInitialSettingsMount) {
+            isInitialSettingsMount = false
+            return@LaunchedEffect
+        }
         prefs.autoBackupEnabled = autoBackup
         prefs.smartBackupMode = smartBackupMode
         prefs.smartScanIntervalHours = smartScanInterval
@@ -882,6 +889,8 @@ fun BackupSettingsScreen(
         prefs.stopAllBackups = stopAllBackup
         prefs.isBiometricEnabled = biometricLock
         prefs.isZeroKnowledgeEnabled = zeroKnowledgeActive
+        val now = System.currentTimeMillis()
+        prefs.settingsUpdatedAt = now
 
         // Schedule / Update Background Work
         scheduleSmartBackup()
@@ -892,43 +901,50 @@ fun BackupSettingsScreen(
                 val db = AppDatabase.getDatabase(context)
                 val dao = db.appSettingDao()
                 val settingsList = listOf(
-                    AppSettingEntity("auto_backup_enabled", autoBackup.toString()),
-                    AppSettingEntity("smart_backup_mode", smartBackupMode.toString()),
-                    AppSettingEntity("smart_scan_interval_hours", smartScanInterval.toString()),
-                    AppSettingEntity("night_backup_hour", nightBackupHour.toString()),
-                    AppSettingEntity("backup_camera", includeCamera.toString()),
-                    AppSettingEntity("backup_videos", includeVideos.toString()),
-                    AppSettingEntity("backup_documents", includeDocs.toString()),
-                    AppSettingEntity("backup_audio", includeAudio.toString()),
-                    AppSettingEntity("backup_downloads", includeDownloads.toString()),
-                    AppSettingEntity("backup_archives", includeArchives.toString()),
-                    AppSettingEntity("backup_apks", includeApks.toString()),
-                    AppSettingEntity("backup_all_other", includeAllOther.toString()),
-                    AppSettingEntity("show_hidden_files", showHiddenFiles.toString()),
-                    AppSettingEntity("max_file_size_mb", maxFileSizeMBState.toString()),
-                    AppSettingEntity("max_photos_size_mb", maxPhotosSizeMBState.toString()),
-                    AppSettingEntity("min_photos_size_mb", minPhotosSizeMBState.toString()),
-                    AppSettingEntity("max_videos_size_mb", maxVideosSizeMBState.toString()),
-                    AppSettingEntity("min_videos_size_mb", minVideosSizeMBState.toString()),
-                    AppSettingEntity("max_docs_size_mb", maxDocsSizeMBState.toString()),
-                    AppSettingEntity("min_docs_size_mb", minDocsSizeMBState.toString()),
-                    AppSettingEntity("max_audio_size_mb", maxAudioSizeMBState.toString()),
-                    AppSettingEntity("min_audio_size_mb", minAudioSizeMBState.toString()),
-                    AppSettingEntity("max_archives_size_mb", maxArchivesSizeMBState.toString()),
-                    AppSettingEntity("min_archives_size_mb", minArchivesSizeMBState.toString()),
-                    AppSettingEntity("max_apks_size_mb", maxApksSizeMBState.toString()),
-                    AppSettingEntity("min_apks_size_mb", minApksSizeMBState.toString()),
-                    AppSettingEntity("max_other_size_mb", maxOtherSizeMBState.toString()),
-                    AppSettingEntity("min_other_size_mb", minOtherSizeMBState.toString()),
-                    AppSettingEntity("daily_data_limit_mb", dailyDataLimitMBState.toString()),
-                    AppSettingEntity("wifi_only", backupOverWifi.toString()),
-                    AppSettingEntity("enable_data_compression", enableDataCompression.toString()),
-                    AppSettingEntity("app_theme", selectedTheme.toString()),
-                    AppSettingEntity("trash_auto_clean_days", trashAutoCleanDays.toString()),
-                    AppSettingEntity("stop_all_backups", stopAllBackup.toString()),
-                    AppSettingEntity("is_biometric_enabled", biometricLock.toString())
+                    AppSettingEntity("auto_backup_enabled", autoBackup.toString(), now),
+                    AppSettingEntity("smart_backup_mode", smartBackupMode.toString(), now),
+                    AppSettingEntity("smart_scan_interval_hours", smartScanInterval.toString(), now),
+                    AppSettingEntity("night_backup_hour", nightBackupHour.toString(), now),
+                    AppSettingEntity("backup_camera", includeCamera.toString(), now),
+                    AppSettingEntity("backup_videos", includeVideos.toString(), now),
+                    AppSettingEntity("backup_documents", includeDocs.toString(), now),
+                    AppSettingEntity("backup_audio", includeAudio.toString(), now),
+                    AppSettingEntity("backup_downloads", includeDownloads.toString(), now),
+                    AppSettingEntity("backup_archives", includeArchives.toString(), now),
+                    AppSettingEntity("backup_apks", includeApks.toString(), now),
+                    AppSettingEntity("backup_all_other", includeAllOther.toString(), now),
+                    AppSettingEntity("show_hidden_files", showHiddenFiles.toString(), now),
+                    AppSettingEntity("max_file_size_mb", maxFileSizeMBState.toString(), now),
+                    AppSettingEntity("max_photos_size_mb", maxPhotosSizeMBState.toString(), now),
+                    AppSettingEntity("min_photos_size_mb", minPhotosSizeMBState.toString(), now),
+                    AppSettingEntity("max_videos_size_mb", maxVideosSizeMBState.toString(), now),
+                    AppSettingEntity("min_videos_size_mb", minVideosSizeMBState.toString(), now),
+                    AppSettingEntity("max_docs_size_mb", maxDocsSizeMBState.toString(), now),
+                    AppSettingEntity("min_docs_size_mb", minDocsSizeMBState.toString(), now),
+                    AppSettingEntity("max_audio_size_mb", maxAudioSizeMBState.toString(), now),
+                    AppSettingEntity("min_audio_size_mb", minAudioSizeMBState.toString(), now),
+                    AppSettingEntity("max_archives_size_mb", maxArchivesSizeMBState.toString(), now),
+                    AppSettingEntity("min_archives_size_mb", minArchivesSizeMBState.toString(), now),
+                    AppSettingEntity("max_apks_size_mb", maxApksSizeMBState.toString(), now),
+                    AppSettingEntity("min_apks_size_mb", minApksSizeMBState.toString(), now),
+                    AppSettingEntity("max_other_size_mb", maxOtherSizeMBState.toString(), now),
+                    AppSettingEntity("min_other_size_mb", minOtherSizeMBState.toString(), now),
+                    AppSettingEntity("daily_data_limit_mb", dailyDataLimitMBState.toString(), now),
+                    AppSettingEntity("wifi_only", backupOverWifi.toString(), now),
+                    AppSettingEntity("enable_data_compression", enableDataCompression.toString(), now),
+                    AppSettingEntity("app_theme", selectedTheme.toString(), now),
+                    AppSettingEntity("bottom_nav_visible_tabs", prefs.bottomNavVisibleTabs, now),
+                    AppSettingEntity("bottom_nav_label_mode", prefs.bottomNavLabelMode.toString(), now),
+                    AppSettingEntity("bottom_nav_height_mode", prefs.bottomNavHeightMode.toString(), now),
+                    AppSettingEntity("bottom_nav_indicator_shape", prefs.bottomNavIndicatorShape.toString(), now),
+                    AppSettingEntity("bottom_nav_haptic", prefs.bottomNavHapticFeedback.toString(), now),
+                    AppSettingEntity("settings_updated_at", now.toString(), now),
+                    AppSettingEntity("trash_auto_clean_days", trashAutoCleanDays.toString(), now),
+                    AppSettingEntity("stop_all_backups", stopAllBackup.toString(), now),
+                    AppSettingEntity("is_biometric_enabled", biometricLock.toString(), now)
                 )
                 dao.saveSettings(settingsList)
+                LocalConfigVaultManager.saveVaultSnapshot(context)
             } catch (_: Exception) {}
         }
     }
@@ -1402,6 +1418,12 @@ fun BackupSettingsScreen(
                     "smart_backup_mode" to smartBackupMode.toString(),
                     "wifi_only" to backupOverWifi.toString(),
                     "app_theme" to selectedTheme.toString(),
+                    "bottom_nav_visible_tabs" to prefs.bottomNavVisibleTabs,
+                    "bottom_nav_label_mode" to prefs.bottomNavLabelMode.toString(),
+                    "bottom_nav_height_mode" to prefs.bottomNavHeightMode.toString(),
+                    "bottom_nav_indicator_shape" to prefs.bottomNavIndicatorShape.toString(),
+                    "bottom_nav_haptic" to prefs.bottomNavHapticFeedback.toString(),
+                    "settings_updated_at" to prefs.settingsUpdatedAt.toString(),
                     "biometric_lock" to biometricLock.toString(),
                     "trash_auto_clean_days" to trashAutoCleanDays.toString(),
                     "max_file_size_mb" to maxFileSizeMBState.toString(),
@@ -2960,6 +2982,7 @@ fun BackupSettingsScreen(
                                             prefs.appTheme = themeMode.id
                                             onThemeChanged(themeMode.id)
                                             triggerHapticFeedback(context, haptic)
+                                            saveAllSettings(silent = true)
                                         }
                                         .padding(horizontal = 16.dp, vertical = 12.dp),
                                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -3104,6 +3127,7 @@ fun BackupSettingsScreen(
                                             prefs.appTheme = themeMode.id
                                             onThemeChanged(themeMode.id)
                                             triggerHapticFeedback(context, haptic)
+                                            saveAllSettings(silent = true)
                                         }
                                     )
                                 }
@@ -3284,6 +3308,7 @@ fun BackupSettingsScreen(
                     visibleTabsState = newTabsStr
                     prefs.bottomNavVisibleTabs = newTabsStr
                     triggerHapticFeedback(context, haptic)
+                    saveAllSettings(silent = true)
                 }
 
                 Column(
@@ -3298,6 +3323,7 @@ fun BackupSettingsScreen(
                         title = "Bottom Navigation Bar",
                         subtitle = "Customize tabs, labels, bar height & indicator shapes",
                         onBack = {
+                            saveAllSettings(silent = true)
                             currentCategory = StreamlinedCategory.MAIN
                         }
                     )
@@ -3357,6 +3383,7 @@ fun BackupSettingsScreen(
                                 },
                                 barHeight = previewHeightDp,
                                 labelMode = labelModeState,
+                                indicatorShape = indicatorShapeState,
                                 hapticFeedbackEnabled = hapticState,
                                 modifier = Modifier.fillMaxWidth()
                             )
@@ -3475,6 +3502,7 @@ fun BackupSettingsScreen(
                                             labelModeState = mode
                                             prefs.bottomNavLabelMode = mode
                                             triggerHapticFeedback(context, haptic)
+                                            saveAllSettings(silent = true)
                                         }
                                         .padding(horizontal = 16.dp, vertical = 12.dp),
                                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -3499,6 +3527,7 @@ fun BackupSettingsScreen(
                                             labelModeState = mode
                                             prefs.bottomNavLabelMode = mode
                                             triggerHapticFeedback(context, haptic)
+                                            saveAllSettings(silent = true)
                                         }
                                     )
                                 }
@@ -3539,6 +3568,7 @@ fun BackupSettingsScreen(
                                             heightModeState = mode
                                             prefs.bottomNavHeightMode = mode
                                             triggerHapticFeedback(context, haptic)
+                                            saveAllSettings(silent = true)
                                         }
                                         .padding(horizontal = 16.dp, vertical = 12.dp),
                                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -3563,6 +3593,7 @@ fun BackupSettingsScreen(
                                             heightModeState = mode
                                             prefs.bottomNavHeightMode = mode
                                             triggerHapticFeedback(context, haptic)
+                                            saveAllSettings(silent = true)
                                         }
                                     )
                                 }
@@ -3604,6 +3635,7 @@ fun BackupSettingsScreen(
                                             indicatorShapeState = shapeId
                                             prefs.bottomNavIndicatorShape = shapeId
                                             triggerHapticFeedback(context, haptic)
+                                            saveAllSettings(silent = true)
                                         }
                                         .padding(horizontal = 16.dp, vertical = 12.dp),
                                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -3628,6 +3660,7 @@ fun BackupSettingsScreen(
                                             indicatorShapeState = shapeId
                                             prefs.bottomNavIndicatorShape = shapeId
                                             triggerHapticFeedback(context, haptic)
+                                            saveAllSettings(silent = true)
                                         }
                                     )
                                 }
@@ -3668,6 +3701,7 @@ fun BackupSettingsScreen(
                                         hapticState = it
                                         prefs.bottomNavHapticFeedback = it
                                         if (it) triggerHapticFeedback(context, haptic)
+                                        saveAllSettings(silent = true)
                                     },
                                     colors = SwitchDefaults.colors(
                                         checkedThumbColor = Color.White,
@@ -3692,6 +3726,7 @@ fun BackupSettingsScreen(
                                     hapticState = true
                                     prefs.bottomNavHapticFeedback = true
                                     triggerHapticFeedback(context, haptic)
+                                    saveAllSettings(silent = true)
                                     Toast.makeText(context, "✓ Reset Navigation Bar to M3 Defaults", Toast.LENGTH_SHORT).show()
                                 },
                                 modifier = Modifier.fillMaxWidth(),

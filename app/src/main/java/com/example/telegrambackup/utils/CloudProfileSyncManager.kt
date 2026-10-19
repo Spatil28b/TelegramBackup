@@ -148,6 +148,12 @@ object CloudProfileSyncManager {
             put("upload_speed_limit", prefs.uploadSpeedLimit)
             put("enable_data_compression", prefs.enableDataCompression)
             put("app_theme", prefs.appTheme)
+            put("bottom_nav_visible_tabs", prefs.bottomNavVisibleTabs)
+            put("bottom_nav_label_mode", prefs.bottomNavLabelMode)
+            put("bottom_nav_height_mode", prefs.bottomNavHeightMode)
+            put("bottom_nav_indicator_shape", prefs.bottomNavIndicatorShape)
+            put("bottom_nav_haptic", prefs.bottomNavHapticFeedback)
+            put("settings_updated_at", prefs.settingsUpdatedAt)
             put("trash_auto_clean_days", prefs.trashAutoCleanDays)
             put("gemini_api_keys", prefs.geminiApiKeys)
             put("active_ai_model", prefs.activeAiModel)
@@ -309,7 +315,24 @@ object CloudProfileSyncManager {
                 if (sub.has("upload_threads")) prefs.uploadThreads = sub.optInt("upload_threads", 4)
                 if (sub.has("upload_speed_limit")) prefs.uploadSpeedLimit = sub.optString("upload_speed_limit", "Unlimited")
                 if (sub.has("enable_data_compression")) prefs.enableDataCompression = sub.optBoolean("enable_data_compression", false)
-                if (sub.has("app_theme")) prefs.appTheme = sub.optInt("app_theme", 0)
+
+                val cloudSettingsTime = sub.optLong("settings_updated_at", manifestTimestamp)
+                val localSettingsTime = prefs.settingsUpdatedAt
+                val isLocalSettingsNewer = localSettingsTime > 0L && localSettingsTime > cloudSettingsTime
+                val isFreshInstall = localSettingsTime == 0L && db.appSettingDao().getAllSettings().isEmpty()
+
+                if (isFreshInstall || !isLocalSettingsNewer) {
+                    if (sub.has("app_theme")) prefs.appTheme = sub.optInt("app_theme", 0)
+                    if (sub.has("bottom_nav_visible_tabs")) prefs.bottomNavVisibleTabs = sub.optString("bottom_nav_visible_tabs", prefs.bottomNavVisibleTabs)
+                    if (sub.has("bottom_nav_label_mode")) prefs.bottomNavLabelMode = sub.optInt("bottom_nav_label_mode", prefs.bottomNavLabelMode)
+                    if (sub.has("bottom_nav_height_mode")) prefs.bottomNavHeightMode = sub.optInt("bottom_nav_height_mode", prefs.bottomNavHeightMode)
+                    if (sub.has("bottom_nav_indicator_shape")) prefs.bottomNavIndicatorShape = sub.optInt("bottom_nav_indicator_shape", prefs.bottomNavIndicatorShape)
+                    if (sub.has("bottom_nav_haptic")) prefs.bottomNavHapticFeedback = sub.optBoolean("bottom_nav_haptic", prefs.bottomNavHapticFeedback)
+                    if (cloudSettingsTime > 0L) {
+                        prefs.settingsUpdatedAt = cloudSettingsTime
+                    }
+                }
+
                 if (sub.has("trash_auto_clean_days")) prefs.trashAutoCleanDays = sub.optInt("trash_auto_clean_days", 30)
                 if (sub.has("gemini_api_keys")) {
                     val keys = sub.optString("gemini_api_keys", "").trim()
@@ -346,6 +369,13 @@ object CloudProfileSyncManager {
                 AppSettingEntity("master_cloud_sync_enabled", prefs.masterCloudSyncEnabled.toString(), now),
                 AppSettingEntity("drive_sync_enabled", prefs.driveSyncEnabled.toString(), now),
                 AppSettingEntity("auto_backup_enabled", prefs.autoBackupEnabled.toString(), now),
+                AppSettingEntity("app_theme", prefs.appTheme.toString(), now),
+                AppSettingEntity("bottom_nav_visible_tabs", prefs.bottomNavVisibleTabs, now),
+                AppSettingEntity("bottom_nav_label_mode", prefs.bottomNavLabelMode.toString(), now),
+                AppSettingEntity("bottom_nav_height_mode", prefs.bottomNavHeightMode.toString(), now),
+                AppSettingEntity("bottom_nav_indicator_shape", prefs.bottomNavIndicatorShape.toString(), now),
+                AppSettingEntity("bottom_nav_haptic", prefs.bottomNavHapticFeedback.toString(), now),
+                AppSettingEntity("settings_updated_at", prefs.settingsUpdatedAt.toString(), now),
                 AppSettingEntity("gemini_api_keys", prefs.geminiApiKeys, now),
                 AppSettingEntity("active_ai_model", prefs.activeAiModel, now),
                 AppSettingEntity("ai_document_scanner_enabled", prefs.isAiDocumentScannerEnabled.toString(), now),

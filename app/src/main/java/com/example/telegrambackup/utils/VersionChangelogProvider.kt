@@ -28,6 +28,35 @@ object VersionChangelogProvider {
 
     private val releases = listOf(
         VersionRelease(
+            versionName = "2.7.8",
+            versionCode = 156,
+            releaseDate = "October 2026",
+            highlights = "Zero-Stutter Navigation, Instant Settings Persistence & Multi-Tier Arbitration",
+            entries = listOf(
+                ChangelogEntry(
+                    Icons.Default.Speed,
+                    Color(0xFF38BDF8),
+                    "Zero-Stutter Navigation Engine",
+                    "Eliminated main-thread navigation stutter and lazy 1-second lag by replacing heavy full-screen matrix scale calculations with hardware-accelerated 130ms crossfades and snappy Spring.StiffnessMedium tab physics.",
+                    "PERF"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Sync,
+                    Color(0xFF2DD4BF),
+                    "Multi-Tier Settings Arbitration",
+                    "Implemented strict timestamp-based arbitration across AppPrefs, Room Database, Local Config Vault, and Telegram Cloud Sync. Prevents themes and navigation customizations from ever reverting or resetting on app launch or reinstall.",
+                    "CORE"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Navigation,
+                    Color(0xFFA855F7),
+                    "Instant Navigation & Theme Persistence",
+                    "Theme and navigation customizations (tabs, density, labels, indicator shapes) now write through immediately to storage on touch, guaranteeing zero settings loss.",
+                    "UI/UX"
+                )
+            )
+        ),
+        VersionRelease(
             versionName = "2.7.7",
             versionCode = 155,
             releaseDate = "October 2026",

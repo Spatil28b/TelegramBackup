@@ -197,6 +197,12 @@ object LocalConfigVaultManager {
                 put("upload_speed_limit", prefs.uploadSpeedLimit)
                 put("enable_data_compression", prefs.enableDataCompression)
                 put("app_theme", prefs.appTheme)
+                put("bottom_nav_visible_tabs", prefs.bottomNavVisibleTabs)
+                put("bottom_nav_label_mode", prefs.bottomNavLabelMode)
+                put("bottom_nav_height_mode", prefs.bottomNavHeightMode)
+                put("bottom_nav_indicator_shape", prefs.bottomNavIndicatorShape)
+                put("bottom_nav_haptic", prefs.bottomNavHapticFeedback)
+                put("settings_updated_at", prefs.settingsUpdatedAt)
                 put("trash_auto_clean_days", prefs.trashAutoCleanDays)
                 put("server_url", prefs.serverUrl)
                 put("custom_bot_api_url", prefs.customBotApiUrl)
@@ -264,11 +270,8 @@ object LocalConfigVaultManager {
             val localGemini = prefs.geminiApiKeys.trim()
             val localKey = prefs.encryptionKey.trim()
 
-            val isLocalBlank = localEmail.isEmpty() ||
-                    localBot.isEmpty() ||
-                    localGemini.isEmpty() ||
-                    localKey.isEmpty() ||
-                    db.appSettingDao().getAllSettings().isEmpty()
+            val isLocalBlank = (localEmail.isEmpty() && localBot.isEmpty()) &&
+                    (authPrefs.all.isEmpty() && db.appSettingDao().getAllSettings().isEmpty())
 
             // Find best candidate snapshot file
             var snapshotJson: JSONObject? = null
@@ -455,7 +458,23 @@ object LocalConfigVaultManager {
                 if (sub.has("upload_threads")) prefs.uploadThreads = sub.optInt("upload_threads", 4)
                 if (sub.has("upload_speed_limit")) prefs.uploadSpeedLimit = sub.optString("upload_speed_limit", "Unlimited")
                 if (sub.has("enable_data_compression")) prefs.enableDataCompression = sub.optBoolean("enable_data_compression", false)
-                if (sub.has("app_theme")) prefs.appTheme = sub.optInt("app_theme", 0)
+
+                val snapshotSettingsTime = sub.optLong("settings_updated_at", snapshotJson.optLong("timestamp", 0L))
+                val localSettingsTime = prefs.settingsUpdatedAt
+                val isLocalNewer = localSettingsTime > 0L && localSettingsTime > snapshotSettingsTime
+
+                if (!isLocalNewer) {
+                    if (sub.has("app_theme")) prefs.appTheme = sub.optInt("app_theme", 0)
+                    if (sub.has("bottom_nav_visible_tabs")) prefs.bottomNavVisibleTabs = sub.optString("bottom_nav_visible_tabs", prefs.bottomNavVisibleTabs)
+                    if (sub.has("bottom_nav_label_mode")) prefs.bottomNavLabelMode = sub.optInt("bottom_nav_label_mode", prefs.bottomNavLabelMode)
+                    if (sub.has("bottom_nav_height_mode")) prefs.bottomNavHeightMode = sub.optInt("bottom_nav_height_mode", prefs.bottomNavHeightMode)
+                    if (sub.has("bottom_nav_indicator_shape")) prefs.bottomNavIndicatorShape = sub.optInt("bottom_nav_indicator_shape", prefs.bottomNavIndicatorShape)
+                    if (sub.has("bottom_nav_haptic")) prefs.bottomNavHapticFeedback = sub.optBoolean("bottom_nav_haptic", prefs.bottomNavHapticFeedback)
+                    if (snapshotSettingsTime > 0L) {
+                        prefs.settingsUpdatedAt = snapshotSettingsTime
+                    }
+                }
+
                 if (sub.has("trash_auto_clean_days")) prefs.trashAutoCleanDays = sub.optInt("trash_auto_clean_days", 30)
                 if (sub.has("server_url")) prefs.serverUrl = sub.optString("server_url", prefs.serverUrl)
                 if (sub.has("custom_bot_api_url")) prefs.customBotApiUrl = sub.optString("custom_bot_api_url", "")

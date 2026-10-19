@@ -32,6 +32,7 @@ import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -290,37 +291,12 @@ fun MainApp(
         }
     }
 
-    // Instant High-Speed Parallel Auto Re-Sync on App Open & Background Worker Kickstart
+    // Lightweight Notification Channel & Camera Service startup
     LaunchedEffect(Unit) {
         AppNotificationHelper.initNotificationChannels(context)
         AppNotificationHelper.showPersistentControlNotification(context, isRunning = false)
         kotlinx.coroutines.withContext(Dispatchers.IO) {
-            // STEP 0: Auto-restore persistent external vault if app was reinstalled
-            try {
-                val restored = com.example.telegrambackup.utils.LocalConfigVaultManager.autoRestoreIfLocalEmpty(context)
-                if (restored) {
-                    authRepository.refreshSession()
-                }
-            } catch (_: Exception) {}
-
-            // STEP 1: Restore cloud file index into Room DB FIRST before starting worker!
-            try { SettingsDbManager.restoreCloudFileIndexToRoom(context) } catch (_: Exception) {}
-            try { SettingsDbManager.fetchAndSyncSettingsOnAppOpen(context) } catch (_: Exception) {}
-            try { BackupProgressTracker.hydrateRecentCompleted(context) } catch (_: Exception) {}
-            try { com.example.telegrambackup.utils.AppCacheManager.autoPruneCache(context) } catch (_: Exception) {}
-            try { com.example.telegrambackup.utils.NetworkAnalysisManager.syncSelfAnalysisWorker(context) } catch (_: Exception) {}
             try { com.example.telegrambackup.service.LiveCameraObserverService.start(context) } catch (_: Exception) {}
-            try { authRepository.refreshSession() } catch (_: Exception) {}
-
-            // STEP 2: Kickstart background backup scan AFTER Room DB is fully restored!
-            if (prefs.autoBackupEnabled && !prefs.stopAllBackups) {
-                try {
-                    val workRequest = OneTimeWorkRequestBuilder<BackupWorker>()
-                        .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
-                        .build()
-                    WorkManager.getInstance(context).enqueueUniqueWork("ManualSyncWork", ExistingWorkPolicy.KEEP, workRequest)
-                } catch (_: Exception) { }
-            }
         }
     }
 
@@ -442,6 +418,8 @@ fun MainApp(
         }
     }
 
+    var hasInitializedAppSession by rememberSaveable { mutableStateOf(false) }
+
     LaunchedEffect(session.isLoggedIn) {
         if (session.isLoggedIn) {
             if (!com.example.telegrambackup.ui.auth.areAllRequiredPermissionsGranted(context)) {
@@ -449,25 +427,43 @@ fun MainApp(
             }
             displayUserName = prefs.displayName
             displayUserAvatarUri = com.example.telegrambackup.utils.ProfileManager.getAvatarUri(context)?.toString() ?: prefs.profilePictureUri
-            scope.launch(Dispatchers.IO) {
-                try {
-                    com.example.telegrambackup.utils.DateRecoveryHelper.recoverAuthenticDates(context)
-                } catch (_: Exception) {}
-                try { SettingsDbManager.fetchAndSyncSettingsOnAppOpen(context) } catch (_: Exception) {}
-                try { SettingsDbManager.restoreCloudFileIndexToRoom(context) } catch (_: Exception) {}
-                try { com.example.telegrambackup.network.BotFleetManager.ensureInitialized(context, force = true) } catch (_: Exception) {}
-                try { BackupProgressTracker.hydrateRecentCompleted(context) } catch (_: Exception) {}
-                withContext(Dispatchers.Main) {
-                    displayUserName = prefs.displayName
-                    displayUserAvatarUri = com.example.telegrambackup.utils.ProfileManager.getAvatarUri(context)?.toString() ?: prefs.profilePictureUri
-                }
-                if (prefs.autoBackupEnabled && !prefs.stopAllBackups) {
+
+            if (!hasInitializedAppSession) {
+                hasInitializedAppSession = true
+                scope.launch(Dispatchers.IO) {
+                    // 1. Check persistent external vault if fresh install / local cleared
                     try {
-                        val workRequest = OneTimeWorkRequestBuilder<BackupWorker>()
-                            .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
-                            .build()
-                        WorkManager.getInstance(context).enqueueUniqueWork("ManualSyncWork", ExistingWorkPolicy.KEEP, workRequest)
-                    } catch (_: Exception) { }
+                        val restored = com.example.telegrambackup.utils.LocalConfigVaultManager.autoRestoreIfLocalEmpty(context)
+                        if (restored) authRepository.refreshSession()
+                    } catch (_: Exception) {}
+
+                    // 2. Settings DB Sync with Timestamp Protection
+                    try { SettingsDbManager.fetchAndSyncSettingsOnAppOpen(context) } catch (_: Exception) {}
+
+                    // 3. Restore Cloud File Index (Single pass)
+                    try { SettingsDbManager.restoreCloudFileIndexToRoom(context) } catch (_: Exception) {}
+
+                    // 4. Fleet and System Initialization
+                    try { com.example.telegrambackup.network.BotFleetManager.ensureInitialized(context, force = false) } catch (_: Exception) {}
+                    try { BackupProgressTracker.hydrateRecentCompleted(context) } catch (_: Exception) {}
+                    try { com.example.telegrambackup.utils.DateRecoveryHelper.recoverAuthenticDates(context) } catch (_: Exception) {}
+                    try { com.example.telegrambackup.utils.AppCacheManager.autoPruneCache(context) } catch (_: Exception) {}
+                    try { com.example.telegrambackup.utils.NetworkAnalysisManager.syncSelfAnalysisWorker(context) } catch (_: Exception) {}
+
+                    withContext(Dispatchers.Main) {
+                        displayUserName = prefs.displayName
+                        displayUserAvatarUri = com.example.telegrambackup.utils.ProfileManager.getAvatarUri(context)?.toString() ?: prefs.profilePictureUri
+                    }
+
+                    // 5. Kickstart Background Backup Worker if enabled
+                    if (prefs.autoBackupEnabled && !prefs.stopAllBackups) {
+                        try {
+                            val workRequest = OneTimeWorkRequestBuilder<BackupWorker>()
+                                .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
+                                .build()
+                            WorkManager.getInstance(context).enqueueUniqueWork("ManualSyncWork", ExistingWorkPolicy.KEEP, workRequest)
+                        } catch (_: Exception) { }
+                    }
                 }
             }
         }
@@ -1179,6 +1175,7 @@ fun MainApp(
                             },
                             barHeight = navHeight,
                             labelMode = prefs.bottomNavLabelMode,
+                            indicatorShape = prefs.bottomNavIndicatorShape,
                             hapticFeedbackEnabled = prefs.bottomNavHapticFeedback
                         )
                     }
@@ -1203,37 +1200,19 @@ fun MainApp(
                             val initialIdx = getTabNavigationIndex(initialState)
                             val targetIdx = getTabNavigationIndex(targetState)
                             val isForward = targetIdx >= initialIdx
-                            val slideOffset = if (isForward) 260 else -260
+                            val slideOffset = if (isForward) 80 else -80
 
-                            (slideInHorizontally(
-                                animationSpec = spring(
-                                    dampingRatio = 0.86f,
-                                    stiffness = Spring.StiffnessMediumLow
-                                ),
+                            (fadeIn(
+                                animationSpec = tween(130, easing = FastOutSlowInEasing)
+                            ) + slideInHorizontally(
+                                animationSpec = tween(150, easing = FastOutSlowInEasing),
                                 initialOffsetX = { slideOffset }
-                            ) + fadeIn(
-                                animationSpec = tween(220, easing = LinearOutSlowInEasing)
-                            ) + scaleIn(
-                                animationSpec = spring(
-                                    dampingRatio = 0.88f,
-                                    stiffness = Spring.StiffnessMediumLow
-                                ),
-                                initialScale = 0.95f
                             )).togetherWith(
-                                slideOutHorizontally(
-                                    animationSpec = spring(
-                                        dampingRatio = 0.86f,
-                                        stiffness = Spring.StiffnessMediumLow
-                                    ),
+                                fadeOut(
+                                    animationSpec = tween(100, easing = FastOutLinearInEasing)
+                                ) + slideOutHorizontally(
+                                    animationSpec = tween(130, easing = FastOutLinearInEasing),
                                     targetOffsetX = { -slideOffset }
-                                ) + fadeOut(
-                                    animationSpec = tween(180, easing = FastOutLinearInEasing)
-                                ) + scaleOut(
-                                    animationSpec = spring(
-                                        dampingRatio = 0.88f,
-                                        stiffness = Spring.StiffnessMediumLow
-                                    ),
-                                    targetScale = 0.95f
                                 )
                             )
                         },

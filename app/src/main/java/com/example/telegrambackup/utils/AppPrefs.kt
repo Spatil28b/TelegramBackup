@@ -167,6 +167,10 @@ class AppPrefs(private val context: Context) {
         get() = prefs.getLong("profile_updated_at", 0L)
         set(value) = prefs.edit().putLong("profile_updated_at", value).apply()
 
+    var settingsUpdatedAt: Long
+        get() = prefs.getLong("settings_updated_at", 0L)
+        set(value) = prefs.edit().putLong("settings_updated_at", value).apply()
+
     var profilePictureUri: String
         get() {
             val file = java.io.File(context.filesDir, "user_profile_avatar.jpg")
@@ -415,7 +419,9 @@ class AppPrefs(private val context: Context) {
 
     var appTheme: Int
         get() = prefs.getInt("app_theme", 0)
-        set(value) = prefs.edit().putInt("app_theme", value).apply()
+        set(value) {
+            prefs.edit().putInt("app_theme", value).putLong("settings_updated_at", System.currentTimeMillis()).apply()
+        }
 
     var isZeroKnowledgeEnabled: Boolean
         get() = prefs.getBoolean("is_zero_knowledge_enabled", false)
@@ -632,27 +638,27 @@ class AppPrefs(private val context: Context) {
     // Enabled tabs in order. Comma-separated: "HOME,FILES,DRIVE,SETTINGS" (Modern M3 Default)
     var bottomNavVisibleTabs: String
         get() = prefs.getString("bottom_nav_visible_tabs", "HOME,FILES,DRIVE,SETTINGS") ?: "HOME,FILES,DRIVE,SETTINGS"
-        set(value) = prefs.edit().putString("bottom_nav_visible_tabs", value).apply()
+        set(value) = prefs.edit().putString("bottom_nav_visible_tabs", value).putLong("settings_updated_at", System.currentTimeMillis()).apply()
 
     // 0 = Always show labels, 1 = Show on active tab only, 2 = Never show labels (compact icon-only)
     var bottomNavLabelMode: Int
         get() = prefs.getInt("bottom_nav_label_mode", 0)
-        set(value) = prefs.edit().putInt("bottom_nav_label_mode", value).apply()
+        set(value) = prefs.edit().putInt("bottom_nav_label_mode", value).putLong("settings_updated_at", System.currentTimeMillis()).apply()
 
     // 0 = Standard M3 (80dp), 1 = Compact M3 (64dp), 2 = Ultra-Slim (54dp)
     var bottomNavHeightMode: Int
         get() = prefs.getInt("bottom_nav_height_mode", 0)
-        set(value) = prefs.edit().putInt("bottom_nav_height_mode", value).apply()
+        set(value) = prefs.edit().putInt("bottom_nav_height_mode", value).putLong("settings_updated_at", System.currentTimeMillis()).apply()
 
     // 0 = Classic Pill (16dp rounded), 1 = Squircle (10dp), 2 = Oval Capsule (CircleShape), 3 = Minimal Underline
     var bottomNavIndicatorShape: Int
         get() = prefs.getInt("bottom_nav_indicator_shape", 0)
-        set(value) = prefs.edit().putInt("bottom_nav_indicator_shape", value).apply()
+        set(value) = prefs.edit().putInt("bottom_nav_indicator_shape", value).putLong("settings_updated_at", System.currentTimeMillis()).apply()
 
     // Enable tactile haptic response on navigation tab change
     var bottomNavHapticFeedback: Boolean
         get() = prefs.getBoolean("bottom_nav_haptic", true)
-        set(value) = prefs.edit().putBoolean("bottom_nav_haptic", value).apply()
+        set(value) = prefs.edit().putBoolean("bottom_nav_haptic", value).putLong("settings_updated_at", System.currentTimeMillis()).apply()
 
     // Dedicated Safe Folder Vault Files Set
     @Volatile

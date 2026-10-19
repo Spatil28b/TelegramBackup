@@ -67,6 +67,12 @@ object SettingsDbManager {
                         AppSettingEntity("is_biometric_enabled", prefs.isBiometricEnabled.toString()),
                         AppSettingEntity("encryption_key", prefs.encryptionKey),
                         AppSettingEntity("app_theme", prefs.appTheme.toString()),
+                        AppSettingEntity("bottom_nav_visible_tabs", prefs.bottomNavVisibleTabs),
+                        AppSettingEntity("bottom_nav_label_mode", prefs.bottomNavLabelMode.toString()),
+                        AppSettingEntity("bottom_nav_height_mode", prefs.bottomNavHeightMode.toString()),
+                        AppSettingEntity("bottom_nav_indicator_shape", prefs.bottomNavIndicatorShape.toString()),
+                        AppSettingEntity("bottom_nav_haptic", prefs.bottomNavHapticFeedback.toString()),
+                        AppSettingEntity("settings_updated_at", prefs.settingsUpdatedAt.toString()),
                         AppSettingEntity("trash_auto_clean_days", prefs.trashAutoCleanDays.toString()),
                         AppSettingEntity("stop_all_backups", prefs.stopAllBackups.toString()),
                         AppSettingEntity("gemini_api_keys", prefs.geminiApiKeys),
@@ -80,6 +86,9 @@ object SettingsDbManager {
                 } else {
                     // Hydrate AppPrefs from Room Database records
                     val settingsMap = savedSettings.associate { it.key to it.value }
+                    val dbSettingsUpdatedAt = settingsMap["settings_updated_at"]?.toLongOrNull() ?: 0L
+                    val localSettingsUpdatedAt = prefs.settingsUpdatedAt
+                    val isLocalNewer = localSettingsUpdatedAt > 0L && localSettingsUpdatedAt > dbSettingsUpdatedAt
 
                     settingsMap["recovery_email"]?.let { prefs.recoveryEmail = it }
                     settingsMap["profile_picture_uri"]?.takeIf { it.isNotBlank() }?.let { prefs.profilePictureUri = it }
@@ -119,7 +128,31 @@ object SettingsDbManager {
                     settingsMap["wifi_only"]?.let { prefs.wifiOnly = it.toBoolean() }
                     settingsMap["enable_data_compression"]?.let { prefs.enableDataCompression = it.toBoolean() }
                     settingsMap["is_biometric_enabled"]?.let { prefs.isBiometricEnabled = it.toBoolean() }
-                    settingsMap["app_theme"]?.let { prefs.appTheme = it.toIntOrNull() ?: 0 }
+
+                    if (isLocalNewer) {
+                        // Keep current local theme and nav bar, write-back to database
+                        val updatedEntities = listOf(
+                            AppSettingEntity("app_theme", prefs.appTheme.toString(), localSettingsUpdatedAt),
+                            AppSettingEntity("bottom_nav_visible_tabs", prefs.bottomNavVisibleTabs, localSettingsUpdatedAt),
+                            AppSettingEntity("bottom_nav_label_mode", prefs.bottomNavLabelMode.toString(), localSettingsUpdatedAt),
+                            AppSettingEntity("bottom_nav_height_mode", prefs.bottomNavHeightMode.toString(), localSettingsUpdatedAt),
+                            AppSettingEntity("bottom_nav_indicator_shape", prefs.bottomNavIndicatorShape.toString(), localSettingsUpdatedAt),
+                            AppSettingEntity("bottom_nav_haptic", prefs.bottomNavHapticFeedback.toString(), localSettingsUpdatedAt),
+                            AppSettingEntity("settings_updated_at", localSettingsUpdatedAt.toString(), localSettingsUpdatedAt)
+                        )
+                        dao.saveSettings(updatedEntities)
+                    } else {
+                        settingsMap["app_theme"]?.let { prefs.appTheme = it.toIntOrNull() ?: 0 }
+                        settingsMap["bottom_nav_visible_tabs"]?.let { if (it.isNotBlank()) prefs.bottomNavVisibleTabs = it }
+                        settingsMap["bottom_nav_label_mode"]?.let { prefs.bottomNavLabelMode = it.toIntOrNull() ?: 0 }
+                        settingsMap["bottom_nav_height_mode"]?.let { prefs.bottomNavHeightMode = it.toIntOrNull() ?: 0 }
+                        settingsMap["bottom_nav_indicator_shape"]?.let { prefs.bottomNavIndicatorShape = it.toIntOrNull() ?: 0 }
+                        settingsMap["bottom_nav_haptic"]?.let { prefs.bottomNavHapticFeedback = it.toBoolean() }
+                        if (dbSettingsUpdatedAt > 0L) {
+                            prefs.settingsUpdatedAt = dbSettingsUpdatedAt
+                        }
+                    }
+
                     settingsMap["trash_auto_clean_days"]?.let { prefs.trashAutoCleanDays = it.toIntOrNull() ?: 30 }
                     settingsMap["stop_all_backups"]?.let { prefs.stopAllBackups = it.toBoolean() }
                     settingsMap["credentials_verified"]?.let { prefs.credentialsVerified = it.toBoolean() }
@@ -163,9 +196,6 @@ object SettingsDbManager {
 
                 // Auto-restore complete profile, master encryption key, bot fleet, channel routes, and sub-settings from cloud
                 CloudProfileSyncManager.autoRestoreConfigFromCloud(context)
-
-                // Automatically restore cloud file index into local Room DB
-                restoreCloudFileIndexToRoom(context)
             } catch (e: Exception) {
                 e.printStackTrace()
             }

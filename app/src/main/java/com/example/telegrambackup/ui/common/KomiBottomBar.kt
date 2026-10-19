@@ -65,6 +65,7 @@ fun <T> KomiBottomBar(
     modifier: Modifier = Modifier,
     barHeight: Dp = 62.dp,
     labelMode: Int = 1, // 0 = Always, 1 = Selected Only, 2 = Never
+    indicatorShape: Int = 0, // 0 = Pill, 1 = Squircle, 2 = Circle, 3 = Underline bar
     hapticFeedbackEnabled: Boolean = true
 ) {
     val haptic = LocalHapticFeedback.current
@@ -125,8 +126,8 @@ fun <T> KomiBottomBar(
                 val iconScale by animateFloatAsState(
                     targetValue = if (isSelected) 1.08f else 1.0f,
                     animationSpec = spring(
-                        dampingRatio = Spring.DampingRatioMediumBouncy,
-                        stiffness = Spring.StiffnessLow
+                        dampingRatio = Spring.DampingRatioNoBouncy,
+                        stiffness = Spring.StiffnessMedium
                     ),
                     label = "iconScale"
                 )
@@ -135,30 +136,39 @@ fun <T> KomiBottomBar(
                     targetValue = if (isSelected) {
                         if (isGlass) Color.White.copy(alpha = 0.12f) else MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)
                     } else Color.Transparent,
-                    animationSpec = tween(durationMillis = 180),
+                    animationSpec = tween(durationMillis = 130),
                     label = "containerColor"
                 )
 
                 val contentColor by animateColorAsState(
                     targetValue = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
-                    animationSpec = tween(durationMillis = 180),
+                    animationSpec = tween(durationMillis = 130),
                     label = "contentColor"
                 )
 
                 val interactionSource = remember { MutableInteractionSource() }
 
+                val activeShape = remember(indicatorShape) {
+                    when (indicatorShape) {
+                        1 -> RoundedCornerShape(10.dp)
+                        2 -> CircleShape
+                        3 -> RoundedCornerShape(4.dp)
+                        else -> RoundedCornerShape(20.dp)
+                    }
+                }
+
                 Box(
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxHeight()
-                        .clip(RoundedCornerShape(20.dp))
+                        .clip(activeShape)
                         .background(containerColor)
                         .then(
                             if (isGlass && isSelected) {
                                 Modifier.border(
                                     width = 0.6.dp,
                                     brush = com.example.telegrambackup.theme.liquidGlassBorderBrush(0.40f, 0.15f, 0.08f),
-                                    shape = RoundedCornerShape(20.dp)
+                                    shape = activeShape
                                 )
                             } else Modifier
                         )
@@ -204,8 +214,8 @@ fun <T> KomiBottomBar(
 
                         AnimatedVisibility(
                             visible = showLabel,
-                            enter = fadeIn(tween(160)),
-                            exit = fadeOut(tween(120))
+                            enter = fadeIn(tween(120)),
+                            exit = fadeOut(tween(90))
                         ) {
                             Text(
                                 text = item.label,
