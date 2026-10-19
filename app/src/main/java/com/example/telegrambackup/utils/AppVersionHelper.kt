@@ -70,16 +70,16 @@ object AppVersionHelper {
         val cleanServer = serverVersionName.trim().removePrefix("v").trim()
         val cleanInstalled = installedName.trim().removePrefix("v").trim()
 
-        // If the clean version names are identical, it is NOT an update
+        // Check version code (e.g. 156 > 155)
+        val isCodeNewer = serverVersionCode > installedCode
+
+        // If the clean version names are identical, check if versionCode is strictly newer
         if (cleanServer.equals(cleanInstalled, ignoreCase = true)) {
-            return false
+            return isCodeNewer
         }
 
         // Check if server version name is semantically newer (e.g. "2.2.3" > "2.2.2")
         val isSemVerNewer = SemVerUtils.isServerVersionNewer(cleanServer, cleanInstalled)
-
-        // Check version code (e.g. 106 > 105)
-        val isCodeNewer = serverVersionCode > installedCode
 
         return isSemVerNewer || isCodeNewer
     }
