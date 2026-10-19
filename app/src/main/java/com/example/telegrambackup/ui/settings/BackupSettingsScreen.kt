@@ -1959,6 +1959,42 @@ fun BackupSettingsScreen(
                                     triggerHapticFeedback(context, haptic)
                                     showAppInfoModal = true
                                 }
+
+                                var isCheckingUpdateNow by remember { mutableStateOf(false) }
+                                SpotiSettingsItem(
+                                    icon = Icons.Default.NewReleases,
+                                    title = "Check for Updates",
+                                    subtitle = "Scan cloud server for latest APK",
+                                    value = if (isCheckingUpdateNow) "Checking..." else "Check Now",
+                                    valueColor = if (isCheckingUpdateNow) TelegramBlue else TelegramEmerald,
+                                    iconTint = TelegramEmerald
+                                ) {
+                                    triggerHapticFeedback(context, haptic)
+                                    if (isCheckingUpdateNow) return@SpotiSettingsItem
+                                    isCheckingUpdateNow = true
+                                    Toast.makeText(context, "Checking online server for updates...", Toast.LENGTH_SHORT).show()
+                                    scope.launch(Dispatchers.IO) {
+                                        val serverUrl = prefs.serverUrl.ifEmpty { "https://telegram-backup-backend.vercel.app" }
+                                        val versionInfo = ServerApi().getLatestAppVersion(serverUrl)
+                                        withContext(Dispatchers.Main) {
+                                            isCheckingUpdateNow = false
+                                            val isUpdateAvailable = com.example.telegrambackup.utils.AppVersionHelper.isUpdateAvailable(
+                                                serverVersionName = versionInfo.versionName,
+                                                serverVersionCode = versionInfo.versionCode,
+                                                context = context
+                                            )
+                                            if (versionInfo.success && isUpdateAvailable && versionInfo.downloadUrl.isNotEmpty()) {
+                                                manualUpdateInfo = versionInfo
+                                            } else {
+                                                Toast.makeText(
+                                                    context,
+                                                    "✅ You are running the latest version (v${com.example.telegrambackup.utils.AppVersionHelper.currentVersionName})",
+                                                    Toast.LENGTH_LONG
+                                                ).show()
+                                            }
+                                        }
+                                    }
+                                }
                             }
 
                             if (matchSearch("cache", "storage", "clean", "size", "clear", "optimize", "memory", "budget")) {
