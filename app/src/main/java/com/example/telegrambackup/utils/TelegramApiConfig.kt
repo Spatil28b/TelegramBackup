@@ -19,8 +19,12 @@ object TelegramApiConfig {
 
     fun getBaseUrl(context: Context): String {
         val custom = AppPrefs(context).customBotApiUrl.trim()
-        return if (custom.isNotBlank() && (custom.startsWith("http://") || custom.startsWith("https://"))) {
-            custom.trimEnd('/')
+        if (custom.isBlank()) return DEFAULT_TELEGRAM_API_BASE
+        val clean = custom.trimEnd('/')
+        return if (clean.startsWith("https://", ignoreCase = true) ||
+                   clean.startsWith("http://127.0.0.1", ignoreCase = true) ||
+                   clean.startsWith("http://localhost", ignoreCase = true)) {
+            clean
         } else {
             DEFAULT_TELEGRAM_API_BASE
         }

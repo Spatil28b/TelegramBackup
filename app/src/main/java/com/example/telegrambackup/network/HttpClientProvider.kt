@@ -5,6 +5,9 @@ import okhttp3.OkHttpClient
 import java.util.concurrent.TimeUnit
 
 object HttpClientProvider {
+    @Volatile
+    var backendHost: String = "telegram-backup-backend.vercel.app"
+
     val client: OkHttpClient by lazy {
         OkHttpClient.Builder()
             .connectionPool(ConnectionPool(5, 5, TimeUnit.MINUTES))
@@ -15,13 +18,18 @@ object HttpClientProvider {
             .retryOnConnectionFailure(true)
             .addInterceptor { chain ->
                 val request = chain.request()
-                val url = request.url.toString()
                 val token = ServerApi.activeAuthToken
-                val isExternal = url.contains("telegram.org") ||
-                                 url.contains("googleapis.com") ||
-                                 url.contains("github.com") ||
-                                 url.contains("raw.githubusercontent.com")
-                if (!isExternal && token.isNotBlank() && request.header("Authorization") == null) {
+                val host = request.url.host.lowercase()
+                val targetHost = backendHost.lowercase()
+
+                // Security: Only attach Authorization header to exact backend hosts, never to external services
+                val isBackendHost = host == targetHost ||
+                                    host == "telegram-backup-backend.vercel.app" ||
+                                    (host.endsWith(".vercel.app") && host == targetHost) ||
+                                    host == "10.0.2.2" ||
+                                    host == "localhost"
+
+                if (isBackendHost && token.isNotBlank() && request.header("Authorization") == null) {
                     val authRequest = request.newBuilder()
                         .header("Authorization", "Bearer $token")
                         .build()

@@ -12,11 +12,16 @@ class TelegramBackupApp : Application() {
         // 1. Install Global Crash Shield first before any background workers or DB access
         AppCrashShield.install(this)
 
-        // 2. Initialize active auth token from persisted preferences
+        // 2. Initialize active auth token and backend host from persisted preferences
         try {
-            val token = AppPrefs(this).authToken
+            val prefs = AppPrefs(this)
+            val token = prefs.authToken
             if (token.isNotBlank()) {
                 ServerApi.activeAuthToken = token
+            }
+            val parsedHost = try { java.net.URI(prefs.serverUrl).host } catch (_: Throwable) { null }
+            if (!parsedHost.isNullOrBlank()) {
+                com.example.telegrambackup.network.HttpClientProvider.backendHost = parsedHost
             }
         } catch (_: Throwable) {}
 

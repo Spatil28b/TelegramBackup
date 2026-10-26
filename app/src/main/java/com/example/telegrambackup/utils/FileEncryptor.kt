@@ -578,38 +578,20 @@ object FileEncryptor {
      */
     fun getCandidateKeys(context: Context): List<String> {
         val keys = LinkedHashSet<String>()
-        // User's verified cloud master key from database user_settings
-        keys.add("AES256-REDACTED_AES_KEY_0000000")
         try {
             val prefs = AppPrefs(context)
             val current = prefs.encryptionKey
-            if (current.isNotEmpty()) {
-                keys.add(current)
+            if (current.isNotBlank()) {
                 keys.add(current.trim())
             }
-            if (prefs.zeroKnowledgePassphrase.isNotEmpty()) {
-                keys.add(prefs.zeroKnowledgePassphrase)
+            if (prefs.zeroKnowledgePassphrase.isNotBlank()) {
                 keys.add(prefs.zeroKnowledgePassphrase.trim())
             }
-            if (prefs.userEmail.isNotEmpty()) keys.add(prefs.userEmail.trim())
-            if (prefs.recoveryEmail.isNotEmpty()) keys.add(prefs.recoveryEmail.trim())
-            if (prefs.chatId.isNotEmpty()) {
-                val cId = prefs.chatId.trim()
-                keys.add(cId)
-                if (cId.startsWith("-100")) {
-                    keys.add(cId.removePrefix("-100"))
-                } else {
-                    keys.add("-100$cId")
-                }
-            }
-            if (prefs.botToken.isNotEmpty()) keys.add(prefs.botToken.trim())
-            if (prefs.displayName.isNotEmpty()) keys.add(prefs.displayName.trim())
         } catch (_: Exception) {}
 
         try {
             val vaultKey = KeystoreVault.retrieveMasterKey(context)
-            if (!vaultKey.isNullOrEmpty()) {
-                keys.add(vaultKey)
+            if (!vaultKey.isNullOrBlank()) {
                 keys.add(vaultKey.trim())
             }
         } catch (_: Exception) {}
@@ -617,43 +599,16 @@ object FileEncryptor {
         try {
             val db = AppDatabase.getDatabase(context)
             val dbKey = db.appSettingDao().getSetting("encryption_key")?.value
-            if (!dbKey.isNullOrEmpty()) {
-                keys.add(dbKey)
+            if (!dbKey.isNullOrBlank()) {
                 keys.add(dbKey.trim())
             }
             val masterKey = db.appSettingDao().getSetting("master_key")?.value
-            if (!masterKey.isNullOrEmpty()) {
-                keys.add(masterKey)
+            if (!masterKey.isNullOrBlank()) {
                 keys.add(masterKey.trim())
-            }
-            val allSettings = db.appSettingDao().getAllSettings()
-            for (setting in allSettings) {
-                val v = setting.value.trim()
-                if (v.length in 4..64) {
-                    keys.add(v)
-                }
-            }
-            val allBots = db.telegramBotDao().getAllBots()
-            for (bot in allBots) {
-                val token = bot.botToken.trim()
-                if (token.isNotEmpty()) {
-                    keys.add(token)
-                }
             }
         } catch (_: Exception) {}
 
-        // Known default / legacy fallback keys from earlier releases
-        keys.add("") // Crucial for v2.0.0 backups where encryption was enabled but key was blank
-        keys.add("default_aes_key")
-        keys.add("telegram_backup_master_key")
-        keys.add("TelegramBackupKey2025")
-        keys.add("AES256-DEFAULT-KEY")
-        keys.add("master_key")
-        keys.add("backup_key")
-        keys.add("password")
-        keys.add("123456")
-
-        return keys.toList()
+        return keys.filter { it.isNotBlank() }.toList()
     }
 
     /**
