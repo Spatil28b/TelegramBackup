@@ -715,41 +715,6 @@ object FileEncryptor {
             }
         }
 
-        // Attempt 3: If all candidate keys failed, fetch the latest key from cloud settings
-        try {
-            val prefs = AppPrefs(context)
-            val userEmail = prefs.userEmail.ifBlank { prefs.recoveryEmail }.trim().lowercase()
-            if (userEmail.isNotBlank()) {
-                val serverSettings = runBlocking(Dispatchers.IO) {
-                    com.example.telegrambackup.network.ServerApi().getUserSettings(prefs.serverUrl, userEmail)
-                }
-                if (!serverSettings.isNullOrBlank() && serverSettings.contains("encryption_key")) {
-                    val cloudKey = org.json.JSONObject(serverSettings).optJSONObject("security")?.optString("encryption_key", "")
-                    if (!cloudKey.isNullOrBlank() && !candidates.contains(cloudKey)) {
-                        val tempDecrypted = File(file.parentFile, "${file.name}.cand_dec")
-                        try {
-                            decryptFile(file, tempDecrypted, cloudKey, forceLegacyNoHeader = false)
-                            if (tempDecrypted.exists() && tempDecrypted.length() > 0 && verifyDecryptedFormat(tempDecrypted, originalFileName)) {
-                                val copied = try {
-                                    tempDecrypted.copyTo(file, overwrite = true)
-                                    tempDecrypted.delete()
-                                    true
-                                } catch (_: Exception) {
-                                    if (file.delete()) tempDecrypted.renameTo(file) else false
-                                }
-                                if (copied && verifyDecryptedFormat(file, originalFileName)) {
-                                    syncWorkingKey(context, cloudKey)
-                                    return true
-                                }
-                            }
-                        } finally {
-                            if (tempDecrypted.exists()) tempDecrypted.delete()
-                        }
-                    }
-                }
-            }
-        } catch (_: Exception) {}
-
         return false
     }
 

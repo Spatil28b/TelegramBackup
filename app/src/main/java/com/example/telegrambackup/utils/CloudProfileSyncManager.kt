@@ -55,10 +55,9 @@ object CloudProfileSyncManager {
         }
         root.put("profile", profileJson)
 
-        // 2. Master Security & Encryption Key (Ensures decryption never breaks on fresh install)
+        // 2. Master Security Settings (Master key stored strictly in on-device Keystore, never synced to cloud)
         val securityJson = JSONObject().apply {
             put("encryption_enabled", prefs.encryptionEnabled)
-            put("encryption_key", prefs.encryptionKey)
             put("is_biometric_enabled", prefs.isBiometricEnabled)
         }
         root.put("security", securityJson)
@@ -222,13 +221,9 @@ object CloudProfileSyncManager {
                 prof.optString("user_email", "").takeIf { it.isNotEmpty() }?.let { prefs.userEmail = it }
             }
 
-            // 2. Restore Master Security & Encryption Key
+            // 2. Restore Master Security Settings (Key remains protected in on-device Keystore)
             root.optJSONObject("security")?.let { sec ->
                 if (sec.has("encryption_enabled")) prefs.encryptionEnabled = sec.optBoolean("encryption_enabled", true)
-                val cloudKey = sec.optString("encryption_key", "")
-                if (cloudKey.isNotEmpty()) {
-                    prefs.forceSetEncryptionKey(cloudKey)
-                }
                 if (sec.has("is_biometric_enabled")) prefs.isBiometricEnabled = sec.optBoolean("is_biometric_enabled", false)
             }
 

@@ -160,11 +160,6 @@ object SettingsDbManager {
                     settingsMap["active_ai_model"]?.let { prefs.activeAiModel = it }
                     settingsMap["ai_document_scanner_enabled"]?.let { prefs.isAiDocumentScannerEnabled = it.toBoolean() }
                     settingsMap["selected_app_icon"]?.let { prefs.appIcon = it }
-                    settingsMap["encryption_key"]?.let {
-                        if (it.isNotBlank() && it != "default_aes_key") {
-                            prefs.forceSetEncryptionKey(it)
-                        }
-                    }
                     try { LocalConfigVaultManager.saveVaultSnapshot(context) } catch (_: Exception) {}
                 }
 

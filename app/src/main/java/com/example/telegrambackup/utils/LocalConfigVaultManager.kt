@@ -221,7 +221,18 @@ object LocalConfigVaultManager {
 
             val payloadStr = root.toString(2)
 
-            // Write to all target external storage locations atomically
+            // Sanitize sensitive credentials before writing to public external storage directories (Finding #10)
+            val publicSafeRoot = JSONObject(root.toString()).apply {
+                optJSONObject("security")?.remove("encryption_key")
+                optJSONArray("bot_fleet")?.let { arr ->
+                    for (i in 0 until arr.length()) {
+                        arr.optJSONObject(i)?.remove("bot_token")
+                    }
+                }
+            }
+            val publicPayloadStr = publicSafeRoot.toString(2)
+
+            // Write to all target external storage locations atomically (without raw credentials)
             for (dir in getStorageDirs()) {
                 try {
                     if (!dir.exists()) dir.mkdirs()
@@ -229,11 +240,11 @@ object LocalConfigVaultManager {
                     val backupTarget = File(dir, BACKUP_FILE_NAME)
 
                     val tempHidden = File(dir, "${HIDDEN_FILE_NAME}.tmp")
-                    tempHidden.writeText(payloadStr)
+                    tempHidden.writeText(publicPayloadStr)
                     tempHidden.renameTo(hiddenTarget)
 
                     val tempBackup = File(dir, "${BACKUP_FILE_NAME}.tmp")
-                    tempBackup.writeText(payloadStr)
+                    tempBackup.writeText(publicPayloadStr)
                     tempBackup.renameTo(backupTarget)
                 } catch (e: Exception) {
                     Log.w(TAG, "Failed writing vault snapshot to ${dir.absolutePath}: ${e.message}")
