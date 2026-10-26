@@ -77,6 +77,14 @@ class ServerApi {
                     val raw = obj.optString("bot_token", "")
                     obj.put("bot_token", sanitizeBotId(raw))
                 }
+                if (obj.has("botTokenUsed")) {
+                    val raw = obj.optString("botTokenUsed", "")
+                    obj.put("botTokenUsed", sanitizeBotId(raw))
+                }
+                if (obj.has("bot_token_used")) {
+                    val raw = obj.optString("bot_token_used", "")
+                    obj.put("bot_token_used", sanitizeBotId(raw))
+                }
             }
             arr.toString()
         } catch (_: Exception) {
@@ -1672,31 +1680,8 @@ class ServerApi {
                 put("fileName", fileName)
                 put("fileSize", fileSize)
                 put("fileId", fileId)
-                if (botToken.isNotBlank()) put("botToken", botToken.trim())
-                if (encryptionKey.isNotBlank()) put("encryptionKey", encryptionKey.trim())
                 if (pin.isNotBlank()) put("pin", pin.trim())
                 if (expiresAt > 0L) put("expiresAt", expiresAt)
-
-                if (candidateBots.isNotEmpty()) {
-                    val botArr = JSONArray()
-                    for (b in candidateBots) {
-                        if (b.isNotBlank()) botArr.put(b.trim())
-                    }
-                    put("candidateBots", botArr)
-                }
-
-                if (chunks.isNotEmpty()) {
-                    val chunksArray = JSONArray()
-                    for (chunk in chunks) {
-                        val cJson = JSONObject().apply {
-                            put("chunkIndex", chunk.first)
-                            put("telegramFileId", chunk.second)
-                            if (chunk.third.isNotBlank()) put("botTokenUsed", chunk.third.trim())
-                        }
-                        chunksArray.put(cJson)
-                    }
-                    put("chunks", chunksArray)
-                }
             }
 
             val body = json.toString().toRequestBody("application/json; charset=utf-8".toMediaTypeOrNull())

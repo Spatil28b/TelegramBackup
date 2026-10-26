@@ -723,9 +723,6 @@ object FileEncryptor {
             try {
                 val prefs = AppPrefs(context)
                 prefs.forceSetEncryptionKey(candidate)
-                AppDatabase.getDatabase(context).appSettingDao().saveSetting(
-                    AppSettingEntity("encryption_key", candidate)
-                )
             } catch (_: Exception) {}
         }
     }

@@ -356,7 +356,6 @@ object CloudProfileSyncManager {
             val entities = listOf(
                 AppSettingEntity("display_name", prefs.displayName, now),
                 AppSettingEntity("profile_picture_uri", prefs.profilePictureUri, now),
-                AppSettingEntity("encryption_key", prefs.encryptionKey, now),
                 AppSettingEntity("fleet_mode", prefs.fleetMode, now),
                 AppSettingEntity("boost_target", prefs.boostTarget, now),
                 AppSettingEntity("auto_backup_min_bots", prefs.autoBackupMinBots.toString(), now),

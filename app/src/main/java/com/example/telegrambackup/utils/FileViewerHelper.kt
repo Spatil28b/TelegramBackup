@@ -240,25 +240,6 @@ object FileViewerHelper {
                 }
             } catch (_: Exception) { null }
 
-            if (pkgInfo == null) {
-                // If corrupted or still encrypted, try deep cloud key recovery
-                val prefs = AppPrefs(context)
-                val userEmail = prefs.userEmail.ifBlank { prefs.recoveryEmail }.trim().lowercase()
-                if (userEmail.isNotBlank()) {
-                    try {
-                        val serverSettings = kotlinx.coroutines.runBlocking(Dispatchers.IO) {
-                            ServerApi().getUserSettings(prefs.serverUrl, userEmail)
-                        }
-                        if (!serverSettings.isNullOrBlank() && serverSettings.contains("encryption_key")) {
-                            val cloudKey = JSONObject(serverSettings).optJSONObject("security")?.optString("encryption_key", "")
-                            if (!cloudKey.isNullOrBlank()) {
-                                FileEncryptor.decryptFileInPlace(file, cloudKey)
-                            }
-                        }
-                    } catch (_: Exception) {}
-                }
-            }
-
             // Verify zip header (PK\x03\x04)
             if (!FileEncryptor.isLikelyPlainFile(file, fileName)) {
                 Toast.makeText(context, "⚠️ APK file is corrupt or incomplete. Please re-download.", Toast.LENGTH_LONG).show()

@@ -65,7 +65,6 @@ object SettingsDbManager {
                         AppSettingEntity("wifi_only", prefs.wifiOnly.toString()),
                         AppSettingEntity("enable_data_compression", prefs.enableDataCompression.toString()),
                         AppSettingEntity("is_biometric_enabled", prefs.isBiometricEnabled.toString()),
-                        AppSettingEntity("encryption_key", prefs.encryptionKey),
                         AppSettingEntity("app_theme", prefs.appTheme.toString()),
                         AppSettingEntity("bottom_nav_visible_tabs", prefs.bottomNavVisibleTabs),
                         AppSettingEntity("bottom_nav_label_mode", prefs.bottomNavLabelMode.toString()),

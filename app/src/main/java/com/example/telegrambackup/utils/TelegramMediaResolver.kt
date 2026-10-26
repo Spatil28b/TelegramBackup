@@ -938,30 +938,10 @@ object TelegramMediaResolver {
     ): Boolean {
         if (!targetFile.exists() || targetFile.length() == 0L) return false
 
-        // Ensure decrypted with all candidate keys and fallback cloud key
+        // Ensure decrypted with locally stored hardware keys
         FileEncryptor.ensureDecrypted(targetFile, context, file.fileName)
 
-        var isStillEncrypted = FileEncryptor.isEncryptedFile(targetFile, file.fileName) || FileEncryptor.isEncryptedWithMagicHeader(targetFile)
-        if (isStillEncrypted) {
-            // Force fetch cloud key and attempt recovery
-            val prefs = AppPrefs(context)
-            val userEmail = prefs.userEmail.ifBlank { prefs.recoveryEmail }.trim().lowercase()
-            if (userEmail.isNotBlank()) {
-                try {
-                    val serverSettings = kotlinx.coroutines.runBlocking(Dispatchers.IO) {
-                        com.example.telegrambackup.network.ServerApi().getUserSettings(prefs.serverUrl, userEmail)
-                    }
-                    if (!serverSettings.isNullOrBlank() && serverSettings.contains("encryption_key")) {
-                        val cloudKey = org.json.JSONObject(serverSettings).optJSONObject("security")?.optString("encryption_key", "")
-                        if (!cloudKey.isNullOrBlank()) {
-                            FileEncryptor.decryptFileInPlace(targetFile, cloudKey)
-                            prefs.forceSetEncryptionKey(cloudKey)
-                            isStillEncrypted = FileEncryptor.isEncryptedFile(targetFile, file.fileName) || FileEncryptor.isEncryptedWithMagicHeader(targetFile)
-                        }
-                    }
-                } catch (_: Exception) {}
-            }
-        }
+        val isStillEncrypted = FileEncryptor.isEncryptedFile(targetFile, file.fileName) || FileEncryptor.isEncryptedWithMagicHeader(targetFile)
 
         if (isStillEncrypted) {
             Log.e(TAG, "FATAL: Downloaded file ${file.fileName} remains encrypted after all decryption attempts! Purging unreadable ciphertext.")

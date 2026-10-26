@@ -172,20 +172,77 @@ fun AppUpdaterDialog(
                 return
             }
 
-            // Verify package archive integrity
+            // 1. Verify package archive integrity and matching package name
             val pm = context.packageManager
+            val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                PackageManager.GET_SIGNING_CERTIFICATES
+            } else {
+                @Suppress("DEPRECATION")
+                PackageManager.GET_SIGNATURES
+            }
+
             val pkgInfo = try {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                    pm.getPackageArchiveInfo(apkFile.absolutePath, PackageManager.PackageInfoFlags.of(0))
+                    pm.getPackageArchiveInfo(apkFile.absolutePath, PackageManager.PackageInfoFlags.of(flags.toLong()))
                 } else {
                     @Suppress("DEPRECATION")
-                    pm.getPackageArchiveInfo(apkFile.absolutePath, 0)
+                    pm.getPackageArchiveInfo(apkFile.absolutePath, flags)
                 }
             } catch (_: Exception) { null }
 
             if (pkgInfo == null || pkgInfo.packageName != context.packageName) {
                 downloadStatusText = "⚠️ Downloaded APK verification failed (package mismatch or corrupted). Update aborted for security."
                 Toast.makeText(context, "Security warning: APK package mismatch or corrupted archive.", Toast.LENGTH_LONG).show()
+                return
+            }
+
+            // 2. Cryptographic APK Signature Verification (Finding #12)
+            var signaturesMatch = false
+            try {
+                val currentAppInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    pm.getPackageInfo(context.packageName, PackageManager.PackageInfoFlags.of(flags.toLong()))
+                } else {
+                    @Suppress("DEPRECATION")
+                    pm.getPackageInfo(context.packageName, flags)
+                }
+
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                    val archiveSigners = pkgInfo.signingInfo?.apkContentsSigners
+                        ?: pkgInfo.signingInfo?.signingCertificateHistory
+                    val currentSigners = currentAppInfo?.signingInfo?.apkContentsSigners
+                        ?: currentAppInfo?.signingInfo?.signingCertificateHistory
+                    if (!archiveSigners.isNullOrEmpty() && !currentSigners.isNullOrEmpty()) {
+                        val currentDigests = currentSigners.map { sig ->
+                            java.security.MessageDigest.getInstance("SHA-256").digest(sig.toByteArray())
+                        }
+                        signaturesMatch = archiveSigners.any { aSig ->
+                            val aDigest = java.security.MessageDigest.getInstance("SHA-256").digest(aSig.toByteArray())
+                            currentDigests.any { it.contentEquals(aDigest) }
+                        }
+                    }
+                } else {
+                    @Suppress("DEPRECATION")
+                    val archiveSigs = pkgInfo.signatures
+                    @Suppress("DEPRECATION")
+                    val currentSigs = currentAppInfo?.signatures
+                    if (!archiveSigs.isNullOrEmpty() && !currentSigs.isNullOrEmpty()) {
+                        val currentDigests = currentSigs.map { sig ->
+                            java.security.MessageDigest.getInstance("SHA-256").digest(sig.toByteArray())
+                        }
+                        signaturesMatch = archiveSigs.any { aSig ->
+                            val aDigest = java.security.MessageDigest.getInstance("SHA-256").digest(aSig.toByteArray())
+                            currentDigests.any { it.contentEquals(aDigest) }
+                        }
+                    }
+                }
+            } catch (sigErr: Exception) {
+                Log.e("AppUpdater", "Signature verification exception: ${sigErr.message}")
+                signaturesMatch = false
+            }
+
+            if (!signaturesMatch) {
+                downloadStatusText = "⚠️ Cryptographic signature verification failed! Untrusted or tampered release."
+                Toast.makeText(context, "Security warning: APK signing certificate mismatch. Update aborted.", Toast.LENGTH_LONG).show()
                 return
             }
 

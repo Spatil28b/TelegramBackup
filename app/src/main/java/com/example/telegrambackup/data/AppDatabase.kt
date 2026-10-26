@@ -421,6 +421,12 @@ abstract class AppDatabase : RoomDatabase() {
                         } catch (e: Exception) {
                             Log.w(TAG, "Failed healing dates in uploaded_files: ${e.message}")
                         }
+                        try {
+                            // Finding #4, #6: Ensure raw encryption keys and bot tokens are purged from Room settings
+                            db.execSQL("DELETE FROM app_settings WHERE `key` IN ('encryption_key', 'bot_token', 'chat_id')")
+                        } catch (e: Exception) {
+                            Log.w(TAG, "Failed purging sensitive keys from app_settings: ${e.message}")
+                        }
                     }
                 })
                 .build()
