@@ -71,13 +71,14 @@ object BotFleetManager {
 
                 val existingBots = botDao.getAllBots()
                 if (existingBots.isEmpty() && prefs.botToken.isNotBlank()) {
-                    val primaryBot = TelegramBotEntity(
-                        botToken = prefs.botToken.trim(),
+                    val primaryBot = TelegramBotEntity.fromToken(
+                        token = prefs.botToken.trim(),
                         displayName = "Primary Bot",
                         isPrimary = true,
                         isActive = true,
                         addedAt = System.currentTimeMillis()
                     )
+                    primaryBot.persistToken(context, prefs.botToken.trim())
                     botDao.insert(primaryBot)
                     Log.d(TAG, "Migrated existing botToken to TelegramBotEntity")
                 }
@@ -117,7 +118,7 @@ object BotFleetManager {
             if (activeBots.isEmpty()) {
                 val prefs = AppPrefs(context)
                 return@withContext if (prefs.botToken.isNotBlank()) {
-                    TelegramBotEntity(botToken = prefs.botToken.trim(), isPrimary = true)
+                    TelegramBotEntity.fromToken(token = prefs.botToken.trim(), isPrimary = true)
                 } else null
             }
 
@@ -132,7 +133,7 @@ object BotFleetManager {
         } catch (e: Exception) {
             Log.e(TAG, "Error retrieving available bot", e)
             val prefs = AppPrefs(context)
-            return@withContext if (prefs.botToken.isNotBlank()) TelegramBotEntity(botToken = prefs.botToken.trim(), isPrimary = true) else null
+            return@withContext if (prefs.botToken.isNotBlank()) TelegramBotEntity.fromToken(token = prefs.botToken.trim(), isPrimary = true) else null
         }
     }
 

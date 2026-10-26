@@ -28,6 +28,42 @@ object VersionChangelogProvider {
 
     private val releases = listOf(
         VersionRelease(
+            versionName = "2.8.0",
+            versionCode = 158,
+            releaseDate = "October 2026",
+            highlights = "Cryptographic Hardening, AES-256-GCM v2, Room Keystore Isolation & Zero-Knowledge Sharing",
+            entries = listOf(
+                ChangelogEntry(
+                    Icons.Default.Security,
+                    Color(0xFF10B981),
+                    "Authenticated AES-256-GCM v2 Framing",
+                    "Per-chunk GCM authenticated framing with chunk index and total chunk AAD validation. Completely purged unauthenticated CTR cipher modes.",
+                    "SECURITY"
+                ),
+                ChangelogEntry(
+                    Icons.Default.VpnKey,
+                    Color(0xFF38BDF8),
+                    "Hardware Keystore Room Isolation",
+                    "Raw Telegram bot tokens strictly segregated into hardware-backed Android KeyStore. Room databases store only sanitized bot identifiers.",
+                    "SECURITY"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Lock,
+                    Color(0xFFA855F7),
+                    "Encrypted Recovery Packages",
+                    "Added PBKDF2 (100,000 rounds) + AES-GCM encrypted backup vault archives with password protection; purged plaintext secrets from JSON vault exports.",
+                    "CORE"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Share,
+                    Color(0xFFF59E0B),
+                    "Authoritative Zero-Knowledge Sharing",
+                    "Server-side database ownership enforcement, zero-knowledge encryption key omission, and bcrypt PIN security (8+ characters).",
+                    "CLOUD"
+                )
+            )
+        ),
+        VersionRelease(
             versionName = "2.7.8",
             versionCode = 156,
             releaseDate = "October 2026",

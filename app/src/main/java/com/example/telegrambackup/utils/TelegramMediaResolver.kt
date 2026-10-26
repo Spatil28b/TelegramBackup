@@ -621,17 +621,47 @@ object TelegramMediaResolver {
             // Merge all downloaded chunks in strict sequential chunkIndex order
             partFiles.sortBy { it.first }
             val orderedFiles = partFiles.map { it.second }
-            FileChunker.mergeChunks(orderedFiles, tempMergedFile)
-            orderedFiles.forEach { if (it.exists()) it.delete() }
+            val isV2Chunked = orderedFiles.firstOrNull()?.let { FileEncryptor.isGcmV2(it) } == true
 
-            if (!tempMergedFile.exists() || tempMergedFile.length() == 0L) {
-                return@withContext false
+            if (isV2Chunked) {
+                val candidateKeys = FileEncryptor.getCandidateKeys(context)
+                var decryptedOk = false
+                for (candidate in candidateKeys) {
+                    try {
+                        java.io.BufferedOutputStream(FileOutputStream(tempMergedFile), 128 * 1024).use { fos ->
+                            for (chunkFile in orderedFiles) {
+                                val plainChunkBytes = FileEncryptor.decryptGcmChunkToBytes(chunkFile, candidate)
+                                fos.write(plainChunkBytes)
+                            }
+                            fos.flush()
+                        }
+                        if (tempMergedFile.exists() && tempMergedFile.length() > 0 && FileEncryptor.verifyDecryptedFormat(tempMergedFile, file.fileName)) {
+                            decryptedOk = true
+                            break
+                        } else {
+                            if (tempMergedFile.exists()) tempMergedFile.delete()
+                        }
+                    } catch (_: Exception) {
+                        if (tempMergedFile.exists()) tempMergedFile.delete()
+                    }
+                }
+                orderedFiles.forEach { if (it.exists()) it.delete() }
+                if (!decryptedOk) {
+                    Log.e(TAG, "GCM v2 chunk decryption/verification failed for ${file.fileName}")
+                    return@withContext false
+                }
+            } else {
+                FileChunker.mergeChunks(orderedFiles, tempMergedFile)
+                orderedFiles.forEach { if (it.exists()) it.delete() }
+
+                if (!tempMergedFile.exists() || tempMergedFile.length() == 0L) {
+                    return@withContext false
+                }
+
+                // Decrypt in place using candidate keys (handles both modern and legacy cipherstreams)
+                FileEncryptor.ensureDecrypted(tempMergedFile, context, file.fileName)
             }
         }
-
-        // Decrypt in place using candidate keys (handles both modern and legacy cipherstreams)
-        // Decrypt in place using candidate keys (handles both modern and legacy cipherstreams)
-        FileEncryptor.ensureDecrypted(tempMergedFile, context, file.fileName)
 
         if (targetFile.exists()) targetFile.delete()
         val success = tempMergedFile.renameTo(targetFile)

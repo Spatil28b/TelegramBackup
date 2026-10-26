@@ -274,11 +274,16 @@ fun ShareLinkModal(
                 }
 
                 // Security Access PIN
+                val isPinTooShort = passwordPin.isNotBlank() && passwordPin.trim().length < 8
                 OutlinedTextField(
                     value = passwordPin,
                     onValueChange = { passwordPin = it },
-                    label = { Text("Optional Access PIN / Password") },
+                    label = { Text("Optional Access PIN / Password (Min 8 chars)") },
                     placeholder = { Text("Leave empty for public link") },
+                    isError = isPinTooShort,
+                    supportingText = if (isPinTooShort) {
+                        { Text("PIN/Password must be at least 8 characters", color = MaterialTheme.colorScheme.error) }
+                    } else null,
                     leadingIcon = {
                         Icon(
                             Icons.Default.Lock,
@@ -316,7 +321,7 @@ fun ShareLinkModal(
                         contentColor = MaterialTheme.colorScheme.onSecondaryContainer
                     ),
                     modifier = Modifier.fillMaxWidth().height(42.dp),
-                    enabled = !isGenerating
+                    enabled = !isGenerating && !isPinTooShort
                 ) {
                     Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(modifier = Modifier.width(6.dp))

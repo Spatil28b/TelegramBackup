@@ -1,6 +1,7 @@
 package com.example.telegrambackup.data
 
 import androidx.room.Entity
+import androidx.room.Ignore
 import androidx.room.Index
 import androidx.room.PrimaryKey
 import org.json.JSONArray
@@ -29,9 +30,17 @@ data class UploadedFile(
     var totalChunks: Int = 1,
     var isDriveUpload: Boolean = false,
     var channelId: String = "",
-    var botTokenUsed: String = "",
+    var botIdUsed: String = "",
     var chunksJson: String = ""
 ) {
+    @Ignore
+    var botTokenUsed: String = ""
+        get() = botIdUsed
+        set(value) {
+            field = value
+            botIdUsed = TelegramBotEntity.deriveBotId(value)
+        }
+
     /**
      * Returns all Telegram message IDs associated with this file (main message ID + all chunk message IDs).
      */
@@ -52,10 +61,10 @@ data class UploadedFile(
     }
 
     /**
-     * Parses chunksJson into ordered list of (chunkIndex, telegramFileId, botTokenUsed).
+     * Parses chunksJson into ordered list of (chunkIndex, telegramFileId, botIdUsed).
      */
     fun parseChunks(): List<Triple<Int, String, String>> {
-        return parseChunkInfos().map { Triple(it.chunkIndex, it.telegramFileId, it.botTokenUsed) }
+        return parseChunkInfos().map { Triple(it.chunkIndex, it.telegramFileId, it.botIdUsed) }
     }
 
     /**
@@ -70,10 +79,12 @@ data class UploadedFile(
                 val obj = arr.getJSONObject(i)
                 val idx = obj.optInt("chunkIndex", i + 1)
                 val fileId = obj.optString("telegramFileId", "").ifBlank { obj.optString("fileId", "") }
-                val token = obj.optString("botTokenUsed", "").ifBlank { obj.optString("botToken", "") }
+                val rawBot = obj.optString("botIdUsed", "").ifBlank {
+                    obj.optString("botTokenUsed", "").ifBlank { obj.optString("botToken", "") }
+                }
                 val mId = obj.optLong("messageId", 0L).let { if (it > 0L) it else obj.optString("messageId", "0").toLongOrNull() ?: 0L }
                 if (fileId.isNotBlank()) {
-                    list.add(FileChunkInfo(idx, fileId, token, mId))
+                    list.add(FileChunkInfo(idx, fileId, TelegramBotEntity.deriveBotId(rawBot), mId))
                 }
             }
             list.sortedBy { it.chunkIndex }
@@ -99,10 +110,12 @@ data class UploadedFile(
         }
         val arr = JSONArray()
         for (c in chunks.sortedBy { it.chunkIndex }) {
+            val sanitizedBotId = TelegramBotEntity.deriveBotId(c.botIdUsed.ifBlank { c.botTokenUsed })
             val obj = JSONObject().apply {
                 put("chunkIndex", c.chunkIndex)
                 put("telegramFileId", c.telegramFileId)
-                put("botTokenUsed", c.botTokenUsed)
+                put("botIdUsed", sanitizedBotId)
+                put("botTokenUsed", sanitizedBotId)
                 if (c.messageId > 0L) put("messageId", c.messageId)
             }
             arr.put(obj)
@@ -118,8 +131,22 @@ data class UploadedFile(
 data class FileChunkInfo(
     val chunkIndex: Int,
     val telegramFileId: String,
-    val botTokenUsed: String = "",
+    val botIdUsed: String = "",
     val messageId: Long = 0L
-)
+) {
+    @get:Ignore
+    val botTokenUsed: String get() = botIdUsed
 
-
+    constructor(
+        chunkIndex: Int,
+        telegramFileId: String,
+        botTokenUsed: String,
+        messageId: Long = 0L,
+        dummy: Boolean = true
+    ) : this(
+        chunkIndex = chunkIndex,
+        telegramFileId = telegramFileId,
+        botIdUsed = TelegramBotEntity.deriveBotId(botTokenUsed),
+        messageId = messageId
+    )
+}

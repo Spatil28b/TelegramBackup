@@ -45,6 +45,18 @@ object KeystoreVault {
         return (keyStore.getEntry(MASTER_KEY_ALIAS, null) as KeyStore.SecretKeyEntry).secretKey
     }
 
+    private val tokenCache = java.util.concurrent.ConcurrentHashMap<String, String>()
+
+    fun cacheToken(botId: String, token: String) {
+        if (botId.isNotBlank() && token.isNotBlank()) {
+            tokenCache[botId] = token
+        }
+    }
+
+    fun getCachedToken(botId: String): String {
+        return tokenCache[botId] ?: ""
+    }
+
     /**
      * Encrypts and securely stores an arbitrary string using the hardware-backed master key.
      */
@@ -52,6 +64,10 @@ object KeystoreVault {
         if (value.isBlank()) {
             deleteEncryptedString(context, keyName)
             return true
+        }
+        if (keyName.startsWith("bot_token_")) {
+            val id = keyName.removePrefix("bot_token_")
+            cacheToken(id, value)
         }
         return try {
             val secretKey = getOrCreateSecretKey()
@@ -75,6 +91,11 @@ object KeystoreVault {
      * Decrypts and retrieves an arbitrary string stored with storeEncryptedString.
      */
     fun retrieveEncryptedString(context: Context, keyName: String): String? {
+        if (keyName.startsWith("bot_token_")) {
+            val id = keyName.removePrefix("bot_token_")
+            val cached = tokenCache[id]
+            if (!cached.isNullOrBlank()) return cached
+        }
         return try {
             val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             val cipherTextStr = prefs.getString("enc_val_$keyName", null) ?: return null
@@ -89,7 +110,12 @@ object KeystoreVault {
             cipher.init(Cipher.DECRYPT_MODE, secretKey, spec)
 
             val plainBytes = cipher.doFinal(cipherText)
-            String(plainBytes, Charsets.UTF_8)
+            val res = String(plainBytes, Charsets.UTF_8)
+            if (keyName.startsWith("bot_token_") && res.isNotBlank()) {
+                val id = keyName.removePrefix("bot_token_")
+                cacheToken(id, res)
+            }
+            res
         } catch (_: Exception) {
             null
         }
@@ -99,6 +125,10 @@ object KeystoreVault {
      * Deletes an encrypted string from the keystore vault preferences.
      */
     fun deleteEncryptedString(context: Context, keyName: String): Boolean {
+        if (keyName.startsWith("bot_token_")) {
+            val id = keyName.removePrefix("bot_token_")
+            tokenCache.remove(id)
+        }
         return try {
             val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             prefs.edit()

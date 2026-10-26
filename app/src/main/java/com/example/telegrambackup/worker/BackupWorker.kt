@@ -622,7 +622,8 @@ class BackupWorker(
                                                             chunkIndex = chunkIdx,
                                                             outputChunkFile = chunkTempFile,
                                                             secretKey = prefs.encryptionKey,
-                                                            nonce = encryptionNonce
+                                                            nonce = encryptionNonce,
+                                                            totalChunks = totalChunks
                                                         )
                                                     } else {
                                                         FileChunker.extractSingleChunk(effectiveSourceFile, chunkIdx, chunkTempFile)

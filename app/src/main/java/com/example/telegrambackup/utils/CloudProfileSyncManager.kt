@@ -68,7 +68,7 @@ object CloudProfileSyncManager {
         if (bots.isNotEmpty()) {
             bots.forEach { bot ->
                 botsArray.put(JSONObject().apply {
-                    put("bot_token", bot.botToken)
+                    put("bot_token", bot.resolveToken(context))
                     put("display_name", bot.displayName)
                     put("bot_username", bot.botUsername)
                     put("is_primary", bot.isPrimary)
@@ -235,13 +235,14 @@ object CloudProfileSyncManager {
                     val b = botsArray.optJSONObject(i) ?: continue
                     val token = b.optString("bot_token", "").trim()
                     if (token.isNotEmpty()) {
-                        val entity = TelegramBotEntity(
-                            botToken = token,
+                        val entity = TelegramBotEntity.fromToken(
+                            token = token,
                             displayName = b.optString("display_name", "Telegram Bot"),
                             botUsername = b.optString("bot_username", ""),
                             isPrimary = b.optBoolean("is_primary", i == 0),
                             isActive = b.optBoolean("is_active", true)
                         )
+                        entity.persistToken(context, token)
                         botDao.insert(entity)
                         if (entity.isPrimary) {
                             prefs.botToken = token

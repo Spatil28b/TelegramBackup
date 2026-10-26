@@ -39,13 +39,15 @@ object FileEncryptor {
     private const val GCM_TAG_LENGTH_BITS = 128
     private const val GCM_NONCE_LENGTH_BYTES = 12
 
-    // 8-byte modern authenticated AES-256-GCM magic header matching backend
+    // 8-byte modern authenticated AES-256-GCM v2 per-chunk magic header matching backend
+    val MAGIC_HEADER_GCM_V2 = byteArrayOf(0x47, 0x43, 0x4D, 0x32, 0x35, 0x36, 0x02, 0x00) // "GCM256\x02\x00"
+    // 8-byte modern authenticated AES-256-GCM v1 magic header matching backend
     val MAGIC_HEADER_GCM = byteArrayOf(0x47, 0x43, 0x4D, 0x32, 0x35, 0x36, 0x01, 0x00) // "GCM256\x01\x00"
     // 8-byte legacy AES-256-CBC magic header
     val MAGIC_HEADER_CBC = byteArrayOf(0x45, 0x4E, 0x43, 0x32, 0x35, 0x36, 0x01, 0x00) // "ENC256\x01\x00"
 
     // Backward-compatible alias
-    val MAGIC_HEADER = MAGIC_HEADER_GCM
+    val MAGIC_HEADER = MAGIC_HEADER_GCM_V2
 
     /** Derives a 256-bit AES secret key spec from user's Master Key string */
     private fun deriveKey(secret: String): SecretKeySpec {
@@ -62,7 +64,7 @@ object FileEncryptor {
     }
 
     /**
-     * Checks if a file was explicitly prepended with either GCM256 or ENC256 magic header.
+     * Checks if a file was explicitly prepended with GCM256 (v1/v2) or ENC256 magic header.
      */
     fun isEncryptedWithMagicHeader(file: File): Boolean {
         if (!file.exists() || file.length() < 8) return false
@@ -76,7 +78,9 @@ object FileEncryptor {
                     bytesRead += r
                 }
                 if (bytesRead == 8) {
-                    return header.contentEquals(MAGIC_HEADER_GCM) || header.contentEquals(MAGIC_HEADER_CBC)
+                    return header.contentEquals(MAGIC_HEADER_GCM_V2) ||
+                           header.contentEquals(MAGIC_HEADER_GCM) ||
+                           header.contentEquals(MAGIC_HEADER_CBC)
                 }
             }
         } catch (_: Exception) {}
@@ -84,9 +88,29 @@ object FileEncryptor {
     }
 
     /**
-     * Checks if a file uses modern authenticated AES-256-GCM.
+     * Checks if a file uses modern authenticated AES-256-GCM v2 (per-chunk).
      */
-    fun isGcmEncrypted(file: File): Boolean {
+    fun isGcmV2(file: File): Boolean {
+        if (!file.exists() || file.length() < 8) return false
+        try {
+            FileInputStream(file).use { fis ->
+                val header = ByteArray(8)
+                var bytesRead = 0
+                while (bytesRead < 8) {
+                    val r = fis.read(header, bytesRead, 8 - bytesRead)
+                    if (r == -1) break
+                    bytesRead += r
+                }
+                return bytesRead == 8 && header.contentEquals(MAGIC_HEADER_GCM_V2)
+            }
+        } catch (_: Exception) {}
+        return false
+    }
+
+    /**
+     * Checks if a file uses legacy authenticated AES-256-GCM v1 (single-file).
+     */
+    fun isGcmV1(file: File): Boolean {
         if (!file.exists() || file.length() < 8) return false
         try {
             FileInputStream(file).use { fis ->
@@ -101,6 +125,13 @@ object FileEncryptor {
             }
         } catch (_: Exception) {}
         return false
+    }
+
+    /**
+     * Checks if a file uses authenticated AES-256-GCM (v1 or v2).
+     */
+    fun isGcmEncrypted(file: File): Boolean {
+        return isGcmV2(file) || isGcmV1(file)
     }
 
     /**
@@ -262,140 +293,118 @@ object FileEncryptor {
         }
     }
 
-    /** Total virtual size of encrypted file in GCM format (20-byte header + plain length) */
-    fun getEncryptedTotalSize(plainFileSize: Long): Long {
-        return 20L + plainFileSize
-    }
-
     /**
-     * Calculates total number of 4 MB chunks required to upload the encrypted stream.
+     * Calculates total number of chunks required to upload the target file.
      */
     fun getEncryptedChunkCount(plainFileSize: Long, chunkSize: Int = FileChunker.CHUNK_SIZE): Int {
-        val total = getEncryptedTotalSize(plainFileSize)
-        if (total <= 0L) return 1
-        return ceil(total.toDouble() / chunkSize.toDouble()).toInt().coerceAtLeast(1)
+        if (plainFileSize <= 0L) return 1
+        return ceil(plainFileSize.toDouble() / chunkSize.toDouble()).toInt().coerceAtLeast(1)
     }
 
     /**
-     * ZERO-DISK ON-THE-FLY STREAMING CHUNK ENCRYPTION (P0)
+     * Total virtual size of encrypted file in GCM v2 format
+     * Each chunk has 44 bytes overhead: 8B magic + 4B index + 4B total + 12B nonce + 16B tag
+     */
+    fun getEncryptedTotalSize(plainFileSize: Long, chunkSize: Int = FileChunker.CHUNK_SIZE): Long {
+        val chunks = getEncryptedChunkCount(plainFileSize, chunkSize)
+        return plainFileSize + (chunks.toLong() * 44L)
+    }
+
+    /**
+     * ZERO-DISK ON-THE-FLY STREAMING AUTHENTICATED CHUNK ENCRYPTION (P0)
      * Extracts and encrypts a single chunk directly from the source plain file on demand
      * without creating an intermediate multi-gigabyte .enc clone on disk.
-     * Uses AES-256-CTR keystream identical to NIST SP 800-38D AES-GCM (counter = 2 + blockIndex).
+     * Uses Authenticated AES-256-GCM with 128-bit authentication tag, 12-byte random nonce,
+     * and chunk index + total chunks as Additional Authenticated Data (AAD).
+     * Wire format: [MAGIC_HEADER_GCM_V2 (8B)][chunkIndex (4B)][totalChunks (4B)][nonce (12B)][ciphertext + tag (16B)]
      */
     fun extractEncryptedChunk(
         sourceFile: File,
         chunkIndex: Int,
         outputChunkFile: File,
         secretKey: String,
-        nonce: ByteArray,
-        chunkSize: Int = FileChunker.CHUNK_SIZE
+        nonce: ByteArray? = null,
+        chunkSize: Int = FileChunker.CHUNK_SIZE,
+        totalChunks: Int = -1
     ): File {
         val keySpec = deriveKey(secretKey)
         val plainLength = sourceFile.length()
-        val totalEncryptedSize = 20L + plainLength
-        val chunkStart = (chunkIndex - 1).toLong() * chunkSize.toLong()
-        val chunkEnd = minOf(chunkStart + chunkSize.toLong() - 1L, totalEncryptedSize - 1L)
-        val chunkLength = (chunkEnd - chunkStart + 1L).toInt()
-
-        if (chunkLength <= 0) {
-            outputChunkFile.parentFile?.mkdirs()
-            outputChunkFile.createNewFile()
-            return outputChunkFile
-        }
+        val actualTotalChunks = if (totalChunks > 0) totalChunks else getEncryptedChunkCount(plainLength, chunkSize)
+        val plainStart = (chunkIndex - 1).toLong() * chunkSize.toLong()
+        val plainBytesToRead = minOf(chunkSize.toLong(), maxOf(0L, plainLength - plainStart)).toInt()
 
         outputChunkFile.parentFile?.mkdirs()
 
-        java.io.BufferedOutputStream(FileOutputStream(outputChunkFile), 64 * 1024).use { fos ->
-            if (chunkIndex == 1) {
-                // Chunk 1 starts with 8B magic header + 12B nonce (20 bytes total)
-                fos.write(MAGIC_HEADER_GCM)
-                fos.write(nonce)
-                val plainBytesToEncrypt = minOf(chunkLength - 20, plainLength.toInt())
-                if (plainBytesToEncrypt > 0) {
-                    val ctrIv = ByteArray(16)
-                    System.arraycopy(nonce, 0, ctrIv, 0, 12)
-                    ctrIv[12] = 0
-                    ctrIv[13] = 0
-                    ctrIv[14] = 0
-                    ctrIv[15] = 2
-
-                    val cipher = Cipher.getInstance("AES/CTR/NoPadding")
-                    cipher.init(Cipher.ENCRYPT_MODE, keySpec, IvParameterSpec(ctrIv))
-
-                    FileInputStream(sourceFile).use { fis ->
-                        val buffer = ByteArray(64 * 1024)
-                        var remaining = plainBytesToEncrypt
-                        while (remaining > 0) {
-                            val toRead = minOf(buffer.size, remaining)
-                            val read = fis.read(buffer, 0, toRead)
-                            if (read == -1) break
-                            val out = cipher.update(buffer, 0, read)
-                            if (out != null && out.isNotEmpty()) {
-                                fos.write(out)
-                            }
-                            remaining -= read
-                        }
-                        val finalBytes = cipher.doFinal()
-                        if (finalBytes != null && finalBytes.isNotEmpty()) {
-                            fos.write(finalBytes)
-                        }
-                    }
-                }
-            } else {
-                // Chunk > 1: All bytes are ciphertext from plainStart to plainEnd
-                val plainStart = chunkStart - 20L
-                val plainEnd = chunkEnd - 20L
-                val plainBytesToEncrypt = plainEnd - plainStart + 1L
-
-                val blockIndex = plainStart / 16L
-                val offsetInBlock = (plainStart % 16L).toInt()
-                val counterVal = 2L + blockIndex
-
-                val ctrIv = ByteArray(16)
-                System.arraycopy(nonce, 0, ctrIv, 0, 12)
-                ctrIv[12] = ((counterVal shr 24) and 0xFF).toByte()
-                ctrIv[13] = ((counterVal shr 16) and 0xFF).toByte()
-                ctrIv[14] = ((counterVal shr 8) and 0xFF).toByte()
-                ctrIv[15] = (counterVal and 0xFF).toByte()
-
-                val cipher = Cipher.getInstance("AES/CTR/NoPadding")
-                cipher.init(Cipher.ENCRYPT_MODE, keySpec, IvParameterSpec(ctrIv))
-
-                // Align keystream if plainStart is not 16-byte aligned
-                if (offsetInBlock > 0) {
-                    cipher.update(ByteArray(offsetInBlock))
-                }
-
-                RandomAccessFile(sourceFile, "r").use { raf ->
-                    raf.seek(plainStart)
-                    val buffer = ByteArray(64 * 1024)
-                    var remaining = plainBytesToEncrypt
-                    while (remaining > 0L) {
-                        val toRead = minOf(buffer.size.toLong(), remaining).toInt()
-                        val read = raf.read(buffer, 0, toRead)
-                        if (read == -1) break
-                        val out = cipher.update(buffer, 0, read)
-                        if (out != null && out.isNotEmpty()) {
-                            fos.write(out)
-                        }
-                        remaining -= read
-                    }
-                    val finalBytes = cipher.doFinal()
-                    if (finalBytes != null && finalBytes.isNotEmpty()) {
-                        fos.write(finalBytes)
-                    }
-                }
+        val plainBytes = ByteArray(plainBytesToRead)
+        if (plainBytesToRead > 0) {
+            RandomAccessFile(sourceFile, "r").use { raf ->
+                raf.seek(plainStart)
+                raf.readFully(plainBytes)
             }
+        }
+
+        val chunkNonce = ByteArray(GCM_NONCE_LENGTH_BYTES)
+        SecureRandom().nextBytes(chunkNonce)
+
+        val cipher = Cipher.getInstance(ALGORITHM_GCM)
+        val gcmSpec = GCMParameterSpec(GCM_TAG_LENGTH_BITS, chunkNonce)
+        cipher.init(Cipher.ENCRYPT_MODE, keySpec, gcmSpec)
+
+        val aad = ByteArray(8)
+        val aadBuffer = java.nio.ByteBuffer.wrap(aad)
+        aadBuffer.putInt(chunkIndex)
+        aadBuffer.putInt(actualTotalChunks)
+        cipher.updateAAD(aad)
+
+        val encryptedWithTag = cipher.doFinal(plainBytes)
+
+        java.io.BufferedOutputStream(FileOutputStream(outputChunkFile), 64 * 1024).use { fos ->
+            fos.write(MAGIC_HEADER_GCM_V2)
+            fos.write(aad)
+            fos.write(chunkNonce)
+            fos.write(encryptedWithTag)
             fos.flush()
         }
         return outputChunkFile
     }
 
     /**
+     * Decrypts and authenticates a single GCM v2 chunk file.
+     * Verifies 128-bit authentication tag and AAD (chunkIndex + totalChunks).
+     */
+    fun decryptGcmChunkToBytes(chunkFile: File, secretKey: String): ByteArray {
+        if (!chunkFile.exists() || chunkFile.length() < 44L) {
+            throw IllegalArgumentException("Invalid GCM chunk file: insufficient length")
+        }
+        val keySpec = deriveKey(secretKey)
+        FileInputStream(chunkFile).use { fis ->
+            val magic = ByteArray(8)
+            var read = fis.read(magic)
+            if (read != 8 || !magic.contentEquals(MAGIC_HEADER_GCM_V2)) {
+                throw SecurityException("Invalid GCM chunk magic header")
+            }
+            val aad = ByteArray(8)
+            read = fis.read(aad)
+            if (read != 8) throw SecurityException("Truncated AAD in GCM chunk")
+
+            val nonce = ByteArray(GCM_NONCE_LENGTH_BYTES)
+            read = fis.read(nonce)
+            if (read != GCM_NONCE_LENGTH_BYTES) throw SecurityException("Truncated nonce in GCM chunk")
+
+            val cipherBytesWithTag = fis.readBytes()
+            val gcmSpec = GCMParameterSpec(GCM_TAG_LENGTH_BITS, nonce)
+            val cipher = Cipher.getInstance(ALGORITHM_GCM)
+            cipher.init(Cipher.DECRYPT_MODE, keySpec, gcmSpec)
+            cipher.updateAAD(aad)
+            return cipher.doFinal(cipherBytesWithTag)
+        }
+    }
+
+    /**
      * Decrypts an AES-256 encrypted file back into its original plain file format.
      * Supports:
-     * 1. Modern Authenticated AES-256-GCM files with 128-bit authentication tag
-     * 2. Modern Zero-Disk Streaming files (AES-256-CTR keystream counter mode)
+     * 1. Modern Authenticated AES-256-GCM v2 (per-chunk or single file)
+     * 2. Modern Authenticated AES-256-GCM v1 (single file)
      * 3. Legacy AES-256-CBC files (ENC256 header or legacy offset 0).
      * @param inputFile Encrypted source file
      * @param outputFile Decrypted plain output file destination
@@ -405,9 +414,37 @@ object FileEncryptor {
     fun decryptFile(inputFile: File, outputFile: File, secretKey: String, forceLegacyNoHeader: Boolean = false) {
         val keySpec = deriveKey(secretKey)
 
-        if (!forceLegacyNoHeader && isGcmEncrypted(inputFile)) {
-            var gcmSucceeded = false
-            // Attempt 1: Full Authenticated AES-256-GCM decryption
+        if (!forceLegacyNoHeader && isGcmV2(inputFile)) {
+            try {
+                FileInputStream(inputFile).use { fis ->
+                    val magic = ByteArray(8)
+                    fis.read(magic)
+                    val aad = ByteArray(8)
+                    fis.read(aad)
+                    val nonce = ByteArray(GCM_NONCE_LENGTH_BYTES)
+                    fis.read(nonce)
+                    val cipherWithTag = fis.readBytes()
+
+                    val gcmSpec = GCMParameterSpec(GCM_TAG_LENGTH_BITS, nonce)
+                    val cipher = Cipher.getInstance(ALGORITHM_GCM)
+                    cipher.init(Cipher.DECRYPT_MODE, keySpec, gcmSpec)
+                    cipher.updateAAD(aad)
+                    val plainBytes = cipher.doFinal(cipherWithTag)
+
+                    java.io.BufferedOutputStream(FileOutputStream(outputFile), 64 * 1024).use { fos ->
+                        fos.write(plainBytes)
+                        fos.flush()
+                    }
+                }
+                if (outputFile.exists() && outputFile.length() > 0 && isLikelyPlainFile(outputFile, outputFile.name)) {
+                    return
+                }
+            } catch (_: Exception) {
+                if (outputFile.exists()) outputFile.delete()
+            }
+        }
+
+        if (!forceLegacyNoHeader && isGcmV1(inputFile)) {
             try {
                 java.io.BufferedInputStream(FileInputStream(inputFile), 128 * 1024).use { fis ->
                     val headerBuf = ByteArray(8)
@@ -440,54 +477,12 @@ object FileEncryptor {
                         }
                     }
                 }
-                gcmSucceeded = outputFile.exists() && outputFile.length() > 0 && isLikelyPlainFile(outputFile, outputFile.name)
-            } catch (_: Exception) {
-                gcmSucceeded = false
-            }
-
-            if (gcmSucceeded) return
-
-            // Attempt 2: Zero-Disk Streaming AES-256-CTR keystream decryption (counter = 2)
-            try {
-                java.io.BufferedInputStream(FileInputStream(inputFile), 128 * 1024).use { fis ->
-                    val headerBuf = ByteArray(8)
-                    var skipped = 0
-                    while (skipped < 8) {
-                        val r = fis.read(headerBuf, skipped, 8 - skipped)
-                        if (r == -1) break
-                        skipped += r
-                    }
-                    val nonce = ByteArray(GCM_NONCE_LENGTH_BYTES)
-                    var nonceRead = 0
-                    while (nonceRead < GCM_NONCE_LENGTH_BYTES) {
-                        val r = fis.read(nonce, nonceRead, GCM_NONCE_LENGTH_BYTES - nonceRead)
-                        if (r == -1) break
-                        nonceRead += r
-                    }
-
-                    val ctrIv = ByteArray(16)
-                    System.arraycopy(nonce, 0, ctrIv, 0, 12)
-                    ctrIv[12] = 0
-                    ctrIv[13] = 0
-                    ctrIv[14] = 0
-                    ctrIv[15] = 2
-
-                    val cipher = Cipher.getInstance("AES/CTR/NoPadding")
-                    cipher.init(Cipher.DECRYPT_MODE, keySpec, IvParameterSpec(ctrIv))
-
-                    CipherInputStream(fis, cipher).use { cis ->
-                        java.io.BufferedOutputStream(FileOutputStream(outputFile), 128 * 1024).use { fos ->
-                            val buffer = ByteArray(128 * 1024)
-                            var bytesRead: Int
-                            while (cis.read(buffer).also { bytesRead = it } != -1) {
-                                fos.write(buffer, 0, bytesRead)
-                            }
-                            fos.flush()
-                        }
-                    }
+                if (outputFile.exists() && outputFile.length() > 0 && isLikelyPlainFile(outputFile, outputFile.name)) {
+                    return
                 }
-                return
-            } catch (_: Exception) {}
+            } catch (_: Exception) {
+                if (outputFile.exists()) outputFile.delete()
+            }
         }
 
         // Legacy AES-256-CBC migration path

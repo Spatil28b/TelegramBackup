@@ -18,7 +18,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         NetworkAnalysisEntity::class,
         FileSearchIndex::class
     ],
-    version = 13,
+    version = 14,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -176,6 +176,73 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_13_14 = object : Migration(13, 14) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // 1. Migrate telegram_bots: switch primary key from botToken to botId
+                try {
+                    db.execSQL("""
+                        CREATE TABLE IF NOT EXISTS `telegram_bots_new` (
+                            `botId` TEXT NOT NULL,
+                            `botUsername` TEXT NOT NULL DEFAULT '',
+                            `displayName` TEXT NOT NULL DEFAULT '',
+                            `isPrimary` INTEGER NOT NULL DEFAULT 0,
+                            `isActive` INTEGER NOT NULL DEFAULT 1,
+                            `rateLimitUntil` INTEGER NOT NULL DEFAULT 0,
+                            `consecutiveErrors` INTEGER NOT NULL DEFAULT 0,
+                            `totalBytesUploaded` INTEGER NOT NULL DEFAULT 0,
+                            `successChunks` INTEGER NOT NULL DEFAULT 0,
+                            `failedChunks` INTEGER NOT NULL DEFAULT 0,
+                            `addedAt` INTEGER NOT NULL,
+                            PRIMARY KEY(`botId`)
+                        )
+                    """.trimIndent())
+
+                    db.execSQL("""
+                        INSERT OR REPLACE INTO `telegram_bots_new` (
+                            `botId`, `botUsername`, `displayName`, `isPrimary`, `isActive`,
+                            `rateLimitUntil`, `consecutiveErrors`, `totalBytesUploaded`,
+                            `successChunks`, `failedChunks`, `addedAt`
+                        )
+                        SELECT
+                            CASE WHEN instr(`botToken`, ':') > 0 THEN substr(`botToken`, 1, instr(`botToken`, ':') - 1) ELSE `botToken` END,
+                            `botUsername`, `displayName`, `isPrimary`, `isActive`,
+                            `rateLimitUntil`, `consecutiveErrors`, `totalBytesUploaded`,
+                            `successChunks`, `failedChunks`, `addedAt`
+                        FROM `telegram_bots`
+                    """.trimIndent())
+
+                    db.execSQL("DROP TABLE IF EXISTS `telegram_bots`")
+                    db.execSQL("ALTER TABLE `telegram_bots_new` RENAME TO `telegram_bots`")
+                } catch (e: Exception) {
+                    Log.w(TAG, "MIGRATION_13_14 telegram_bots migration error: ${e.message}")
+                }
+
+                // 2. Add botIdUsed column to uploaded_files and backfill
+                try {
+                    db.execSQL("ALTER TABLE `uploaded_files` ADD COLUMN `botIdUsed` TEXT NOT NULL DEFAULT ''")
+                    db.execSQL("""
+                        UPDATE `uploaded_files`
+                        SET `botIdUsed` = CASE WHEN instr(`botTokenUsed`, ':') > 0 THEN substr(`botTokenUsed`, 1, instr(`botTokenUsed`, ':') - 1) ELSE `botTokenUsed` END
+                        WHERE `botIdUsed` = '' AND `botTokenUsed` != ''
+                    """.trimIndent())
+                } catch (e: Exception) {
+                    Log.w(TAG, "MIGRATION_13_14 uploaded_files.botIdUsed migration error: ${e.message}")
+                }
+
+                // 3. Add botIdUsed column to chunk_upload_progress and backfill
+                try {
+                    db.execSQL("ALTER TABLE `chunk_upload_progress` ADD COLUMN `botIdUsed` TEXT NOT NULL DEFAULT ''")
+                    db.execSQL("""
+                        UPDATE `chunk_upload_progress`
+                        SET `botIdUsed` = CASE WHEN instr(`botTokenUsed`, ':') > 0 THEN substr(`botTokenUsed`, 1, instr(`botTokenUsed`, ':') - 1) ELSE `botTokenUsed` END
+                        WHERE `botIdUsed` = '' AND `botTokenUsed` != ''
+                    """.trimIndent())
+                } catch (e: Exception) {
+                    Log.w(TAG, "MIGRATION_13_14 chunk_upload_progress.botIdUsed migration error: ${e.message}")
+                }
+            }
+        }
+
         private val MIGRATION_1_12 = object : Migration(1, 12) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 createAllTablesAndIndexes(db)
@@ -221,7 +288,7 @@ abstract class AppDatabase : RoomDatabase() {
                         `totalChunks` INTEGER NOT NULL DEFAULT 1,
                         `isDriveUpload` INTEGER NOT NULL DEFAULT 0,
                         `channelId` TEXT NOT NULL DEFAULT '',
-                        `botTokenUsed` TEXT NOT NULL DEFAULT '',
+                        `botIdUsed` TEXT NOT NULL DEFAULT '',
                         `chunksJson` TEXT NOT NULL DEFAULT ''
                     )
                 """.trimIndent())
@@ -243,10 +310,10 @@ abstract class AppDatabase : RoomDatabase() {
                         `telegramFileId` TEXT NOT NULL,
                         `messageId` INTEGER NOT NULL,
                         `chunkSize` INTEGER NOT NULL,
-                        `uploadedAt` INTEGER NOT NULL,
                         `status` TEXT NOT NULL DEFAULT 'COMPLETED',
-                        `botTokenUsed` TEXT NOT NULL DEFAULT '',
+                        `botIdUsed` TEXT NOT NULL DEFAULT '',
                         `channelId` TEXT NOT NULL DEFAULT '',
+                        `uploadedAt` INTEGER NOT NULL DEFAULT 0,
                         PRIMARY KEY(`sourcePath`, `chunkIndex`)
                     )
                 """.trimIndent())
@@ -255,7 +322,7 @@ abstract class AppDatabase : RoomDatabase() {
 
                 db.execSQL("""
                     CREATE TABLE IF NOT EXISTS `telegram_bots` (
-                        `botToken` TEXT NOT NULL PRIMARY KEY,
+                        `botId` TEXT NOT NULL PRIMARY KEY,
                         `botUsername` TEXT NOT NULL DEFAULT '',
                         `displayName` TEXT NOT NULL DEFAULT '',
                         `isPrimary` INTEGER NOT NULL DEFAULT 0,
@@ -345,6 +412,7 @@ abstract class AppDatabase : RoomDatabase() {
                 "isDriveUpload" to "INTEGER NOT NULL DEFAULT 0",
                 "channelId" to "TEXT NOT NULL DEFAULT ''",
                 "botTokenUsed" to "TEXT NOT NULL DEFAULT ''",
+                "botIdUsed" to "TEXT NOT NULL DEFAULT ''",
                 "chunksJson" to "TEXT NOT NULL DEFAULT ''"
             )
             for ((col, def) in columns) {
@@ -374,6 +442,7 @@ abstract class AppDatabase : RoomDatabase() {
             val columns = listOf(
                 "status" to "TEXT NOT NULL DEFAULT 'COMPLETED'",
                 "botTokenUsed" to "TEXT NOT NULL DEFAULT ''",
+                "botIdUsed" to "TEXT NOT NULL DEFAULT ''",
                 "channelId" to "TEXT NOT NULL DEFAULT ''"
             )
             for ((col, def) in columns) {
@@ -407,7 +476,8 @@ abstract class AppDatabase : RoomDatabase() {
                     MIGRATION_9_10,
                     MIGRATION_10_11,
                     MIGRATION_11_12,
-                    MIGRATION_12_13
+                    MIGRATION_12_13,
+                    MIGRATION_13_14
                 )
                 .fallbackToDestructiveMigrationOnDowngrade()
                 .addCallback(object : RoomDatabase.Callback() {

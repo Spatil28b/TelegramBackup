@@ -12,6 +12,12 @@ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import java.security.SecureRandom
+import javax.crypto.Cipher
+import javax.crypto.SecretKeyFactory
+import javax.crypto.spec.GCMParameterSpec
+import javax.crypto.spec.PBEKeySpec
+import javax.crypto.spec.SecretKeySpec
 
 /**
  * =====================================================================================
@@ -87,10 +93,9 @@ object LocalConfigVaultManager {
             }
             root.put("profile", profileJson)
 
-            // 2. Master AES-256 Security & Encryption
+            // 2. Master AES-256 Security & Encryption (omit raw encryption_key from plain JSON)
             val securityJson = JSONObject().apply {
                 put("encryption_enabled", prefs.encryptionEnabled)
-                put("encryption_key", prefs.encryptionKey)
                 put("is_biometric_enabled", prefs.isBiometricEnabled)
                 put("screen_privacy_enabled", prefs.screenPrivacyEnabled)
                 put("biometric_lock_for_safe", prefs.biometricLockForSafe)
@@ -106,13 +111,13 @@ object LocalConfigVaultManager {
             }
             root.put("ai", aiJson)
 
-            // 4. Bot Fleet
+            // 4. Bot Fleet (store bot_id, omit raw bot_token from plain JSON)
             val bots = db.telegramBotDao().getAllBots()
             val botsArray = JSONArray()
             if (bots.isNotEmpty()) {
                 bots.forEach { bot ->
                     botsArray.put(JSONObject().apply {
-                        put("bot_token", bot.botToken)
+                        put("bot_id", bot.botId)
                         put("display_name", bot.displayName)
                         put("bot_username", bot.botUsername)
                         put("is_primary", bot.isPrimary)
@@ -120,8 +125,9 @@ object LocalConfigVaultManager {
                     })
                 }
             } else if (prefs.botToken.isNotEmpty()) {
+                val derivedId = TelegramBotEntity.deriveBotId(prefs.botToken)
                 botsArray.put(JSONObject().apply {
-                    put("bot_token", prefs.botToken)
+                    put("bot_id", derivedId)
                     put("display_name", "Primary Bot")
                     put("bot_username", "")
                     put("is_primary", true)
@@ -129,7 +135,6 @@ object LocalConfigVaultManager {
                 })
             }
             root.put("bot_fleet", botsArray)
-            root.put("primary_bot_token", prefs.botToken)
 
             // 5. Channels
             val channels = db.telegramChannelDao().getAllChannels()
@@ -366,24 +371,29 @@ object LocalConfigVaultManager {
             val botsArray = snapshotJson.optJSONArray("bot_fleet")
             if (botsArray != null && botsArray.length() > 0) {
                 val botDao = db.telegramBotDao()
-                val existingBots = botDao.getAllBots().associateBy { it.botToken }
+                val existingBots = botDao.getAllBots().associateBy { it.botId }
                 for (i in 0 until botsArray.length()) {
                     val b = botsArray.optJSONObject(i) ?: continue
                     val token = b.optString("bot_token", "").trim()
-                    if (token.isNotEmpty()) {
+                    val botId = b.optString("bot_id", "").ifBlank {
+                        if (token.isNotEmpty()) TelegramBotEntity.deriveBotId(token) else ""
+                    }
+                    if (botId.isNotEmpty()) {
                         val isPrimary = b.optBoolean("is_primary", i == 0)
-                        if (!existingBots.containsKey(token)) {
-                            botDao.insert(
-                                TelegramBotEntity(
-                                    botToken = token,
-                                    displayName = b.optString("display_name", "Telegram Bot"),
-                                    botUsername = b.optString("bot_username", ""),
-                                    isPrimary = isPrimary,
-                                    isActive = b.optBoolean("is_active", true)
-                                )
+                        if (!existingBots.containsKey(botId)) {
+                            val entity = TelegramBotEntity(
+                                botId = botId,
+                                displayName = b.optString("display_name", "Telegram Bot"),
+                                botUsername = b.optString("bot_username", ""),
+                                isPrimary = isPrimary,
+                                isActive = b.optBoolean("is_active", true)
                             )
+                            if (token.isNotEmpty()) {
+                                entity.persistToken(context, token)
+                            }
+                            botDao.insert(entity)
                         }
-                        if (isPrimary || prefs.botToken.isEmpty()) {
+                        if (token.isNotEmpty() && (isPrimary || prefs.botToken.isEmpty())) {
                             prefs.botToken = token
                         }
                     }
@@ -539,6 +549,332 @@ object LocalConfigVaultManager {
         } catch (e: Exception) {
             Log.e(TAG, "Error in autoRestoreIfLocalEmpty", e)
             return@withContext false
+        }
+    }
+
+    val MAGIC_HEADER_RECOVERY = "VAULTR01".toByteArray(Charsets.US_ASCII) // 8 bytes
+    private const val PBKDF2_ITERATIONS = 100_000
+    private const val KEY_LENGTH_BITS = 256
+    private const val SALT_LENGTH_BYTES = 16
+    private const val GCM_IV_LENGTH_BYTES = 12
+    private const val GCM_TAG_LENGTH_BITS = 128
+
+    suspend fun exportEncryptedRecoveryPackage(
+        context: Context,
+        passphrase: String,
+        outputFile: File
+    ): Boolean = withContext(Dispatchers.IO) {
+        if (passphrase.length < 8) {
+            Log.e(TAG, "Passphrase too short for recovery package")
+            return@withContext false
+        }
+        try {
+            val prefs = AppPrefs(context)
+            val authPrefs = context.getSharedPreferences("auth_prefs", Context.MODE_PRIVATE)
+            val db = AppDatabase.getDatabase(context)
+
+            val root = JSONObject()
+            root.put("vault_version", VAULT_VERSION)
+            root.put("timestamp", System.currentTimeMillis())
+            root.put("app_version", prefs.appVersionStr)
+
+            // 1. Profile
+            val userEmail = authPrefs.getString("user_email", "")?.takeIf { it.isNotBlank() }
+                ?: prefs.userEmail.ifBlank { prefs.recoveryEmail }.trim().lowercase()
+
+            val profileJson = JSONObject().apply {
+                put("user_email", userEmail)
+                put("recovery_email", prefs.recoveryEmail)
+                put("display_name", prefs.displayName)
+                put("profile_picture_uri", prefs.profilePictureUri)
+                put("profile_updated_at", prefs.profileUpdatedAt)
+                val avatarBase64 = ProfileManager.getAvatarBase64(context)
+                if (!avatarBase64.isNullOrBlank()) {
+                    put("profile_avatar_base64", avatarBase64)
+                }
+            }
+            root.put("profile", profileJson)
+
+            // 2. Security (including master encryption key)
+            val securityJson = JSONObject().apply {
+                put("encryption_enabled", prefs.encryptionEnabled)
+                put("encryption_key", prefs.encryptionKey)
+                put("is_biometric_enabled", prefs.isBiometricEnabled)
+                put("screen_privacy_enabled", prefs.screenPrivacyEnabled)
+                put("biometric_lock_for_safe", prefs.biometricLockForSafe)
+                put("credentials_verified", prefs.credentialsVerified)
+            }
+            root.put("security", securityJson)
+
+            // 3. AI
+            val aiJson = JSONObject().apply {
+                put("gemini_api_keys", prefs.geminiApiKeys)
+                put("active_ai_model", prefs.activeAiModel)
+                put("ai_document_scanner_enabled", prefs.isAiDocumentScannerEnabled)
+            }
+            root.put("ai", aiJson)
+
+            // 4. Bot Fleet (including full raw bot tokens)
+            val bots = db.telegramBotDao().getAllBots()
+            val botsArray = JSONArray()
+            if (bots.isNotEmpty()) {
+                bots.forEach { bot ->
+                    val resolvedToken = bot.resolveToken(context)
+                    botsArray.put(JSONObject().apply {
+                        put("bot_id", bot.botId)
+                        put("bot_token", resolvedToken)
+                        put("display_name", bot.displayName)
+                        put("bot_username", bot.botUsername)
+                        put("is_primary", bot.isPrimary)
+                        put("is_active", bot.isActive)
+                    })
+                }
+            }
+            root.put("bot_fleet", botsArray)
+            root.put("primary_bot_token", prefs.botToken)
+
+            // 5. Channels
+            val channels = db.telegramChannelDao().getAllChannels()
+            val channelsArray = JSONArray()
+            channels.forEach { ch ->
+                channelsArray.put(JSONObject().apply {
+                    put("chat_id", ch.chatId)
+                    put("title", ch.title)
+                    put("is_primary", ch.isPrimary)
+                    put("category_target", ch.categoryTarget)
+                })
+            }
+            root.put("channels", channelsArray)
+            root.put("primary_chat_id", prefs.chatId)
+
+            // 6. Sub Settings
+            val settingsJson = JSONObject().apply {
+                put("fleet_mode", prefs.fleetMode)
+                put("boost_target", prefs.boostTarget)
+                put("auto_backup_min_bots", prefs.autoBackupMinBots)
+                put("drive_min_bots", prefs.driveMinBots)
+                put("master_cloud_sync_enabled", prefs.masterCloudSyncEnabled)
+                put("drive_sync_enabled", prefs.driveSyncEnabled)
+                put("auto_backup_enabled", prefs.autoBackupEnabled)
+                put("smart_backup_mode", prefs.smartBackupMode)
+                put("night_backup_hour", prefs.nightBackupHour)
+                put("smart_scan_interval_hours", prefs.smartScanIntervalHours)
+                put("min_file_size_mb", prefs.minFileSizeMB)
+                put("max_file_size_mb", prefs.maxFileSizeMB)
+                put("max_photos_size_mb", prefs.maxPhotosSizeMB)
+                put("min_photos_size_mb", prefs.minPhotosSizeMB)
+                put("max_videos_size_mb", prefs.maxVideosSizeMB)
+                put("min_videos_size_mb", prefs.minVideosSizeMB)
+                put("max_docs_size_mb", prefs.maxDocsSizeMB)
+                put("min_docs_size_mb", prefs.minDocsSizeMB)
+                put("max_audio_size_mb", prefs.maxAudioSizeMB)
+                put("min_audio_size_mb", prefs.minAudioSizeMB)
+                put("max_archives_size_mb", prefs.maxArchivesSizeMB)
+                put("min_archives_size_mb", prefs.minArchivesSizeMB)
+                put("max_apks_size_mb", prefs.maxApksSizeMB)
+                put("min_apks_size_mb", prefs.minApksSizeMB)
+                put("max_other_size_mb", prefs.maxOtherSizeMB)
+                put("min_other_size_mb", prefs.minOtherSizeMB)
+                put("daily_data_limit_mb", prefs.dailyDataLimitMB)
+                put("backup_camera", prefs.backupCamera)
+                put("backup_pictures", prefs.backupPictures)
+                put("backup_downloads", prefs.backupDownloads)
+                put("backup_documents", prefs.backupDocuments)
+                put("backup_videos", prefs.backupVideos)
+                put("backup_audio", prefs.backupAudio)
+                put("backup_archives", prefs.backupArchives)
+                put("backup_apks", prefs.backupApks)
+                put("backup_all_other", prefs.backupAllOther)
+                put("wifi_only", prefs.wifiOnly)
+                put("upload_threads", prefs.uploadThreads)
+                put("upload_speed_limit", prefs.uploadSpeedLimit)
+                put("enable_data_compression", prefs.enableDataCompression)
+                put("app_theme", prefs.appTheme)
+                put("bottom_nav_visible_tabs", prefs.bottomNavVisibleTabs)
+                put("bottom_nav_label_mode", prefs.bottomNavLabelMode)
+                put("bottom_nav_height_mode", prefs.bottomNavHeightMode)
+                put("bottom_nav_indicator_shape", prefs.bottomNavIndicatorShape)
+                put("bottom_nav_haptic", prefs.bottomNavHapticFeedback)
+                put("settings_updated_at", prefs.settingsUpdatedAt)
+                put("trash_auto_clean_days", prefs.trashAutoCleanDays)
+                put("server_url", prefs.serverUrl)
+                put("custom_bot_api_url", prefs.customBotApiUrl)
+                put("selected_app_icon", prefs.appIcon)
+            }
+            root.put("sub_settings", settingsJson)
+
+            val plaintextBytes = root.toString().toByteArray(Charsets.UTF_8)
+
+            // Derive key via PBKDF2
+            val random = SecureRandom()
+            val salt = ByteArray(SALT_LENGTH_BYTES)
+            random.nextBytes(salt)
+            val iv = ByteArray(GCM_IV_LENGTH_BYTES)
+            random.nextBytes(iv)
+
+            val spec = PBEKeySpec(passphrase.toCharArray(), salt, PBKDF2_ITERATIONS, KEY_LENGTH_BITS)
+            val skf = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256")
+            val keyBytes = skf.generateSecret(spec).encoded
+            val secretKey = SecretKeySpec(keyBytes, "AES")
+
+            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+            cipher.init(Cipher.ENCRYPT_MODE, secretKey, GCMParameterSpec(GCM_TAG_LENGTH_BITS, iv))
+            cipher.updateAAD(MAGIC_HEADER_RECOVERY)
+            val ciphertext = cipher.doFinal(plaintextBytes)
+
+            outputFile.parentFile?.mkdirs()
+            val tempFile = File(outputFile.parentFile, "${outputFile.name}.tmp")
+            tempFile.outputStream().use { fos ->
+                fos.write(MAGIC_HEADER_RECOVERY) // 8B
+                fos.write(salt)                  // 16B
+                fos.write(iv)                    // 12B
+                fos.write(ciphertext)            // ciphertext + 16B tag
+            }
+            if (outputFile.exists()) outputFile.delete()
+            tempFile.renameTo(outputFile)
+            Log.d(TAG, "✓ Successfully exported encrypted recovery package to ${outputFile.absolutePath}")
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed exporting encrypted recovery package", e)
+            false
+        }
+    }
+
+    suspend fun importEncryptedRecoveryPackage(
+        context: Context,
+        passphrase: String,
+        inputFile: File
+    ): Boolean = withContext(Dispatchers.IO) {
+        if (!inputFile.exists() || inputFile.length() < (8 + SALT_LENGTH_BYTES + GCM_IV_LENGTH_BYTES + 16)) {
+            Log.e(TAG, "Recovery package file invalid or too small")
+            return@withContext false
+        }
+        try {
+            val fileBytes = inputFile.readBytes()
+            val header = fileBytes.copyOfRange(0, 8)
+            if (!header.contentEquals(MAGIC_HEADER_RECOVERY)) {
+                Log.e(TAG, "Recovery package header mismatch")
+                return@withContext false
+            }
+
+            var offset = 8
+            val salt = fileBytes.copyOfRange(offset, offset + SALT_LENGTH_BYTES)
+            offset += SALT_LENGTH_BYTES
+            val iv = fileBytes.copyOfRange(offset, offset + GCM_IV_LENGTH_BYTES)
+            offset += GCM_IV_LENGTH_BYTES
+            val ciphertext = fileBytes.copyOfRange(offset, fileBytes.size)
+
+            val spec = PBEKeySpec(passphrase.toCharArray(), salt, PBKDF2_ITERATIONS, KEY_LENGTH_BITS)
+            val skf = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256")
+            val keyBytes = skf.generateSecret(spec).encoded
+            val secretKey = SecretKeySpec(keyBytes, "AES")
+
+            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+            cipher.init(Cipher.DECRYPT_MODE, secretKey, GCMParameterSpec(GCM_TAG_LENGTH_BITS, iv))
+            cipher.updateAAD(MAGIC_HEADER_RECOVERY)
+            val decryptedBytes = cipher.doFinal(ciphertext)
+
+            val jsonStr = String(decryptedBytes, Charsets.UTF_8)
+            val snapshotJson = JSONObject(jsonStr)
+
+            val prefs = AppPrefs(context)
+            val authPrefs = context.getSharedPreferences("auth_prefs", Context.MODE_PRIVATE)
+            val db = AppDatabase.getDatabase(context)
+
+            // Restore Master Security & Encryption Key
+            snapshotJson.optJSONObject("security")?.let { sec ->
+                if (sec.has("encryption_enabled")) prefs.encryptionEnabled = sec.optBoolean("encryption_enabled", true)
+                val key = sec.optString("encryption_key", "")
+                if (key.isNotBlank()) {
+                    prefs.forceSetEncryptionKey(key)
+                }
+                if (sec.has("is_biometric_enabled")) prefs.isBiometricEnabled = sec.optBoolean("is_biometric_enabled", false)
+                if (sec.has("screen_privacy_enabled")) prefs.screenPrivacyEnabled = sec.optBoolean("screen_privacy_enabled", false)
+                if (sec.has("credentials_verified")) prefs.credentialsVerified = sec.optBoolean("credentials_verified", true)
+            }
+
+            // Restore Bot Fleet with tokens into Keystore
+            val botsArray = snapshotJson.optJSONArray("bot_fleet")
+            if (botsArray != null && botsArray.length() > 0) {
+                val botDao = db.telegramBotDao()
+                for (i in 0 until botsArray.length()) {
+                    val b = botsArray.optJSONObject(i) ?: continue
+                    val token = b.optString("bot_token", "").trim()
+                    val botId = b.optString("bot_id", "").ifBlank {
+                        if (token.isNotBlank()) TelegramBotEntity.deriveBotId(token) else ""
+                    }
+                    if (botId.isNotBlank()) {
+                        val isPrimary = b.optBoolean("is_primary", i == 0)
+                        val entity = TelegramBotEntity(
+                            botId = botId,
+                            displayName = b.optString("display_name", "Telegram Bot"),
+                            botUsername = b.optString("bot_username", ""),
+                            isPrimary = isPrimary,
+                            isActive = b.optBoolean("is_active", true)
+                        )
+                        if (token.isNotBlank()) {
+                            entity.persistToken(context, token)
+                        }
+                        botDao.insert(entity)
+                        if (isPrimary && token.isNotBlank()) {
+                            prefs.botToken = token
+                        }
+                    }
+                }
+            } else {
+                val primaryBot = snapshotJson.optString("primary_bot_token", "").trim()
+                if (primaryBot.isNotEmpty()) {
+                    prefs.botToken = primaryBot
+                }
+            }
+
+            // Restore Profile
+            snapshotJson.optJSONObject("profile")?.let { prof ->
+                val email = prof.optString("user_email", "").trim()
+                if (email.isNotEmpty()) {
+                    authPrefs.edit().putString("user_email", email).apply()
+                    prefs.userEmail = email
+                }
+                val recovery = prof.optString("recovery_email", "").trim()
+                if (recovery.isNotEmpty()) {
+                    prefs.recoveryEmail = recovery
+                }
+                val name = prof.optString("display_name", "").trim()
+                if (name.isNotEmpty()) {
+                    prefs.displayName = name
+                }
+            }
+
+            // Restore Channels
+            val channelsArray = snapshotJson.optJSONArray("channels")
+            if (channelsArray != null && channelsArray.length() > 0) {
+                val chDao = db.telegramChannelDao()
+                for (i in 0 until channelsArray.length()) {
+                    val c = channelsArray.optJSONObject(i) ?: continue
+                    val cId = c.optString("chat_id", "").trim()
+                    if (cId.isNotEmpty()) {
+                        val isPrimary = c.optBoolean("is_primary", i == 0)
+                        chDao.insert(
+                            TelegramChannelEntity(
+                                chatId = cId,
+                                title = c.optString("title", "Storage Channel"),
+                                isPrimary = isPrimary,
+                                categoryTarget = c.optString("category_target", "ALL")
+                            )
+                        )
+                        if (isPrimary) {
+                            prefs.chatId = cId
+                        }
+                    }
+                }
+            }
+
+            saveVaultSnapshot(context)
+            Log.d(TAG, "✓ Successfully imported encrypted recovery package")
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed importing encrypted recovery package", e)
+            false
         }
     }
 }

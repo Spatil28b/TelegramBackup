@@ -88,18 +88,56 @@ object ShareLinkManager {
             else -> "Permanent Link"
         }
 
-        // Try primary opaque secure share link via server
-        val serverResult = ServerApi().createSecureShareLink(
+        if (passwordPin.isNotBlank() && passwordPin.trim().length < 8) {
+            return@withContext ShareLinkResult(
+                shareUrl = "",
+                formattedShareText = "⚠️ PIN/Password must be at least 8 characters",
+                expiresAtText = expiryText,
+                hasPassword = true,
+                shareId = "",
+                directDownloadUrl = "",
+                isOpaqueSecure = false
+            )
+        }
+
+        val serverApi = ServerApi()
+        val email = prefs.userEmail.ifBlank { prefs.recoveryEmail }.trim().lowercase()
+
+        // Sync file record to server to obtain authoritative fileRecordId
+        val fileRecordId = serverApi.indexFileWithId(
             serverUrl = serverUrl,
+            email = email,
             fileName = file.fileName,
-            fileSize = file.size,
-            fileId = file.telegramFileId.ifBlank { resolvedChunks.firstOrNull()?.second ?: "" },
-            botToken = botToken,
-            encryptionKey = prefs.encryptionKey,
-            chunks = resolvedChunks,
+            telegramFileId = file.telegramFileId.ifBlank { resolvedChunks.firstOrNull()?.second ?: "" },
+            size = file.size,
+            path = file.path,
+            timestamp = file.timestamp,
+            messageId = file.messageId,
+            isDriveUpload = file.isDriveUpload,
+            chunksJson = file.chunksJson,
+            channelId = file.channelId,
+            botTokenUsed = file.botIdUsed.ifBlank { file.botTokenUsed },
+            totalChunks = expectedChunks
+        )
+
+        if (fileRecordId == null || fileRecordId <= 0L) {
+            return@withContext ShareLinkResult(
+                shareUrl = "",
+                formattedShareText = "⚠️ Failed to sync file record to cloud database before sharing. Please verify login.",
+                expiresAtText = expiryText,
+                hasPassword = passwordPin.isNotBlank(),
+                shareId = "",
+                directDownloadUrl = "",
+                isOpaqueSecure = false
+            )
+        }
+
+        // Authoritative secure share creation without client credential leakage
+        val serverResult = serverApi.createSecureShareLink(
+            serverUrl = serverUrl,
+            fileRecordId = fileRecordId,
             pin = passwordPin.trim(),
-            expiresAt = expiresAtMs,
-            candidateBots = candidateTokens
+            expiresAt = expiresAtMs
         )
 
         val finalUrl: String

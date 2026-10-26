@@ -79,7 +79,7 @@ object BotFleetImportExportManager {
         val db = AppDatabase.getDatabase(context)
         val prefs = AppPrefs(context)
         val botDao = db.telegramBotDao()
-        val existingBots = botDao.getAllBots().associateBy { it.botToken }
+        val existingBots = botDao.getAllBots().associateBy { it.botId }
         var importedCount = 0
 
         try {
@@ -92,17 +92,20 @@ object BotFleetImportExportManager {
                         val obj = botsArray.optJSONObject(i) ?: continue
                         val token = sanitizeToken(obj.optString("bot_token", "").ifEmpty { obj.optString("token", "") })
                         if (token.length >= 25 && token.contains(":")) {
-                            val existing = existingBots[token]
-                            val entity = TelegramBotEntity(
-                                botToken = token,
+                            val derived = TelegramBotEntity.deriveBotId(token)
+                            val existing = existingBots[derived]
+                            val entity = TelegramBotEntity.fromToken(
+                                token = token,
                                 displayName = obj.optString("display_name", "").ifEmpty { existing?.displayName ?: "Bot ${existingBots.size + importedCount + 1}" },
                                 botUsername = obj.optString("bot_username", "").ifEmpty { existing?.botUsername ?: "" },
                                 isPrimary = obj.optBoolean("is_primary", existingBots.isEmpty() && importedCount == 0),
-                                isActive = obj.optBoolean("is_active", true),
-                                totalBytesUploaded = obj.optLong("total_bytes_uploaded", existing?.totalBytesUploaded ?: 0L),
-                                successChunks = obj.optInt("success_chunks", existing?.successChunks ?: 0),
+                                isActive = obj.optBoolean("is_active", true)
+                            ).apply {
+                                totalBytesUploaded = obj.optLong("total_bytes_uploaded", existing?.totalBytesUploaded ?: 0L)
+                                successChunks = obj.optInt("success_chunks", existing?.successChunks ?: 0)
                                 failedChunks = obj.optInt("failed_chunks", existing?.failedChunks ?: 0)
-                            )
+                                persistToken(context, token)
+                            }
                             botDao.insert(entity)
                             if (entity.isPrimary) prefs.botToken = token
                             importedCount++
@@ -119,15 +122,18 @@ object BotFleetImportExportManager {
                         sanitizeToken(item.toString())
                     }
                     if (token.length >= 25 && token.contains(":")) {
-                        val existing = existingBots[token]
+                        val derived = TelegramBotEntity.deriveBotId(token)
+                        val existing = existingBots[derived]
                         val name = if (item is JSONObject) item.optString("display_name", "") else ""
-                        val entity = TelegramBotEntity(
-                            botToken = token,
+                        val entity = TelegramBotEntity.fromToken(
+                            token = token,
                             displayName = name.ifEmpty { existing?.displayName ?: "Bot ${existingBots.size + importedCount + 1}" },
                             botUsername = if (item is JSONObject) item.optString("bot_username", "") else "",
                             isPrimary = existingBots.isEmpty() && importedCount == 0,
                             isActive = true
-                        )
+                        ).apply {
+                            persistToken(context, token)
+                        }
                         botDao.insert(entity)
                         if (entity.isPrimary) prefs.botToken = token
                         importedCount++
@@ -139,14 +145,17 @@ object BotFleetImportExportManager {
                 for (line in lines) {
                     val token = sanitizeToken(line)
                     if (token.length >= 25 && token.contains(":")) {
-                        val existing = existingBots[token]
-                        val entity = TelegramBotEntity(
-                            botToken = token,
+                        val derived = TelegramBotEntity.deriveBotId(token)
+                        val existing = existingBots[derived]
+                        val entity = TelegramBotEntity.fromToken(
+                            token = token,
                             displayName = existing?.displayName ?: "Bot ${existingBots.size + importedCount + 1}",
                             botUsername = existing?.botUsername ?: "",
                             isPrimary = existingBots.isEmpty() && importedCount == 0,
                             isActive = true
-                        )
+                        ).apply {
+                            persistToken(context, token)
+                        }
                         botDao.insert(entity)
                         if (entity.isPrimary) prefs.botToken = token
                         importedCount++

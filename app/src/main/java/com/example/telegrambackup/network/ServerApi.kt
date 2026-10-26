@@ -431,6 +431,60 @@ class ServerApi {
         }
     }
 
+    suspend fun indexFileWithId(
+        serverUrl: String,
+        email: String,
+        fileName: String,
+        telegramFileId: String,
+        size: Long,
+        path: String,
+        timestamp: Long,
+        messageId: Long = 0L,
+        isDriveUpload: Boolean = false,
+        chunksJson: String = "",
+        channelId: String = "",
+        botTokenUsed: String = "",
+        totalChunks: Int = 1
+    ): Long? = withContext(Dispatchers.IO) {
+        try {
+            val url = cleanUrl(serverUrl, "/api/files/index")
+            val sanitizedBot = sanitizeBotId(botTokenUsed)
+            val sanitizedChunks = sanitizeChunksJson(chunksJson)
+            val json = JSONObject().apply {
+                put("email", email.trim().lowercase())
+                put("fileName", fileName)
+                put("telegramFileId", telegramFileId)
+                put("size", size)
+                put("path", path)
+                put("timestamp", timestamp)
+                put("messageId", messageId)
+                put("isDriveUpload", isDriveUpload)
+                if (sanitizedChunks.isNotBlank() && sanitizedChunks != "[]") put("chunksJson", sanitizedChunks)
+                if (channelId.isNotBlank()) put("channelId", channelId)
+                if (sanitizedBot.isNotBlank()) put("botTokenUsed", sanitizedBot)
+                if (totalChunks > 1) put("totalChunks", totalChunks)
+            }
+            val requestBody = json.toString().toRequestBody("application/json".toMediaTypeOrNull())
+            val requestBuilder = Request.Builder().url(url).post(requestBody)
+            val token = activeAuthToken
+            if (token.isNotBlank()) {
+                requestBuilder.header("Authorization", "Bearer $token")
+            }
+            val request = requestBuilder.build()
+            val response = client.newCall(request).execute()
+            if (response.isSuccessful) {
+                val respBody = response.body?.string() ?: ""
+                val respJson = JSONObject(respBody)
+                val id = respJson.optLong("fileRecordId", 0L)
+                if (id > 0L) return@withContext id
+            }
+            return@withContext null
+        } catch (e: Exception) {
+            Log.e("ServerApi", "indexFileWithId error", e)
+            return@withContext null
+        }
+    }
+
     /**
      * Batch-syncs a list of file records to the user's cloud PostgreSQL database in a single network request.
      */
@@ -1658,28 +1712,20 @@ class ServerApi {
     }
 
     /**
-     * Creates an opaque, ultra-secure cloud file sharing link on the server.
-     * Prevents client credential leakage by encrypting bot token and encryption key
-     * server-side with AES-256-GCM.
+     * Creates an authoritative, ultra-secure cloud file sharing link on the server.
+     * Strictly requires fileRecordId and authorization token.
+     * Excludes bot tokens and encryption keys to ensure zero-knowledge server payload.
      */
     suspend fun createSecureShareLink(
         serverUrl: String,
-        fileName: String,
-        fileSize: Long,
-        fileId: String,
-        botToken: String,
-        encryptionKey: String,
-        chunks: List<Triple<Int, String, String>> = emptyList(),
+        fileRecordId: Long,
         pin: String = "",
-        expiresAt: Long = 0L,
-        candidateBots: List<String> = emptyList()
+        expiresAt: Long = 0L
     ): ShareLinkServerResult = withContext(Dispatchers.IO) {
         try {
             val url = cleanUrl(serverUrl, "/api/share/create")
             val json = JSONObject().apply {
-                put("fileName", fileName)
-                put("fileSize", fileSize)
-                put("fileId", fileId)
+                put("fileRecordId", fileRecordId)
                 if (pin.isNotBlank()) put("pin", pin.trim())
                 if (expiresAt > 0L) put("expiresAt", expiresAt)
             }

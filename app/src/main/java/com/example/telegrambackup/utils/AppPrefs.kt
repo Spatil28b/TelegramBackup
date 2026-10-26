@@ -72,29 +72,12 @@ class AppPrefs(private val context: Context) {
     var encryptionKey: String
         get() {
             var key = KeystoreVault.retrieveMasterKey(context) ?: ""
-            if (key.isEmpty() || key == "default_aes_key") {
-                val plainKey = prefs.getString("encryption_key", null)
-                if (!plainKey.isNullOrBlank() && plainKey != "default_aes_key") {
-                    key = plainKey
-                    KeystoreVault.storeMasterKey(context, key)
-                    prefs.edit().remove("encryption_key").apply()
-                } else {
-                    val dbKey = try {
-                        com.example.telegrambackup.data.AppDatabase.getDatabase(context).appSettingDao().getSetting("encryption_key")?.value
-                    } catch (_: Exception) { null }
-                    if (!dbKey.isNullOrBlank() && dbKey != "default_aes_key") {
-                        key = dbKey
-                        KeystoreVault.storeMasterKey(context, key)
-                    } else {
-                        key = "AES256-" + java.util.UUID.randomUUID().toString().replace("-", "")
-                        KeystoreVault.storeMasterKey(context, key)
-                    }
-                    prefs.edit().remove("encryption_key").apply()
-                }
-            } else {
-                if (prefs.contains("encryption_key")) {
-                    prefs.edit().remove("encryption_key").apply()
-                }
+            if (key.isBlank() || key == "default_aes_key") {
+                key = "AES256-" + java.util.UUID.randomUUID().toString().replace("-", "")
+                KeystoreVault.storeMasterKey(context, key)
+            }
+            if (prefs.contains("encryption_key")) {
+                prefs.edit().remove("encryption_key").apply()
             }
             return key
         }

@@ -784,13 +784,14 @@ fun BotFleetSettingsScreen(
                         OutlinedButton(
                             onClick = {
                                 scope.launch(Dispatchers.IO) {
-                                    val newEntity = TelegramBotEntity(
-                                        botToken = cleanToken,
+                                    val newEntity = TelegramBotEntity.fromToken(
+                                        token = cleanToken,
                                         botUsername = "",
                                         displayName = newBotNameInput.ifBlank { "Telegram Bot ${botsList.size + 1}" },
                                         isPrimary = botsList.isEmpty(),
                                         isActive = true
                                     )
+                                    newEntity.persistToken(context, cleanToken)
                                     db.telegramBotDao().insert(newEntity)
                                     if (newEntity.isPrimary) {
                                         prefs.botToken = cleanToken
@@ -824,13 +825,14 @@ fun BotFleetSettingsScreen(
                                     if (res.first) {
                                         verifiedBotUsername = res.second
                                         scope.launch(Dispatchers.IO) {
-                                            val newEntity = TelegramBotEntity(
-                                                botToken = token,
+                                            val newEntity = TelegramBotEntity.fromToken(
+                                                token = token,
                                                 botUsername = res.second.substringAfter('@').substringBefore(' '),
                                                 displayName = newBotNameInput.ifBlank { res.second },
                                                 isPrimary = botsList.isEmpty(),
                                                 isActive = true
                                             )
+                                            newEntity.persistToken(context, token)
                                             db.telegramBotDao().insert(newEntity)
                                             if (newEntity.isPrimary) {
                                                 prefs.botToken = token
