@@ -161,7 +161,7 @@ object CloudProfileSyncManager {
         }
         root.put("sub_settings", settingsJson)
 
-        // 6. Starred & Safe Vault Paths
+        // 6. Starred, Safe Vault Paths & Backup Exceptions
         val starredArr = JSONArray()
         prefs.starredFilePaths.forEach { starredArr.put(it) }
         root.put("starred_file_paths", starredArr)
@@ -169,6 +169,10 @@ object CloudProfileSyncManager {
         val safeArr = JSONArray()
         prefs.safeVaultFilePaths.forEach { safeArr.put(it) }
         root.put("safe_vault_file_paths", safeArr)
+
+        val exceptionsArr = JSONArray()
+        prefs.backupExceptions.forEach { exceptionsArr.put(it) }
+        root.put("backup_exceptions", exceptionsArr)
 
         return@withContext root.toString()
     }
@@ -349,6 +353,16 @@ object CloudProfileSyncManager {
                 val set = mutableSetOf<String>()
                 for (i in 0 until arr.length()) set.add(arr.getString(i))
                 if (set.isNotEmpty()) prefs.safeVaultFilePaths = set
+            }
+
+            // Restore Backup Exceptions
+            root.optJSONArray("backup_exceptions")?.let { arr ->
+                val set = mutableSetOf<String>()
+                for (i in 0 until arr.length()) {
+                    val path = arr.optString(i, "")
+                    if (path.isNotBlank()) set.add(path)
+                }
+                if (set.isNotEmpty()) prefs.backupExceptions = set
             }
 
             // Sync with Room app_settings table as well

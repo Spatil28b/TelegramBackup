@@ -17,4 +17,10 @@ local.properties
 .env*
 *.key
 *.jks
+*.keystore
+*.pem
+*.p12
+*.pfx
+google-services.json
 .kotlin
+

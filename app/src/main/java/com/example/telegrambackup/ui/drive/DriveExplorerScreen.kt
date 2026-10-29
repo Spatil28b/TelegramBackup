@@ -184,13 +184,34 @@ fun DriveExplorerScreen(
     // 1. Reactive DB Flow: 0ms Instant Local UI Rendering
     val db = remember { AppDatabase.getDatabase(context) }
     val driveFilesFlow = remember(db) { db.uploadedFileDao().getDriveFilesFlow() }
-    val allDriveUploadedFiles by driveFilesFlow.collectAsState(initial = emptyList())
+    val allActiveFilesFlow = remember(db) { db.uploadedFileDao().getAllFilesFlow() }
+    val driveOnlyFiles by driveFilesFlow.collectAsState(initial = emptyList())
+    val allActiveFiles by allActiveFilesFlow.collectAsState(initial = emptyList())
 
-    // 2. Background Cloud Delta Sync
+    // Storage scope: "ALL" displays all cloud files in folder hierarchy; "PERSONAL" filters to personal drive uploads
+    var storageScope by remember { mutableStateOf("ALL") }
+
+    val allDriveUploadedFiles = remember(driveOnlyFiles, allActiveFiles, storageScope) {
+        if (storageScope == "PERSONAL" && driveOnlyFiles.isNotEmpty()) {
+            driveOnlyFiles
+        } else {
+            if (allActiveFiles.isNotEmpty()) allActiveFiles else driveOnlyFiles
+        }
+    }
+
+    // 2. Background Cloud Delta Sync & Deep Scan Fallback
     LaunchedEffect(Unit) {
         withContext(Dispatchers.IO) {
             try {
                 SettingsDbManager.restoreCloudFileIndexToRoom(context)
+                val localCount = try { db.uploadedFileDao().getCount() } catch (_: Exception) { 0 }
+                if (localCount == 0) {
+                    val botToken = prefs.botToken
+                    val chatId = prefs.chatId
+                    if (botToken.isNotBlank() && chatId.isNotBlank()) {
+                        TelegramChannelReindexer.deepReindexChannel(context, botToken, chatId)
+                    }
+                }
             } catch (_: Exception) {}
         }
     }
@@ -839,6 +860,25 @@ fun DriveExplorerScreen(
 
             // Interactive Root Storage Card with Category Breakdown
             if (currentDriveDirectoryPath == "Internal Storage" && !isSearching) {
+                if (driveOnlyFiles.isNotEmpty()) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        FilterChip(
+                            selected = storageScope == "ALL",
+                            onClick = { storageScope = "ALL" },
+                            label = { Text("All Cloud Storage (${allActiveFiles.size})") },
+                            leadingIcon = { Icon(Icons.Default.CloudQueue, contentDescription = null, modifier = Modifier.size(16.dp)) }
+                        )
+                        FilterChip(
+                            selected = storageScope == "PERSONAL",
+                            onClick = { storageScope = "PERSONAL" },
+                            label = { Text("Personal Drive (${driveOnlyFiles.size})") },
+                            leadingIcon = { Icon(Icons.Default.DriveFolderUpload, contentDescription = null, modifier = Modifier.size(16.dp)) }
+                        )
+                    }
+                }
                 Spacer(modifier = Modifier.height(10.dp))
                 StorageStatsCard(
                     totalFilesCount = storageBreakdown.count,

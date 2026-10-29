@@ -139,6 +139,39 @@ class AuthRepository(private val context: Context) {
                 appPrefs.chatId = serverChatId
             }
 
+            // Ensure primary bot & channel entities are saved to Room DB
+            if (appPrefs.botToken.isNotEmpty()) {
+                try {
+                    val botDao = com.example.telegrambackup.data.AppDatabase.getDatabase(context).telegramBotDao()
+                    if (botDao.getAllBots().none { it.isPrimary }) {
+                        val primaryBot = com.example.telegrambackup.data.TelegramBotEntity.fromToken(
+                            token = appPrefs.botToken,
+                            displayName = "Primary Bot",
+                            botUsername = "",
+                            isPrimary = true,
+                            isActive = true
+                        )
+                        primaryBot.persistToken(context, appPrefs.botToken)
+                        botDao.insert(primaryBot)
+                    }
+                } catch (_: Exception) {}
+            }
+            if (appPrefs.chatId.isNotEmpty()) {
+                try {
+                    val channelDao = com.example.telegrambackup.data.AppDatabase.getDatabase(context).telegramChannelDao()
+                    if (channelDao.getAllChannels().none { it.isPrimary }) {
+                        channelDao.insert(
+                            com.example.telegrambackup.data.TelegramChannelEntity(
+                                chatId = appPrefs.chatId,
+                                title = "Storage Channel",
+                                isPrimary = true,
+                                categoryTarget = "ALL"
+                            )
+                        )
+                    }
+                } catch (_: Exception) {}
+            }
+
             // Dual Sync: Push active credentials to server PostgreSQL DB
             try {
                 serverApi.saveCredentials(appPrefs.serverUrl, trimmedEmail, appPrefs.botToken, appPrefs.chatId)

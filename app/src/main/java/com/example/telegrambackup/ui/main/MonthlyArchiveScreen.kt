@@ -72,7 +72,7 @@ fun getSafeTimestamp(file: UploadedFile): Long {
     if (local != null && local.exists() && local.lastModified() > 946684800000L) {
         return local.lastModified()
     }
-    return SANITIZED_DEFAULT_TIMESTAMP
+    return System.currentTimeMillis()
 }
 
 /**

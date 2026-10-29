@@ -76,10 +76,7 @@ fun BackupExceptionsScreen(
         if (userEmail.isNotEmpty()) {
             scope.launch(Dispatchers.IO) {
                 try {
-                    val settingsObj = JSONObject().apply {
-                        put("backup_exceptions", JSONArray(newSet.toList()))
-                    }
-                    ServerApi().saveUserSettings(prefs.serverUrl, userEmail, settingsObj.toString())
+                    com.example.telegrambackup.utils.CloudProfileSyncManager.syncLocalConfigToCloud(context)
                 } catch (_: Exception) {}
             }
         }

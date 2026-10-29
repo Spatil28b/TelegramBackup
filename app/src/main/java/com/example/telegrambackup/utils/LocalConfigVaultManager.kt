@@ -93,9 +93,10 @@ object LocalConfigVaultManager {
             }
             root.put("profile", profileJson)
 
-            // 2. Master AES-256 Security & Encryption (omit raw encryption_key from plain JSON)
+            // 2. Master AES-256 Security & Encryption
             val securityJson = JSONObject().apply {
                 put("encryption_enabled", prefs.encryptionEnabled)
+                put("encryption_key", prefs.encryptionKey)
                 put("is_biometric_enabled", prefs.isBiometricEnabled)
                 put("screen_privacy_enabled", prefs.screenPrivacyEnabled)
                 put("biometric_lock_for_safe", prefs.biometricLockForSafe)
@@ -111,13 +112,15 @@ object LocalConfigVaultManager {
             }
             root.put("ai", aiJson)
 
-            // 4. Bot Fleet (store bot_id, omit raw bot_token from plain JSON)
+            // 4. Bot Fleet
             val bots = db.telegramBotDao().getAllBots()
             val botsArray = JSONArray()
             if (bots.isNotEmpty()) {
                 bots.forEach { bot ->
+                    val token = bot.botToken.ifBlank { if (bot.isPrimary) prefs.botToken else "" }
                     botsArray.put(JSONObject().apply {
                         put("bot_id", bot.botId)
+                        put("bot_token", token)
                         put("display_name", bot.displayName)
                         put("bot_username", bot.botUsername)
                         put("is_primary", bot.isPrimary)
@@ -128,6 +131,7 @@ object LocalConfigVaultManager {
                 val derivedId = TelegramBotEntity.deriveBotId(prefs.botToken)
                 botsArray.put(JSONObject().apply {
                     put("bot_id", derivedId)
+                    put("bot_token", prefs.botToken)
                     put("display_name", "Primary Bot")
                     put("bot_username", "")
                     put("is_primary", true)

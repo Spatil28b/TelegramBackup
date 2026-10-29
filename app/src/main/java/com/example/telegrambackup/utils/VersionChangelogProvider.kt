@@ -28,6 +28,42 @@ object VersionChangelogProvider {
 
     private val releases = listOf(
         VersionRelease(
+            versionName = "2.8.1",
+            versionCode = 159,
+            releaseDate = "October 2026",
+            highlights = "Multi-Bot Deep Scanner, Cloud Drive Hierarchy & Seamless Fleet Restoration",
+            entries = listOf(
+                ChangelogEntry(
+                    Icons.Default.CloudQueue,
+                    Color(0xFF38BDF8),
+                    "Unified Cloud Drive Explorer",
+                    "Dynamically maps all cloud-backed files into directory hierarchies with folder navigation and scope toggle between All Cloud Files and Personal Drive.",
+                    "CORE"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Sync,
+                    Color(0xFF10B981),
+                    "High-Speed Multi-Bot Deep Scanner",
+                    "Dynamic channel top-message probe with concurrent scanning across the entire active Bot Fleet and true message forwarding metadata recovery.",
+                    "PERFORMANCE"
+                ),
+                ChangelogEntry(
+                    Icons.Default.SmartToy,
+                    Color(0xFFA855F7),
+                    "Reliable Bot Fleet Re-login Recovery",
+                    "Eliminated settings overwrites during partial config updates, ensuring all connected bots and channels remain intact on login and restore.",
+                    "RELIABILITY"
+                ),
+                ChangelogEntry(
+                    Icons.Default.Storage,
+                    Color(0xFFF59E0B),
+                    "PostgreSQL Conflict Resolution",
+                    "Created unconstrained unique index on backed files, guaranteeing flawless batch file indexing and monthly archive tracking.",
+                    "FIX"
+                )
+            )
+        ),
+        VersionRelease(
             versionName = "2.8.0",
             versionCode = 158,
             releaseDate = "October 2026",
