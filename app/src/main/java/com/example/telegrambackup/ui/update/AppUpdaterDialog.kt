@@ -595,7 +595,7 @@ fun AppUpdaterDialog(
                             // Query GitHub Releases API for direct asset download URLs
                             try {
                                 val ghApiReq = Request.Builder()
-                                    .url("https://api.github.com/repos/sid-codes28/telegram_backup_backend/releases/latest")
+                                    .url("https://api.github.com/repos/Spatil28b/telegram_backup_backend/releases/latest")
                                     .header("User-Agent", "TelegramBackup-Updater/2.2")
                                     .header("Accept", "application/vnd.github.v3+json")
                                     .build()
@@ -625,9 +625,9 @@ fun AppUpdaterDialog(
                                 }
                             } catch (_: Exception) {}
 
-                            candidateUrls.add("https://raw.githubusercontent.com/sid-codes28/telegram_backup_backend/main/Releases/TelegramBackup-latest.apk")
-                            candidateUrls.add("https://github.com/sid-codes28/telegram_backup_backend/releases/download/v${versionInfo.versionName}/TelegramBackup-latest.apk")
-                            candidateUrls.add("https://github.com/sid-codes28/telegram_backup_backend/releases/download/v${versionInfo.versionName}/TelegramBackup-v${versionInfo.versionName}.apk")
+                            candidateUrls.add("https://raw.githubusercontent.com/Spatil28b/telegram_backup_backend/main/Releases/TelegramBackup-latest.apk")
+                            candidateUrls.add("https://github.com/Spatil28b/telegram_backup_backend/releases/download/v${versionInfo.versionName}/TelegramBackup-latest.apk")
+                            candidateUrls.add("https://github.com/Spatil28b/telegram_backup_backend/releases/download/v${versionInfo.versionName}/TelegramBackup-v${versionInfo.versionName}.apk")
 
                             val distinctUrls = candidateUrls.distinct()
                             var downloadSuccess = false
